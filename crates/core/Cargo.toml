@@ -1,0 +1,16 @@
+[package]
+name = "manymatrix-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+matrix-sdk.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+url.workspace = true
+thiserror = "1"
+mime = "0.3"
