@@ -14,7 +14,8 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-testcontainers = { version = "0.21", features = ["http_wait"] }
+testcontainers = { version = "0.21", features = ["http_wait"], optional = true }
+# tuwunel-embed = { git = "https://github.com/sneurlax/tuwunel", rev = "3c69fdd5", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 hmac = "0.12"
 sha1 = "0.10"

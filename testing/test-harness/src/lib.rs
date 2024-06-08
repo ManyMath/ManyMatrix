@@ -1,16 +1,26 @@
+#[cfg(feature = "docker-tests")]
 use anyhow::{bail, Context, Result};
+#[cfg(feature = "docker-tests")]
 use testcontainers::core::wait::HttpWaitStrategy;
+#[cfg(feature = "docker-tests")]
 use testcontainers::core::{IntoContainerPort, WaitFor};
+#[cfg(feature = "docker-tests")]
 use testcontainers::runners::AsyncRunner;
+#[cfg(feature = "docker-tests")]
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
+#[cfg(feature = "docker-tests")]
 const SYNAPSE_IMAGE: &str = "ghcr.io/matrix-org/synapse-service";
+#[cfg(feature = "docker-tests")]
 const SYNAPSE_TAG: &str = "v1.117.0";
 
+#[cfg(feature = "docker-tests")]
 const TUWUNEL_IMAGE: &str = "ghcr.io/matrix-construct/tuwunel";
+#[cfg(feature = "docker-tests")]
 const TUWUNEL_TAG: &str = "latest";
 
 /// Which Matrix homeserver implementation to test against.
+#[cfg(feature = "docker-tests")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerKind {
     /// Synapse (Python reference implementation).
@@ -19,6 +29,7 @@ pub enum ServerKind {
     Tuwunel,
 }
 
+#[cfg(feature = "docker-tests")]
 impl std::fmt::Display for ServerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -29,12 +40,14 @@ impl std::fmt::Display for ServerKind {
 }
 
 /// A running Matrix homeserver container for integration tests.
+#[cfg(feature = "docker-tests")]
 pub struct TestHomeserver {
     container: ContainerAsync<GenericImage>,
     base_url: String,
     kind: ServerKind,
 }
 
+// Always available (no feature gate) -- reused by Phase 12 embedded tests
 /// A user registered on the test homeserver.
 #[derive(Debug, Clone)]
 pub struct RegisteredUser {
@@ -43,6 +56,7 @@ pub struct RegisteredUser {
     pub device_id: String,
 }
 
+#[cfg(feature = "docker-tests")]
 impl TestHomeserver {
     /// Start a fresh homeserver container of the given kind.
     /// Returns when the server is ready to accept requests.
