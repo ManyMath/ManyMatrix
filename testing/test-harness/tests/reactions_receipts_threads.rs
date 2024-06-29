@@ -1,3 +1,4 @@
+#![cfg(feature = "docker-tests")]
 use std::time::Duration;
 
 use anyhow::Result;

@@ -1,3 +1,4 @@
+#![cfg(feature = "docker-tests")]
 use std::ffi::{c_char, CStr, CString};
 
 use anyhow::Result;
