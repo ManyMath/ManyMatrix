@@ -2,28 +2,28 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::media::{MediaFormat, MediaRequest, MediaThumbnailSize};
+use matrix_sdk::room::MessagesOptions;
+use matrix_sdk::ruma::api::client::media::get_content_thumbnail::v3::Method;
+use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
 use matrix_sdk::ruma::api::client::room::Visibility;
+use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+use matrix_sdk::ruma::events::receipt::ReceiptEventContent;
+use matrix_sdk::ruma::events::receipt::ReceiptThread;
+use matrix_sdk::ruma::events::relation::Annotation;
+use matrix_sdk::ruma::events::room::message::{AddMentions, ForwardThread, ReplyWithinThread};
 use matrix_sdk::ruma::events::room::message::{
     RoomMessageEventContent, RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
 };
-use matrix_sdk::ruma::events::room::message::{AddMentions, ForwardThread, ReplyWithinThread};
-use matrix_sdk::ruma::events::reaction::ReactionEventContent;
-use matrix_sdk::ruma::events::receipt::ReceiptEventContent;
-use matrix_sdk::ruma::events::relation::Annotation;
+use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::{
     AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
     SyncEphemeralRoomEvent,
 };
-use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
-use matrix_sdk::ruma::events::receipt::ReceiptThread;
-use matrix_sdk::media::{MediaFormat, MediaRequest, MediaThumbnailSize};
-use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::{DeviceId, EventId, OwnedMxcUri, RoomId, RoomOrAliasId, UInt, UserId};
-use matrix_sdk::attachment::AttachmentConfig;
-use matrix_sdk::room::MessagesOptions;
-use matrix_sdk::ruma::api::client::media::get_content_thumbnail::v3::Method;
 use matrix_sdk::RoomMemberships;
 use matrix_sdk::{Client, Room};
 use tracing::info;
@@ -83,9 +83,7 @@ impl ManyMatrixClient {
 
     /// Restore a previously saved session.
     pub async fn restore(&self, session: &StoredSession) -> Result<(), Error> {
-        self.client
-            .restore_session(session.session.clone())
-            .await?;
+        self.client.restore_session(session.session.clone()).await?;
         Ok(())
     }
 
@@ -93,8 +91,8 @@ impl ManyMatrixClient {
     /// Runs until an error occurs.
     pub async fn sync_forever(&self) -> Result<(), Error> {
         // Register a handler for incoming room messages.
-        self.client.add_event_handler(
-            |ev: SyncRoomMessageEvent, room: Room| async move {
+        self.client
+            .add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
                 if let SyncRoomMessageEvent::Original(msg) = ev {
                     let room_name = room
                         .display_name()
@@ -102,15 +100,9 @@ impl ManyMatrixClient {
                         .ok()
                         .map(|n| n.to_string())
                         .unwrap_or_else(|| room.room_id().to_string());
-                    info!(
-                        "[{}] {}: {}",
-                        room_name,
-                        msg.sender,
-                        msg.content.body()
-                    );
+                    info!("[{}] {}: {}", room_name, msg.sender, msg.content.body());
                 }
-            },
-        );
+            });
 
         info!("starting sync…");
         self.client.sync(SyncSettings::default()).await?;
@@ -188,8 +180,8 @@ impl ManyMatrixClient {
             event_id.to_owned(),
             None,
         );
-        let edit_content = RoomMessageEventContent::text_plain(new_body)
-            .make_replacement(metadata, None);
+        let edit_content =
+            RoomMessageEventContent::text_plain(new_body).make_replacement(metadata, None);
         room.send(edit_content).await?;
         Ok(())
     }
@@ -204,11 +196,12 @@ impl ManyMatrixClient {
         let room = self.get_room_parsed(room_id)?;
         let event_id = <&EventId>::try_from(event_id)
             .map_err(|e| Error::IdParse(format!("invalid event ID: {e}")))?;
-        let original = self
-            .fetch_original_message(&room, event_id)
-            .await?;
-        let reply_content = RoomMessageEventContentWithoutRelation::text_plain(body)
-            .make_reply_to(&original, ForwardThread::Yes, AddMentions::Yes);
+        let original = self.fetch_original_message(&room, event_id).await?;
+        let reply_content = RoomMessageEventContentWithoutRelation::text_plain(body).make_reply_to(
+            &original,
+            ForwardThread::Yes,
+            AddMentions::Yes,
+        );
         let resp = room.send(reply_content).await?;
         Ok(resp.event_id.to_string())
     }
@@ -253,11 +246,12 @@ impl ManyMatrixClient {
         let room = self.get_room_parsed(room_id)?;
         let event_id = <&EventId>::try_from(thread_root_event_id)
             .map_err(|e| Error::IdParse(format!("invalid event ID: {e}")))?;
-        let original = self
-            .fetch_original_message(&room, event_id)
-            .await?;
-        let thread_content = RoomMessageEventContent::text_plain(body)
-            .make_for_thread(&original, ReplyWithinThread::Yes, AddMentions::Yes);
+        let original = self.fetch_original_message(&room, event_id).await?;
+        let thread_content = RoomMessageEventContent::text_plain(body).make_for_thread(
+            &original,
+            ReplyWithinThread::Yes,
+            AddMentions::Yes,
+        );
         let resp = room.send(thread_content).await?;
         Ok(resp.event_id.to_string())
     }
@@ -272,16 +266,15 @@ impl ManyMatrixClient {
             .event(event_id)
             .await
             .map_err(|e| Error::Other(format!("fetch event failed: {e}")))?;
-        let full_event = timeline_event.event.deserialize().map_err(|e| {
-            Error::Other(format!("deserialize event failed: {e}"))
-        })?;
+        let full_event = timeline_event
+            .event
+            .deserialize()
+            .map_err(|e| Error::Other(format!("deserialize event failed: {e}")))?;
         match full_event {
             AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomMessage(
                 MessageLikeEvent::Original(original),
             )) => Ok(original),
-            _ => Err(Error::Other(
-                "event is not an original room message".into(),
-            )),
+            _ => Err(Error::Other("event is not an original room message".into())),
         }
     }
 
@@ -317,9 +310,7 @@ impl ManyMatrixClient {
                                         .as_str()
                                         .unwrap_or_default()
                                         .to_owned(),
-                                    timestamp: event["origin_server_ts"]
-                                        .as_u64()
-                                        .unwrap_or(0),
+                                    timestamp: event["origin_server_ts"].as_u64().unwrap_or(0),
                                 })
                             } else {
                                 None
@@ -389,9 +380,7 @@ impl ManyMatrixClient {
         } else {
             let alias = <&RoomOrAliasId>::try_from(room_id_or_alias)
                 .map_err(|e| Error::Other(format!("invalid room alias: {e}")))?;
-            self.client
-                .join_room_by_id_or_alias(alias, &[])
-                .await?
+            self.client.join_room_by_id_or_alias(alias, &[]).await?
         };
         Ok(room.room_id().to_string())
     }
@@ -506,11 +495,7 @@ impl ManyMatrixClient {
     }
 
     /// Send a read receipt for the given event in the given room.
-    pub async fn send_read_receipt(
-        &self,
-        room_id: &str,
-        event_id: &str,
-    ) -> Result<(), Error> {
+    pub async fn send_read_receipt(&self, room_id: &str, event_id: &str) -> Result<(), Error> {
         let room = self.get_room_parsed(room_id)?;
         let event_id = <&EventId>::try_from(event_id)
             .map_err(|e| Error::IdParse(format!("invalid event ID: {e}")))?;
@@ -524,11 +509,7 @@ impl ManyMatrixClient {
     }
 
     /// Send a typing indicator.
-    pub async fn send_typing(
-        &self,
-        room_id: &str,
-        typing: bool,
-    ) -> Result<(), Error> {
+    pub async fn send_typing(&self, room_id: &str, typing: bool) -> Result<(), Error> {
         let room = self.get_room_parsed(room_id)?;
         room.typing_notice(typing).await?;
         Ok(())
@@ -609,84 +590,91 @@ impl ManyMatrixClient {
         F: Fn(MessageEvent) + Send + Sync + 'static,
     {
         let callback = Arc::new(callback);
-        self.client.add_event_handler(
-            move |ev: SyncRoomMessageEvent, room: Room| {
+        self.client
+            .add_event_handler(move |ev: SyncRoomMessageEvent, room: Room| {
                 let callback = callback.clone();
                 async move {
-                if let SyncRoomMessageEvent::Original(msg) = ev {
-                    let msgtype = msg.content.msgtype().to_owned();
-                    let body = msg.content.body().to_owned();
-                    let formatted_body = match &msg.content.msgtype {
-                        matrix_sdk::ruma::events::room::message::MessageType::Text(t) => {
-                            t.formatted.as_ref().map(|f| f.body.clone())
-                        }
-                        matrix_sdk::ruma::events::room::message::MessageType::Notice(n) => {
-                            n.formatted.as_ref().map(|f| f.body.clone())
-                        }
-                        matrix_sdk::ruma::events::room::message::MessageType::Emote(e) => {
-                            e.formatted.as_ref().map(|f| f.body.clone())
-                        }
-                        _ => None,
-                    };
-                    let in_reply_to = msg.content.relates_to.as_ref().and_then(|rel| {
-                        if let matrix_sdk::ruma::events::room::message::Relation::Reply { in_reply_to } = rel {
-                            Some(in_reply_to.event_id.to_string())
-                        } else {
-                            None
-                        }
-                    });
-                    let (mxc_uri, filename, file_size) = match &msg.content.msgtype {
-                        matrix_sdk::ruma::events::room::message::MessageType::Image(img) => {
-                            let uri = match &img.source {
-                                MediaSource::Plain(url) => Some(url.to_string()),
-                                MediaSource::Encrypted(_) => None,
-                            };
-                            let size = img.info.as_ref().and_then(|i| i.size).map(u64::from);
-                            (uri, Some(img.body.clone()), size)
-                        }
-                        matrix_sdk::ruma::events::room::message::MessageType::File(f) => {
-                            let uri = match &f.source {
-                                MediaSource::Plain(url) => Some(url.to_string()),
-                                MediaSource::Encrypted(_) => None,
-                            };
-                            let size = f.info.as_ref().and_then(|i| i.size).map(u64::from);
-                            (uri, f.filename.clone().or_else(|| Some(f.body.clone())), size)
-                        }
-                        matrix_sdk::ruma::events::room::message::MessageType::Video(v) => {
-                            let uri = match &v.source {
-                                MediaSource::Plain(url) => Some(url.to_string()),
-                                MediaSource::Encrypted(_) => None,
-                            };
-                            let size = v.info.as_ref().and_then(|i| i.size).map(u64::from);
-                            (uri, Some(v.body.clone()), size)
-                        }
-                        matrix_sdk::ruma::events::room::message::MessageType::Audio(a) => {
-                            let uri = match &a.source {
-                                MediaSource::Plain(url) => Some(url.to_string()),
-                                MediaSource::Encrypted(_) => None,
-                            };
-                            (uri, Some(a.body.clone()), None)
-                        }
-                        _ => (None, None, None),
-                    };
-                    let message = MessageEvent {
-                        event_id: msg.event_id.to_string(),
-                        room_id: room.room_id().to_string(),
-                        sender: msg.sender.to_string(),
-                        body,
-                        formatted_body,
-                        msgtype,
-                        timestamp: msg.origin_server_ts.get().into(),
-                        in_reply_to,
-                        thread_root: None,
-                        mxc_uri,
-                        filename,
-                        file_size,
-                    };
-                    callback(message);
+                    if let SyncRoomMessageEvent::Original(msg) = ev {
+                        let msgtype = msg.content.msgtype().to_owned();
+                        let body = msg.content.body().to_owned();
+                        let formatted_body = match &msg.content.msgtype {
+                            matrix_sdk::ruma::events::room::message::MessageType::Text(t) => {
+                                t.formatted.as_ref().map(|f| f.body.clone())
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::Notice(n) => {
+                                n.formatted.as_ref().map(|f| f.body.clone())
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::Emote(e) => {
+                                e.formatted.as_ref().map(|f| f.body.clone())
+                            }
+                            _ => None,
+                        };
+                        let in_reply_to = msg.content.relates_to.as_ref().and_then(|rel| {
+                            if let matrix_sdk::ruma::events::room::message::Relation::Reply {
+                                in_reply_to,
+                            } = rel
+                            {
+                                Some(in_reply_to.event_id.to_string())
+                            } else {
+                                None
+                            }
+                        });
+                        let (mxc_uri, filename, file_size) = match &msg.content.msgtype {
+                            matrix_sdk::ruma::events::room::message::MessageType::Image(img) => {
+                                let uri = match &img.source {
+                                    MediaSource::Plain(url) => Some(url.to_string()),
+                                    MediaSource::Encrypted(_) => None,
+                                };
+                                let size = img.info.as_ref().and_then(|i| i.size).map(u64::from);
+                                (uri, Some(img.body.clone()), size)
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::File(f) => {
+                                let uri = match &f.source {
+                                    MediaSource::Plain(url) => Some(url.to_string()),
+                                    MediaSource::Encrypted(_) => None,
+                                };
+                                let size = f.info.as_ref().and_then(|i| i.size).map(u64::from);
+                                (
+                                    uri,
+                                    f.filename.clone().or_else(|| Some(f.body.clone())),
+                                    size,
+                                )
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::Video(v) => {
+                                let uri = match &v.source {
+                                    MediaSource::Plain(url) => Some(url.to_string()),
+                                    MediaSource::Encrypted(_) => None,
+                                };
+                                let size = v.info.as_ref().and_then(|i| i.size).map(u64::from);
+                                (uri, Some(v.body.clone()), size)
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::Audio(a) => {
+                                let uri = match &a.source {
+                                    MediaSource::Plain(url) => Some(url.to_string()),
+                                    MediaSource::Encrypted(_) => None,
+                                };
+                                (uri, Some(a.body.clone()), None)
+                            }
+                            _ => (None, None, None),
+                        };
+                        let message = MessageEvent {
+                            event_id: msg.event_id.to_string(),
+                            room_id: room.room_id().to_string(),
+                            sender: msg.sender.to_string(),
+                            body,
+                            formatted_body,
+                            msgtype,
+                            timestamp: msg.origin_server_ts.get().into(),
+                            in_reply_to,
+                            thread_root: None,
+                            mxc_uri,
+                            filename,
+                            file_size,
+                        };
+                        callback(message);
+                    }
                 }
-            }},
-        );
+            });
     }
 
     /// Register a callback for incoming reactions.
@@ -696,20 +684,20 @@ impl ManyMatrixClient {
     {
         let callback = Arc::new(callback);
         self.client.add_event_handler(
-            move |ev: OriginalSyncMessageLikeEvent<ReactionEventContent>,
-                  room: Room| {
+            move |ev: OriginalSyncMessageLikeEvent<ReactionEventContent>, room: Room| {
                 let callback = callback.clone();
                 async move {
-                let reaction = ReactionEvent {
-                    event_id: ev.event_id.to_string(),
-                    room_id: room.room_id().to_string(),
-                    sender: ev.sender.to_string(),
-                    relates_to_event_id: ev.content.relates_to.event_id.to_string(),
-                    key: ev.content.relates_to.key,
-                    timestamp: ev.origin_server_ts.get().into(),
-                };
-                callback(reaction);
-            }},
+                    let reaction = ReactionEvent {
+                        event_id: ev.event_id.to_string(),
+                        room_id: room.room_id().to_string(),
+                        sender: ev.sender.to_string(),
+                        relates_to_event_id: ev.content.relates_to.event_id.to_string(),
+                        key: ev.content.relates_to.key,
+                        timestamp: ev.origin_server_ts.get().into(),
+                    };
+                    callback(reaction);
+                }
+            },
         );
     }
 
@@ -720,28 +708,26 @@ impl ManyMatrixClient {
     {
         let callback = Arc::new(callback);
         self.client.add_event_handler(
-            move |ev: SyncEphemeralRoomEvent<ReceiptEventContent>,
-                  room: Room| {
+            move |ev: SyncEphemeralRoomEvent<ReceiptEventContent>, room: Room| {
                 let callback = callback.clone();
                 async move {
-                let room_id = room.room_id().to_string();
-                for (event_id, receipts) in ev.content.iter() {
-                    for (receipt_type, user_receipts) in receipts.iter() {
-                        for (user_id, receipt) in user_receipts.iter() {
-                            let receipt_event = ReceiptEvent {
-                                room_id: room_id.clone(),
-                                user_id: user_id.to_string(),
-                                event_id: event_id.to_string(),
-                                receipt_type: receipt_type.to_string(),
-                                timestamp: receipt
-                                    .ts
-                                    .map(|ts| ts.get().into()),
-                            };
-                            callback(receipt_event);
+                    let room_id = room.room_id().to_string();
+                    for (event_id, receipts) in ev.content.iter() {
+                        for (receipt_type, user_receipts) in receipts.iter() {
+                            for (user_id, receipt) in user_receipts.iter() {
+                                let receipt_event = ReceiptEvent {
+                                    room_id: room_id.clone(),
+                                    user_id: user_id.to_string(),
+                                    event_id: event_id.to_string(),
+                                    receipt_type: receipt_type.to_string(),
+                                    timestamp: receipt.ts.map(|ts| ts.get().into()),
+                                };
+                                callback(receipt_event);
+                            }
                         }
                     }
                 }
-            }},
+            },
         );
     }
 
@@ -774,11 +760,7 @@ impl ManyMatrixClient {
     }
 
     /// Accept an incoming SAS verification request.
-    pub async fn accept_verification(
-        &self,
-        user_id: &str,
-        flow_id: &str,
-    ) -> Result<(), Error> {
+    pub async fn accept_verification(&self, user_id: &str, flow_id: &str) -> Result<(), Error> {
         let user_id = <&UserId>::try_from(user_id)
             .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
         let request = self
@@ -792,11 +774,7 @@ impl ManyMatrixClient {
     }
 
     /// Get the SAS emoji set for visual comparison during verification.
-    pub async fn get_sas_emojis(
-        &self,
-        user_id: &str,
-        flow_id: &str,
-    ) -> Result<SasEmojis, Error> {
+    pub async fn get_sas_emojis(&self, user_id: &str, flow_id: &str) -> Result<SasEmojis, Error> {
         let user_id = <&UserId>::try_from(user_id)
             .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
         let verification = self
@@ -822,11 +800,7 @@ impl ManyMatrixClient {
     }
 
     /// Confirm the SAS verification after comparing emojis.
-    pub async fn confirm_sas(
-        &self,
-        user_id: &str,
-        flow_id: &str,
-    ) -> Result<(), Error> {
+    pub async fn confirm_sas(&self, user_id: &str, flow_id: &str) -> Result<(), Error> {
         let user_id = <&UserId>::try_from(user_id)
             .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
         let verification = self
@@ -843,11 +817,7 @@ impl ManyMatrixClient {
     }
 
     /// Cancel an ongoing verification flow.
-    pub async fn cancel_verification(
-        &self,
-        user_id: &str,
-        flow_id: &str,
-    ) -> Result<(), Error> {
+    pub async fn cancel_verification(&self, user_id: &str, flow_id: &str) -> Result<(), Error> {
         let user_id = <&UserId>::try_from(user_id)
             .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
         let verification = self
@@ -929,7 +899,11 @@ impl ManyMatrixClient {
             source: MediaSource::Plain(uri),
             format: MediaFormat::File,
         };
-        let data = self.client.media().get_media_content(&request, true).await?;
+        let data = self
+            .client
+            .media()
+            .get_media_content(&request, true)
+            .await?;
         Ok(data)
     }
 
@@ -949,7 +923,11 @@ impl ManyMatrixClient {
                 height: UInt::from(height),
             }),
         };
-        let data = self.client.media().get_media_content(&request, true).await?;
+        let data = self
+            .client
+            .media()
+            .get_media_content(&request, true)
+            .await?;
         Ok(data)
     }
 
