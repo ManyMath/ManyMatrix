@@ -3,7 +3,7 @@ use std::ffi::c_char;
 use manymatrix_core::ManyMatrixClient;
 
 use crate::types::FfiResult;
-use crate::{RUNTIME, str_from_ptr};
+use crate::{str_from_ptr, RUNTIME};
 
 /// Enable end-to-end encryption on a room.
 ///
@@ -144,9 +144,7 @@ pub unsafe extern "C" fn manymatrix_bootstrap_cross_signing(
 /// # Safety
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
-pub unsafe extern "C" fn manymatrix_setup_key_backup(
-    handle: *mut ManyMatrixClient,
-) -> FfiResult {
+pub unsafe extern "C" fn manymatrix_setup_key_backup(handle: *mut ManyMatrixClient) -> FfiResult {
     let client = &*handle;
     match RUNTIME.block_on(client.setup_key_backup()) {
         Ok(()) => FfiResult::success_void(),

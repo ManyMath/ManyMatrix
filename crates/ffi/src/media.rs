@@ -3,7 +3,7 @@ use std::ffi::{c_char, c_void};
 use manymatrix_core::ManyMatrixClient;
 
 use crate::types::{FfiBuffer, FfiResult};
-use crate::{RUNTIME, str_from_ptr};
+use crate::{str_from_ptr, RUNTIME};
 
 /// Upload a file as an attachment to a room.
 ///

@@ -3,7 +3,7 @@ use std::ffi::c_char;
 use manymatrix_core::ManyMatrixClient;
 
 use crate::types::FfiResult;
-use crate::{RUNTIME, str_from_ptr, optional_str_from_ptr};
+use crate::{optional_str_from_ptr, str_from_ptr, RUNTIME};
 
 /// Send a plain-text message to a room. Returns the event ID string.
 ///

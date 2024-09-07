@@ -1,27 +1,26 @@
-mod types;
+mod callbacks;
 mod client;
-mod rooms;
-mod messaging;
 mod crypto;
 mod media;
-mod callbacks;
+mod messaging;
+mod rooms;
+mod types;
 
-pub use types::*;
+pub use callbacks::*;
 pub use client::*;
-pub use rooms::*;
-pub use messaging::*;
 pub use crypto::*;
 pub use media::*;
-pub use callbacks::*;
+pub use messaging::*;
+pub use rooms::*;
+pub use types::*;
 
 use std::ffi::{c_char, CStr, CString};
 use std::sync::LazyLock;
 use tokio::runtime::Runtime;
 
 /// Global Tokio runtime shared by all FFI functions.
-static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
-    Runtime::new().expect("Failed to create Tokio runtime")
-});
+static RUNTIME: LazyLock<Runtime> =
+    LazyLock::new(|| Runtime::new().expect("Failed to create Tokio runtime"));
 
 /// Free an FfiResult, releasing the error message string if present.
 ///

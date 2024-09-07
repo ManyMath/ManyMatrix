@@ -4,7 +4,7 @@ use std::path::Path;
 use manymatrix_core::ManyMatrixClient;
 
 use crate::types::FfiResult;
-use crate::{RUNTIME, str_from_ptr};
+use crate::{str_from_ptr, RUNTIME};
 
 /// Create a new ManyMatrixClient pointing at the given homeserver URL.
 ///
