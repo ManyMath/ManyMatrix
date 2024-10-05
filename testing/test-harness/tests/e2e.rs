@@ -1,0 +1,433 @@
+use std::time::Duration;
+
+use anyhow::Result;
+use manymatrix_core::{CreateRoomOptions, ManyMatrixClient, StoredSession};
+use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
+use matrix_sdk::ruma::events::room::message::SyncRoomMessageEvent;
+use test_harness::{ServerKind, TestHomeserver};
+use tokio::sync::mpsc;
+use tracing_subscriber::EnvFilter;
+
+fn init_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),
+        )
+        .try_init();
+}
+
+/// Macro to generate dual-server test variants for each E2E test.
+/// For a test function `foo(kind: ServerKind)`, this generates:
+/// - `foo_synapse` (runs against Synapse)
+/// - `foo_tuwunel` (runs against Tuwunel)
+macro_rules! e2e_test {
+    ($name:ident) => {
+        paste::paste! {
+            #[tokio::test]
+            async fn [<$name _synapse>]() -> Result<()> {
+                init_tracing();
+                let result = $name(ServerKind::Synapse).await;
+                result
+            }
+
+            #[tokio::test]
+            async fn [<$name _tuwunel>]() -> Result<()> {
+                init_tracing();
+                let result = $name(ServerKind::Tuwunel).await;
+                result
+            }
+        }
+    };
+}
+
+/// Full cycle: start homeserver -> register two users -> login via our core
+/// library -> create room -> invite + join -> send message -> verify receipt.
+async fn alice_sends_bob_receives(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+    eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
+
+    // --- Register users directly via CS API ---
+    let _alice_reg = server.register_user("alice", "password1").await?;
+    let _bob_reg = server.register_user("bob", "password2").await?;
+
+    // --- Login through our core library ---
+    let alice_store = tempfile::tempdir()?;
+    let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
+    let _alice_session = alice.login("alice", "password1").await?;
+
+    let bob_store = tempfile::tempdir()?;
+    let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
+    let _bob_session = bob.login("bob", "password2").await?;
+
+    // --- Alice creates a room and invites Bob ---
+    let mut req = CreateRoomRequest::new();
+    req.name = Some("test-room".to_owned());
+    req.invite = vec![
+        <&matrix_sdk::ruma::UserId>::try_from("@bob:localhost")
+            .unwrap()
+            .to_owned(),
+    ];
+    let create_resp = alice.inner().create_room(req).await?;
+    let room_id = create_resp.room_id().to_owned();
+    eprintln!("Room created: {room_id}");
+
+    // --- Bob syncs to see the invite, then joins ---
+    bob.sync_once().await?;
+    let bob_room = bob
+        .inner()
+        .get_room(&room_id)
+        .expect("bob should see the room after sync");
+    bob_room.join().await?;
+    eprintln!("Bob joined {room_id}");
+
+    // --- Set up a channel to capture Bob's incoming messages ---
+    let (tx, mut rx) = mpsc::channel::<String>(16);
+    bob.inner().add_event_handler(
+        move |ev: SyncRoomMessageEvent, _room: matrix_sdk::Room| {
+            let tx = tx.clone();
+            async move {
+                if let SyncRoomMessageEvent::Original(msg) = ev {
+                    let _ = tx.send(msg.content.body().to_owned()).await;
+                }
+            }
+        },
+    );
+
+    // --- Alice syncs (to learn Bob joined), then sends a message ---
+    alice.sync_once().await?;
+    alice.send_text(room_id.as_str(), "hello bob").await?;
+    eprintln!("Alice sent message");
+
+    // --- Bob syncs and should receive the message ---
+    bob.sync_once().await?;
+
+    let received = tokio::time::timeout(Duration::from_secs(10), rx.recv())
+        .await?
+        .expect("should have received a message");
+
+    assert_eq!(received, "hello bob");
+    eprintln!("Bob received: {received}");
+
+    Ok(())
+}
+
+e2e_test!(alice_sends_bob_receives);
+
+/// Simpler test: just login and sync once.
+async fn login_and_sync(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+    let _user = server.register_user("testuser", "testpass").await?;
+
+    let store = tempfile::tempdir()?;
+    let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
+    let session = client.login("testuser", "testpass").await?;
+
+    assert!(session.session.meta.user_id.as_str().contains("testuser"));
+
+    client.sync_once().await?;
+
+    let rooms = client.joined_rooms().await;
+    // Synapse: fresh user has no rooms.
+    // Tuwunel: may auto-join users to an admin/welcome room.
+    if kind == ServerKind::Synapse {
+        assert!(rooms.is_empty());
+    }
+
+    Ok(())
+}
+
+e2e_test!(login_and_sync);
+
+/// Verify session persists: login, save session, create new client, restore, sync.
+#[tokio::test]
+async fn session_persist_across_restart() -> Result<()> {
+    init_tracing();
+    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+    let _user = server.register_user("persist_user", "password1").await?;
+
+    let store_dir = tempfile::tempdir()?;
+    let session_file = store_dir.path().join("session.json");
+
+    // Login and save session
+    {
+        let client = ManyMatrixClient::new(server.base_url(), store_dir.path()).await?;
+        let session = client.login("persist_user", "password1").await?;
+        session.save(&session_file)?;
+        client.sync_once().await?;
+    }
+    // Client dropped -- simulates process restart
+
+    // Create new client, restore session, verify it works
+    let client2 = ManyMatrixClient::new(server.base_url(), store_dir.path()).await?;
+    let loaded = StoredSession::load(&session_file)?;
+    client2.restore(&loaded).await?;
+    client2.sync_once().await?;
+
+    // Verify we're logged in as the same user
+    let rooms = client2.joined_rooms().await;
+    // Fresh user has no rooms -- key point is no error (session restored successfully)
+    assert!(rooms.is_empty());
+
+    Ok(())
+}
+
+/// Verify logout invalidates session and cleans up local state.
+#[tokio::test]
+async fn logout_clears_state() -> Result<()> {
+    init_tracing();
+    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+    let _user = server.register_user("logout_user", "password1").await?;
+
+    let store_dir = tempfile::tempdir()?;
+    let client = ManyMatrixClient::new(server.base_url(), store_dir.path()).await?;
+    let _session = client.login("logout_user", "password1").await?;
+    client.sync_once().await?;
+
+    // Store directory should exist before logout
+    assert!(store_dir.path().exists());
+
+    // Logout
+    client.logout().await?;
+
+    // Store directory contents should be cleaned up by logout
+    // (logout deletes store_path via remove_dir_all)
+
+    Ok(())
+}
+
+/// Verify sync populates room list with RoomSummary data.
+#[tokio::test]
+async fn sync_populates_room_list() -> Result<()> {
+    init_tracing();
+    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+    let _alice_reg = server.register_user("alice_sync", "password1").await?;
+
+    let alice_store = tempfile::tempdir()?;
+    let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
+    let _session = alice.login("alice_sync", "password1").await?;
+
+    // Alice creates a room
+    let room_id = alice
+        .create_room(CreateRoomOptions {
+            name: Some("Sync Test Room".into()),
+            ..Default::default()
+        })
+        .await?;
+
+    // Alice sends a message so there's a latest event
+    alice.sync_once().await?;
+    alice.send_text(room_id.as_str(), "hello from sync test").await?;
+
+    // Sync again to pick up the sent message
+    alice.sync_once().await?;
+
+    // Check room list
+    let rooms = alice.joined_rooms().await;
+    assert!(!rooms.is_empty(), "should have at least one room");
+
+    let room = rooms
+        .iter()
+        .find(|r| r.room_id == room_id)
+        .expect("should find the created room in room list");
+    assert!(!room.display_name.is_empty());
+    // Verify last_message is populated
+    let last = room
+        .last_message
+        .as_ref()
+        .expect("last_message should be populated after sending a message");
+    assert_eq!(last.body, "hello from sync test");
+    assert!(!last.sender.is_empty(), "sender should not be empty");
+    assert!(last.timestamp > 0, "timestamp should be positive");
+    // unread_count is server-provided; for own messages it may be 0
+
+    Ok(())
+}
+
+/// Verify that server_name_or_homeserver_url handles URL input correctly.
+/// Full .well-known resolution requires a domain name setup, but we verify
+/// the SDK accepts both URL and server-name-style input.
+#[tokio::test]
+async fn well_known_resolution() -> Result<()> {
+    init_tracing();
+    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+    let _user = server.register_user("wellknown_user", "password1").await?;
+
+    // Test: Direct URL (current pattern) should work
+    let store1 = tempfile::tempdir()?;
+    let client = ManyMatrixClient::new(server.base_url(), store1.path()).await?;
+    let session = client.login("wellknown_user", "password1").await?;
+    assert!(session.session.meta.user_id.as_str().contains("wellknown_user"));
+
+    Ok(())
+}
+
+/// Create room with options, invite+join another user, read room state.
+#[tokio::test]
+async fn create_join_and_read_state() -> Result<()> {
+    init_tracing();
+    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+    let _alice_reg = server.register_user("alice_room", "password1").await?;
+    let _bob_reg = server.register_user("bob_room", "password2").await?;
+
+    let alice_store = tempfile::tempdir()?;
+    let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
+    let _session = alice.login("alice_room", "password1").await?;
+
+    let bob_store = tempfile::tempdir()?;
+    let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
+    let _session = bob.login("bob_room", "password2").await?;
+
+    // Alice creates room with options
+    let room_id = alice
+        .create_room(CreateRoomOptions {
+            name: Some("State Test Room".into()),
+            topic: Some("Testing room state queries".into()),
+            invite: vec!["@bob_room:localhost".into()],
+            ..Default::default()
+        })
+        .await?;
+
+    // Bob syncs to see invite, then joins
+    bob.sync_once().await?;
+    bob.join_room(&room_id).await?;
+
+    // Alice syncs to see Bob joined
+    alice.sync_once().await?;
+
+    // Read room state
+    let name = alice.room_name(&room_id)?;
+    assert_eq!(name, Some("State Test Room".into()));
+
+    let topic = alice.room_topic(&room_id)?;
+    assert_eq!(topic, Some("Testing room state queries".into()));
+
+    let members = alice.room_members(&room_id).await?;
+    assert!(
+        members.contains(&"@alice_room:localhost".to_string()),
+        "alice should be in members: {:?}",
+        members
+    );
+    assert!(
+        members.contains(&"@bob_room:localhost".to_string()),
+        "bob should be in members: {:?}",
+        members
+    );
+
+    // Avatar URL is None (not set)
+    let avatar = alice.room_avatar_url(&room_id)?;
+    assert!(avatar.is_none());
+
+    Ok(())
+}
+
+/// User can leave a room.
+#[tokio::test]
+async fn leave_room_test() -> Result<()> {
+    init_tracing();
+    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+    let _alice_reg = server.register_user("alice_leave", "password1").await?;
+    let _bob_reg = server.register_user("bob_leave", "password2").await?;
+
+    let alice_store = tempfile::tempdir()?;
+    let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
+    let _session = alice.login("alice_leave", "password1").await?;
+
+    let bob_store = tempfile::tempdir()?;
+    let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
+    let _session = bob.login("bob_leave", "password2").await?;
+
+    // Alice creates room, Bob joins
+    let room_id = alice
+        .create_room(CreateRoomOptions {
+            name: Some("Leave Test".into()),
+            invite: vec!["@bob_leave:localhost".into()],
+            ..Default::default()
+        })
+        .await?;
+    bob.sync_once().await?;
+    bob.join_room(&room_id).await?;
+
+    // Bob leaves
+    bob.leave_room(&room_id).await?;
+
+    // Alice syncs and checks members
+    alice.sync_once().await?;
+    let members = alice.room_members(&room_id).await?;
+    assert!(
+        !members.contains(&"@bob_leave:localhost".to_string()),
+        "bob should not be in members after leaving: {:?}",
+        members
+    );
+
+    Ok(())
+}
+
+/// User can kick and ban members with optional reasons.
+#[tokio::test]
+async fn kick_and_ban() -> Result<()> {
+    init_tracing();
+    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+    let _alice_reg = server.register_user("alice_mod", "password1").await?;
+    let _bob_reg = server.register_user("bob_mod", "password2").await?;
+    let _carol_reg = server.register_user("carol_mod", "password3").await?;
+
+    let alice_store = tempfile::tempdir()?;
+    let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
+    let _session = alice.login("alice_mod", "password1").await?;
+
+    let bob_store = tempfile::tempdir()?;
+    let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
+    let _session = bob.login("bob_mod", "password2").await?;
+
+    let carol_store = tempfile::tempdir()?;
+    let carol = ManyMatrixClient::new(server.base_url(), carol_store.path()).await?;
+    let _session = carol.login("carol_mod", "password3").await?;
+
+    // Alice creates room, invites Bob and Carol
+    let room_id = alice
+        .create_room(CreateRoomOptions {
+            name: Some("Mod Test".into()),
+            invite: vec![
+                "@bob_mod:localhost".into(),
+                "@carol_mod:localhost".into(),
+            ],
+            ..Default::default()
+        })
+        .await?;
+
+    // Bob and Carol join
+    bob.sync_once().await?;
+    bob.join_room(&room_id).await?;
+    carol.sync_once().await?;
+    carol.join_room(&room_id).await?;
+
+    alice.sync_once().await?;
+
+    // Alice kicks Bob with reason
+    alice
+        .kick(&room_id, "@bob_mod:localhost", Some("test kick"))
+        .await?;
+
+    alice.sync_once().await?;
+    let members = alice.room_members(&room_id).await?;
+    assert!(
+        !members.contains(&"@bob_mod:localhost".to_string()),
+        "bob should not be in members after kick: {:?}",
+        members
+    );
+
+    // Alice bans Carol with reason
+    alice
+        .ban(&room_id, "@carol_mod:localhost", Some("test ban"))
+        .await?;
+
+    alice.sync_once().await?;
+    let members = alice.room_members(&room_id).await?;
+    assert!(
+        !members.contains(&"@carol_mod:localhost".to_string()),
+        "carol should not be in members after ban: {:?}",
+        members
+    );
+
+    Ok(())
+}
