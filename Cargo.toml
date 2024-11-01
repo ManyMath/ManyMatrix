@@ -5,6 +5,7 @@ members = [
     "crates/cli",
     "crates/ffi",
     "testing/test-harness",
+    "testing/shadow-client",
 ]
 
 [workspace.package]
@@ -27,3 +28,20 @@ anyhow = "1"
 tracing = "=0.1.43"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
+
+[profile.shadow]
+inherits = "release"
+strip = "symbols"
+debug = false
+
+[patch.crates-io.core_affinity]
+git = "https://github.com/matrix-construct/core_affinity_rs"
+rev = "ff148c2985cbaff3e6e953d45cda4d7696f38d75"
+
+[patch.crates-io.event-listener]
+git = "https://github.com/matrix-construct/event-listener"
+rev = "fe4aebeeaae435af60087ddd56b573a2e0be671d"
+
+[patch.crates-io.async-channel]
+git = "https://github.com/matrix-construct/async-channel"
+rev = "92e5e74063bf2a3b10414bcc8a0d68b235644280"
