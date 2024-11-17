@@ -2,11 +2,11 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use futures_util::StreamExt;
 use manymatrix_core::{CreateRoomOptions, ManyMatrixClient};
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::encryption::verification::SasState;
 use test_harness::{ServerKind, TestHomeserver};
-use futures_util::StreamExt;
 use tracing_subscriber::EnvFilter;
 
 fn init_tracing() {

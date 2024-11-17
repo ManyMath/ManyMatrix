@@ -141,7 +141,11 @@ async fn ffi_two_user_messaging() -> Result<()> {
         let r = manymatrix_ffi::manymatrix_new(url.as_ptr(), ap.as_ptr());
         assert_ok(&r);
         let alice = r.data as *mut manymatrix_core::ManyMatrixClient;
-        let r = manymatrix_ffi::manymatrix_login(alice, cstr("alice_ffi2").as_ptr(), cstr("pass1").as_ptr());
+        let r = manymatrix_ffi::manymatrix_login(
+            alice,
+            cstr("alice_ffi2").as_ptr(),
+            cstr("pass1").as_ptr(),
+        );
         assert!(r.ok);
 
         // Bob
@@ -149,17 +153,29 @@ async fn ffi_two_user_messaging() -> Result<()> {
         let r = manymatrix_ffi::manymatrix_new(url.as_ptr(), bp.as_ptr());
         assert_ok(&r);
         let bob = r.data as *mut manymatrix_core::ManyMatrixClient;
-        let r = manymatrix_ffi::manymatrix_login(bob, cstr("bob_ffi2").as_ptr(), cstr("pass2").as_ptr());
+        let r = manymatrix_ffi::manymatrix_login(
+            bob,
+            cstr("bob_ffi2").as_ptr(),
+            cstr("pass2").as_ptr(),
+        );
         assert!(r.ok);
 
         // Alice creates room, syncs, invites Bob
-        let r = manymatrix_ffi::manymatrix_create_room(alice, cstr("FFI Chat").as_ptr(), std::ptr::null());
+        let r = manymatrix_ffi::manymatrix_create_room(
+            alice,
+            cstr("FFI Chat").as_ptr(),
+            std::ptr::null(),
+        );
         let room_id = read_string(&r);
 
         let r = manymatrix_ffi::manymatrix_sync_once(alice);
         assert_ok(&r);
         let rid = cstr(&room_id);
-        let r = manymatrix_ffi::manymatrix_invite(alice, rid.as_ptr(), cstr("@bob_ffi2:localhost").as_ptr());
+        let r = manymatrix_ffi::manymatrix_invite(
+            alice,
+            rid.as_ptr(),
+            cstr("@bob_ffi2:localhost").as_ptr(),
+        );
         assert_ok(&r);
 
         // Bob syncs, joins
@@ -172,14 +188,28 @@ async fn ffi_two_user_messaging() -> Result<()> {
         let r = manymatrix_ffi::manymatrix_sync_once(alice);
         assert_ok(&r);
 
-        let r = manymatrix_ffi::manymatrix_send_text(alice, rid.as_ptr(), cstr("hello bob, from FFI!").as_ptr());
+        let r = manymatrix_ffi::manymatrix_send_text(
+            alice,
+            rid.as_ptr(),
+            cstr("hello bob, from FFI!").as_ptr(),
+        );
         let ev_id = read_string(&r);
         assert!(ev_id.starts_with('$'));
 
-        let r = manymatrix_ffi::manymatrix_send_html(alice, rid.as_ptr(), cstr("**bold**").as_ptr(), cstr("<b>bold</b>").as_ptr());
+        let r = manymatrix_ffi::manymatrix_send_html(
+            alice,
+            rid.as_ptr(),
+            cstr("**bold**").as_ptr(),
+            cstr("<b>bold</b>").as_ptr(),
+        );
         assert!(r.ok);
 
-        let r = manymatrix_ffi::manymatrix_send_reaction(alice, rid.as_ptr(), cstr(&ev_id).as_ptr(), cstr("\u{1F44D}").as_ptr());
+        let r = manymatrix_ffi::manymatrix_send_reaction(
+            alice,
+            rid.as_ptr(),
+            cstr(&ev_id).as_ptr(),
+            cstr("\u{1F44D}").as_ptr(),
+        );
         assert!(r.ok);
 
         // Bob syncs, checks members, reads messages
@@ -209,7 +239,9 @@ async fn ffi_whoami() -> Result<()> {
     init_tracing();
 
     let server = TestHomeserver::start(ServerKind::Synapse).await?;
-    let _alice = server.register_user("alice_ffi_whoami", "password1").await?;
+    let _alice = server
+        .register_user("alice_ffi_whoami", "password1")
+        .await?;
     let store = tempfile::tempdir()?;
     let base_url = server.base_url().to_owned();
     let store_path = store.path().to_str().unwrap().to_owned();

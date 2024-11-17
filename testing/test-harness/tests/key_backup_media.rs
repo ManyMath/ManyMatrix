@@ -25,7 +25,7 @@ const MINIMAL_PNG: &[u8] = &[
     0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, // compressed pixel data
     0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC, // CRC
     0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, // IEND chunk
-    0x44, 0xAE, 0x42, 0x60, 0x82,                   // IEND CRC
+    0x44, 0xAE, 0x42, 0x60, 0x82, // IEND CRC
 ];
 
 /// Enable key backup, restore from a fresh client.
@@ -56,7 +56,10 @@ async fn key_backup_enable_and_restore() -> Result<()> {
     // Enable recovery and get the recovery key
     let recovery_key = alice.enable_recovery().await?;
     assert!(!recovery_key.is_empty(), "recovery key should not be empty");
-    eprintln!("Recovery key obtained (first 8 chars): {}", &recovery_key[..8.min(recovery_key.len())]);
+    eprintln!(
+        "Recovery key obtained (first 8 chars): {}",
+        &recovery_key[..8.min(recovery_key.len())]
+    );
 
     // Send a message so there's something to back up
     alice.send_text(&room_id, "backup test message").await?;
@@ -75,7 +78,10 @@ async fn key_backup_enable_and_restore() -> Result<()> {
 
     // Restore key backup on the fresh client
     alice2.restore_key_backup(&recovery_key).await?;
-    eprintln!("Key backup restore succeeded with key: {}", &recovery_key[..8.min(recovery_key.len())]);
+    eprintln!(
+        "Key backup restore succeeded with key: {}",
+        &recovery_key[..8.min(recovery_key.len())]
+    );
 
     Ok(())
 }
@@ -106,7 +112,12 @@ async fn media_download_round_trip() -> Result<()> {
     // Upload test data
     let test_data: Vec<u8> = b"media download round trip content".to_vec();
     let event_id = alice
-        .upload_media(&room_id, "download_test.txt", "text/plain", test_data.clone())
+        .upload_media(
+            &room_id,
+            "download_test.txt",
+            "text/plain",
+            test_data.clone(),
+        )
         .await?;
     assert!(!event_id.is_empty(), "event_id should not be empty");
     eprintln!("Uploaded media, event_id: {}", event_id);
@@ -123,7 +134,11 @@ async fn media_download_round_trip() -> Result<()> {
     assert!(
         media_msg.is_some(),
         "Should see media message with filename. Got: {:?}",
-        messages.messages.iter().map(|m| &m.body).collect::<Vec<_>>()
+        messages
+            .messages
+            .iter()
+            .map(|m| &m.body)
+            .collect::<Vec<_>>()
     );
     let media_msg = media_msg.unwrap();
 
@@ -171,7 +186,12 @@ async fn thumbnail_fetch_for_image() -> Result<()> {
 
     // Upload the minimal PNG image (must use image/png for Synapse thumbnails)
     let event_id = alice
-        .upload_media(&room_id, "test_image.png", "image/png", MINIMAL_PNG.to_vec())
+        .upload_media(
+            &room_id,
+            "test_image.png",
+            "image/png",
+            MINIMAL_PNG.to_vec(),
+        )
         .await?;
     assert!(!event_id.is_empty());
     eprintln!("Uploaded PNG image, event_id: {}", event_id);
@@ -185,7 +205,11 @@ async fn thumbnail_fetch_for_image() -> Result<()> {
     assert!(
         img_msg.is_some(),
         "Should see m.image message. Got: {:?}",
-        messages.messages.iter().map(|m| (&m.msgtype, &m.body)).collect::<Vec<_>>()
+        messages
+            .messages
+            .iter()
+            .map(|m| (&m.msgtype, &m.body))
+            .collect::<Vec<_>>()
     );
     let img_msg = img_msg.unwrap();
 
@@ -251,7 +275,12 @@ async fn encrypted_media_upload() -> Result<()> {
 
     // Alice uploads media in the encrypted room
     let event_id = alice
-        .upload_media(&room_id, "secret.txt", "text/plain", b"encrypted media content".to_vec())
+        .upload_media(
+            &room_id,
+            "secret.txt",
+            "text/plain",
+            b"encrypted media content".to_vec(),
+        )
         .await?;
     assert!(!event_id.is_empty(), "event_id should not be empty");
     eprintln!("Uploaded encrypted media, event_id: {}", event_id);
@@ -270,7 +299,11 @@ async fn encrypted_media_upload() -> Result<()> {
     assert!(
         media_msg.is_some(),
         "Bob should see encrypted media message. Got: {:?}",
-        messages.messages.iter().map(|m| (&m.body, &m.mxc_uri)).collect::<Vec<_>>()
+        messages
+            .messages
+            .iter()
+            .map(|m| (&m.body, &m.mxc_uri))
+            .collect::<Vec<_>>()
     );
     let media_msg = media_msg.unwrap();
 

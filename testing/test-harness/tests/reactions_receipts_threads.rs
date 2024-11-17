@@ -64,7 +64,9 @@ async fn reaction_round_trip() -> Result<()> {
     alice.sync_once().await?;
 
     // Alice sends reaction (thumbs up)
-    let _reaction_event_id = alice.send_reaction(&room_id, &msg_event_id, "\u{1F44D}").await?;
+    let _reaction_event_id = alice
+        .send_reaction(&room_id, &msg_event_id, "\u{1F44D}")
+        .await?;
     eprintln!("Alice sent reaction");
 
     alice.sync_once().await?;
@@ -76,9 +78,15 @@ async fn reaction_round_trip() -> Result<()> {
         .expect("reaction receive timed out")
         .expect("reaction channel closed unexpectedly");
 
-    eprintln!("Bob received reaction: key={}, relates_to={}", reaction.key, reaction.relates_to_event_id);
+    eprintln!(
+        "Bob received reaction: key={}, relates_to={}",
+        reaction.key, reaction.relates_to_event_id
+    );
 
-    assert_eq!(reaction.key, "\u{1F44D}", "reaction key should be thumbs up emoji");
+    assert_eq!(
+        reaction.key, "\u{1F44D}",
+        "reaction key should be thumbs up emoji"
+    );
     assert_eq!(
         reaction.relates_to_event_id, msg_event_id,
         "reaction should relate to the original message event"
@@ -166,7 +174,10 @@ async fn read_receipt_round_trip() -> Result<()> {
             .expect("receipt channel closed unexpectedly")
     };
 
-    eprintln!("Alice received receipt: event_id={}, user_id={}", receipt.event_id, receipt.user_id);
+    eprintln!(
+        "Alice received receipt: event_id={}, user_id={}",
+        receipt.event_id, receipt.user_id
+    );
 
     assert_eq!(
         receipt.event_id, msg_event_id,
@@ -239,7 +250,11 @@ async fn threaded_message_round_trip() -> Result<()> {
     eprintln!(
         "Bob sees {} messages: {:?}",
         messages.messages.len(),
-        messages.messages.iter().map(|m| (&m.body, &m.thread_root)).collect::<Vec<_>>()
+        messages
+            .messages
+            .iter()
+            .map(|m| (&m.body, &m.thread_root))
+            .collect::<Vec<_>>()
     );
 
     // Find the thread reply
@@ -251,7 +266,11 @@ async fn threaded_message_round_trip() -> Result<()> {
     assert!(
         thread_reply.is_some(),
         "Bob should see the thread reply in get_messages. Got messages: {:?}",
-        messages.messages.iter().map(|m| &m.body).collect::<Vec<_>>()
+        messages
+            .messages
+            .iter()
+            .map(|m| &m.body)
+            .collect::<Vec<_>>()
     );
 
     let thread_reply = thread_reply.unwrap();
@@ -261,7 +280,10 @@ async fn threaded_message_round_trip() -> Result<()> {
         "thread reply should have thread_root set to the root event ID"
     );
 
-    eprintln!("Thread reply verified: thread_root={:?}", thread_reply.thread_root);
+    eprintln!(
+        "Thread reply verified: thread_root={:?}",
+        thread_reply.thread_root
+    );
 
     Ok(())
 }

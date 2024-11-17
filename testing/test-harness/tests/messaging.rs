@@ -89,12 +89,13 @@ async fn encrypted_messaging() -> Result<()> {
     assert!(
         decrypted.is_some(),
         "Bob should be able to read the decrypted message via pagination. Got messages: {:?}",
-        messages.messages.iter().map(|m| &m.body).collect::<Vec<_>>()
+        messages
+            .messages
+            .iter()
+            .map(|m| &m.body)
+            .collect::<Vec<_>>()
     );
-    eprintln!(
-        "Bob decrypted message: {}",
-        decrypted.unwrap().body
-    );
+    eprintln!("Bob decrypted message: {}", decrypted.unwrap().body);
 
     Ok(())
 }
@@ -140,13 +141,29 @@ async fn message_types() -> Result<()> {
     let messages = bob.get_messages(&room_id, None, 20).await?;
     let bodies: Vec<&str> = messages.messages.iter().map(|m| m.body.as_str()).collect();
 
-    assert!(bodies.contains(&"plain text"), "Bob should see plain text: {bodies:?}");
-    assert!(bodies.contains(&"hello"), "Bob should see html message: {bodies:?}");
-    assert!(bodies.contains(&"notice message"), "Bob should see notice: {bodies:?}");
-    assert!(bodies.contains(&"waves"), "Bob should see emote: {bodies:?}");
+    assert!(
+        bodies.contains(&"plain text"),
+        "Bob should see plain text: {bodies:?}"
+    );
+    assert!(
+        bodies.contains(&"hello"),
+        "Bob should see html message: {bodies:?}"
+    );
+    assert!(
+        bodies.contains(&"notice message"),
+        "Bob should see notice: {bodies:?}"
+    );
+    assert!(
+        bodies.contains(&"waves"),
+        "Bob should see emote: {bodies:?}"
+    );
 
     // Verify message types
-    let html_msg = messages.messages.iter().find(|m| m.body == "hello").unwrap();
+    let html_msg = messages
+        .messages
+        .iter()
+        .find(|m| m.body == "hello")
+        .unwrap();
     assert_eq!(html_msg.formatted_body.as_deref(), Some("<b>hello</b>"));
 
     eprintln!("All message types sent by Alice, verified by Bob");
@@ -244,7 +261,10 @@ async fn whoami() -> Result<()> {
     let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
 
     // Before login: should return None
-    assert!(client.current_user_id().is_none(), "no user ID before login");
+    assert!(
+        client.current_user_id().is_none(),
+        "no user ID before login"
+    );
 
     // Login
     let _session = client.login("alice_whoami", "password1").await?;
@@ -297,7 +317,10 @@ async fn is_room_encrypted() -> Result<()> {
 
     // Should be true now
     let encrypted = client.is_room_encrypted(&room_id).await?;
-    assert!(encrypted, "room should be encrypted after enable_encryption");
+    assert!(
+        encrypted,
+        "room should be encrypted after enable_encryption"
+    );
     eprintln!("Room {} encrypted after enable: {}", room_id, encrypted);
 
     Ok(())
@@ -353,7 +376,11 @@ async fn media_upload_download() -> Result<()> {
     assert!(
         media_msg.is_some(),
         "Bob should see media message with filename. Got: {:?}",
-        messages.messages.iter().map(|m| &m.body).collect::<Vec<_>>()
+        messages
+            .messages
+            .iter()
+            .map(|m| &m.body)
+            .collect::<Vec<_>>()
     );
     eprintln!("Bob sees media message: {:?}", media_msg.unwrap().body);
 
@@ -410,7 +437,11 @@ async fn mxc_uri_on_message_event() -> Result<()> {
     assert!(
         media_msg.is_some(),
         "Bob should see media message. Got: {:?}",
-        messages.messages.iter().map(|m| (&m.body, &m.msgtype, &m.mxc_uri)).collect::<Vec<_>>()
+        messages
+            .messages
+            .iter()
+            .map(|m| (&m.body, &m.msgtype, &m.mxc_uri))
+            .collect::<Vec<_>>()
     );
     let media_msg = media_msg.unwrap();
 
@@ -457,7 +488,10 @@ async fn mxc_uri_on_message_event() -> Result<()> {
         downloaded, test_data,
         "downloaded content should match uploaded content"
     );
-    eprintln!("download_media round-trip verified: {} bytes", downloaded.len());
+    eprintln!(
+        "download_media round-trip verified: {} bytes",
+        downloaded.len()
+    );
 
     Ok(())
 }

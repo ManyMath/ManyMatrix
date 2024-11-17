@@ -1,4 +1,11 @@
+use std::time::Duration;
+
 use anyhow::Result;
+use manymatrix_core::ManyMatrixClient;
+use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
+use matrix_sdk::ruma::events::room::message::SyncRoomMessageEvent;
+use test_harness::{ServerKind, TestHomeserver};
+use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
 
 fn init_tracing() {
@@ -9,49 +16,51 @@ fn init_tracing() {
         .try_init();
 }
 
-/// All Docker-dependent tests are gated behind the `docker-tests` feature.
-/// Phase 12 will add embedded Tuwunel test variants OUTSIDE this module.
-#[cfg(feature = "docker-tests")]
-mod docker_tests {
-    use super::*;
-    use std::time::Duration;
-
-    use manymatrix_core::{CreateRoomOptions, ManyMatrixClient, StoredSession};
-    use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
-    use matrix_sdk::ruma::events::room::message::SyncRoomMessageEvent;
-    use test_harness::{ServerKind, TestHomeserver};
-    use tokio::sync::mpsc;
-
-    /// Macro to generate dual-server test variants for each E2E test.
-    /// For a test function `foo(kind: ServerKind)`, this generates:
-    /// - `foo_synapse` (runs against Synapse)
-    /// - `foo_tuwunel` (runs against Tuwunel)
-    macro_rules! e2e_test {
-        ($name:ident) => {
-            paste::paste! {
-                #[tokio::test]
-                async fn [<$name _synapse>]() -> Result<()> {
-                    init_tracing();
-                    let result = $name(ServerKind::Synapse).await;
-                    result
-                }
-
-                #[tokio::test]
-                async fn [<$name _tuwunel>]() -> Result<()> {
-                    init_tracing();
-                    let result = $name(ServerKind::Tuwunel).await;
-                    result
-                }
+macro_rules! e2e_test {
+    ($name:ident) => {
+        paste::paste! {
+            #[tokio::test]
+            async fn [<$name _embedded>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::TuwunelEmbedded).await
             }
-        };
+
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _tuwunel_docker>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::TuwunelDocker).await
+            }
+
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _synapse>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::Synapse).await
+            }
+        }
+    };
+}
+
+async fn finalize_server(server: TestHomeserver, run_result: Result<()>) -> Result<()> {
+    if let Err(stop_err) = server.stop().await {
+        if run_result.is_ok() {
+            return Err(stop_err);
+        }
+
+        eprintln!("failed to stop homeserver after test failure: {stop_err:#}");
     }
 
-    /// Full cycle: start homeserver -> register two users -> login via our core
-    /// library -> create room -> invite + join -> send message -> verify receipt.
-    async fn alice_sends_bob_receives(kind: ServerKind) -> Result<()> {
-        let server = TestHomeserver::start(kind).await?;
-        eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
+    run_result
+}
 
+/// Full cycle: start homeserver -> register two users -> login via our core
+/// library -> create room -> invite + join -> send message -> verify receipt.
+async fn alice_sends_bob_receives(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+    eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
+
+    let run_result = async {
         // --- Register users directly via CS API ---
         let _alice_reg = server.register_user("alice", "password1").await?;
         let _bob_reg = server.register_user("bob", "password2").await?;
@@ -68,11 +77,9 @@ mod docker_tests {
         // --- Alice creates a room and invites Bob ---
         let mut req = CreateRoomRequest::new();
         req.name = Some("test-room".to_owned());
-        req.invite = vec![
-            <&matrix_sdk::ruma::UserId>::try_from("@bob:localhost")
-                .unwrap()
-                .to_owned(),
-        ];
+        req.invite = vec![<&matrix_sdk::ruma::UserId>::try_from("@bob:localhost")
+            .unwrap()
+            .to_owned()];
         let create_resp = alice.inner().create_room(req).await?;
         let room_id = create_resp.room_id().to_owned();
         eprintln!("Room created: {room_id}");
@@ -88,16 +95,15 @@ mod docker_tests {
 
         // --- Set up a channel to capture Bob's incoming messages ---
         let (tx, mut rx) = mpsc::channel::<String>(16);
-        bob.inner().add_event_handler(
-            move |ev: SyncRoomMessageEvent, _room: matrix_sdk::Room| {
+        bob.inner()
+            .add_event_handler(move |ev: SyncRoomMessageEvent, _room: matrix_sdk::Room| {
                 let tx = tx.clone();
                 async move {
                     if let SyncRoomMessageEvent::Original(msg) = ev {
                         let _ = tx.send(msg.content.body().to_owned()).await;
                     }
                 }
-            },
-        );
+            });
 
         // --- Alice syncs (to learn Bob joined), then sends a message ---
         alice.sync_once().await?;
@@ -116,12 +122,18 @@ mod docker_tests {
 
         Ok(())
     }
+    .await;
 
-    e2e_test!(alice_sends_bob_receives);
+    finalize_server(server, run_result).await
+}
 
-    /// Simpler test: just login and sync once.
-    async fn login_and_sync(kind: ServerKind) -> Result<()> {
-        let server = TestHomeserver::start(kind).await?;
+e2e_test!(alice_sends_bob_receives);
+
+/// Simpler test: just login and sync once.
+async fn login_and_sync(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+
+    let run_result = async {
         let _user = server.register_user("testuser", "testpass").await?;
 
         let store = tempfile::tempdir()?;
@@ -134,15 +146,53 @@ mod docker_tests {
 
         let rooms = client.joined_rooms().await;
         // Synapse: fresh user has no rooms.
-        // Tuwunel: may auto-join users to an admin/welcome room.
-        if kind == ServerKind::Synapse {
+        // Tuwunel variants: may auto-join users to an admin/welcome room.
+        if kind.is_synapse() {
             assert!(rooms.is_empty());
         }
 
         Ok(())
     }
+    .await;
 
-    e2e_test!(login_and_sync);
+    finalize_server(server, run_result).await
+}
+
+e2e_test!(login_and_sync);
+
+#[tokio::test]
+async fn embedded_servers_bind_distinct_ports() -> Result<()> {
+    init_tracing();
+
+    let (first, second) = tokio::try_join!(
+        TestHomeserver::start(ServerKind::TuwunelEmbedded),
+        TestHomeserver::start(ServerKind::TuwunelEmbedded),
+    )?;
+
+    let first_port = first.bound_port();
+    let second_port = second.bound_port();
+
+    assert_ne!(
+        first_port, second_port,
+        "embedded servers should bind distinct ports"
+    );
+    assert_ne!(
+        first.base_url(),
+        second.base_url(),
+        "embedded servers should report distinct bound addresses"
+    );
+
+    first.stop().await?;
+    second.stop().await?;
+
+    Ok(())
+}
+
+/// All remaining tests in this file are Docker-only Synapse coverage.
+#[cfg(feature = "docker-tests")]
+mod docker_tests {
+    use super::*;
+    use manymatrix_core::{CreateRoomOptions, StoredSession};
 
     /// Verify session persists: login, save session, create new client, restore, sync.
     #[tokio::test]
@@ -222,7 +272,9 @@ mod docker_tests {
 
         // Alice sends a message so there's a latest event
         alice.sync_once().await?;
-        alice.send_text(room_id.as_str(), "hello from sync test").await?;
+        alice
+            .send_text(room_id.as_str(), "hello from sync test")
+            .await?;
 
         // Sync again to pick up the sent message
         alice.sync_once().await?;
@@ -262,7 +314,12 @@ mod docker_tests {
         let store1 = tempfile::tempdir()?;
         let client = ManyMatrixClient::new(server.base_url(), store1.path()).await?;
         let session = client.login("wellknown_user", "password1").await?;
-        assert!(session.session.meta.user_id.as_str().contains("wellknown_user"));
+        assert!(session
+            .session
+            .meta
+            .user_id
+            .as_str()
+            .contains("wellknown_user"));
 
         Ok(())
     }
@@ -393,10 +450,7 @@ mod docker_tests {
         let room_id = alice
             .create_room(CreateRoomOptions {
                 name: Some("Mod Test".into()),
-                invite: vec![
-                    "@bob_mod:localhost".into(),
-                    "@carol_mod:localhost".into(),
-                ],
+                invite: vec!["@bob_mod:localhost".into(), "@carol_mod:localhost".into()],
                 ..Default::default()
             })
             .await?;
