@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 manymatrix-core = { path = "../../crates/core" }
+manymatrix-ffi = { path = "../../crates/ffi" }
 matrix-sdk.workspace = true
 tokio.workspace = true
 serde.workspace = true
