@@ -248,6 +248,28 @@ struct FfiResult manymatrix_accept_verification(ManyMatrixClient *handle,
                                                 const char *flow_id);
 
 /**
+ * Transition an accepted verification request into a SAS flow.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+
+struct FfiResult manymatrix_start_sas(ManyMatrixClient *handle,
+                                      const char *user_id,
+                                      const char *flow_id);
+
+/**
+ * Accept an in-progress SAS verification so short auth strings can be shown.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+
+struct FfiResult manymatrix_accept_sas(ManyMatrixClient *handle,
+                                       const char *user_id,
+                                       const char *flow_id);
+
+/**
  * Get the SAS emoji set for visual comparison during verification.
  *
  * Returns a JSON-serialized `SasEmojis` in `FfiResult.data`.

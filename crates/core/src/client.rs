@@ -1,12 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::config::SyncSettings;
-use matrix_sdk::media::{MediaFormat, MediaRequest, MediaThumbnailSize};
 use matrix_sdk::room::MessagesOptions;
-use matrix_sdk::ruma::api::client::media::get_content_thumbnail::v3::Method;
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
 use matrix_sdk::ruma::api::client::room::Visibility;
@@ -23,7 +22,7 @@ use matrix_sdk::ruma::events::{
     AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
     SyncEphemeralRoomEvent,
 };
-use matrix_sdk::ruma::{DeviceId, EventId, OwnedMxcUri, RoomId, RoomOrAliasId, UInt, UserId};
+use matrix_sdk::ruma::{DeviceId, EventId, RoomId, RoomOrAliasId, UInt, UserId};
 use matrix_sdk::RoomMemberships;
 use matrix_sdk::{Client, Room};
 use tracing::info;
@@ -111,7 +110,19 @@ impl ManyMatrixClient {
 
     /// Single sync round. Tracks the sync token for incremental syncs.
     pub async fn sync_once(&self) -> Result<(), Error> {
+        self.sync_once_with_timeout_inner(None).await
+    }
+
+    /// Single sync round with an explicit long-poll timeout.
+    pub async fn sync_once_with_timeout(&self, timeout: Duration) -> Result<(), Error> {
+        self.sync_once_with_timeout_inner(Some(timeout)).await
+    }
+
+    async fn sync_once_with_timeout_inner(&self, timeout: Option<Duration>) -> Result<(), Error> {
         let mut settings = SyncSettings::default();
+        if let Some(timeout) = timeout {
+            settings = settings.timeout(timeout);
+        }
         if let Some(ref token) = *self.sync_token.lock().await {
             settings = settings.token(token.clone());
         }
@@ -773,6 +784,40 @@ impl ManyMatrixClient {
         Ok(())
     }
 
+    /// Transition an accepted verification request into a SAS verification flow.
+    pub async fn start_sas(&self, user_id: &str, flow_id: &str) -> Result<(), Error> {
+        let user_id = <&UserId>::try_from(user_id)
+            .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
+        let request = self
+            .client
+            .encryption()
+            .get_verification_request(user_id, flow_id)
+            .await
+            .ok_or_else(|| Error::Other("verification request not found".into()))?;
+        request
+            .start_sas()
+            .await?
+            .ok_or_else(|| Error::Other("verification request is not ready for SAS".into()))?;
+        Ok(())
+    }
+
+    /// Accept an in-progress SAS verification so short auth strings can be shown.
+    pub async fn accept_sas(&self, user_id: &str, flow_id: &str) -> Result<(), Error> {
+        let user_id = <&UserId>::try_from(user_id)
+            .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
+        let verification = self
+            .client
+            .encryption()
+            .get_verification(user_id, flow_id)
+            .await
+            .ok_or_else(|| Error::Other("verification not found".into()))?;
+        let sas = verification
+            .sas()
+            .ok_or_else(|| Error::Other("not a SAS verification".into()))?;
+        sas.accept().await?;
+        Ok(())
+    }
+
     /// Get the SAS emoji set for visual comparison during verification.
     pub async fn get_sas_emojis(&self, user_id: &str, flow_id: &str) -> Result<SasEmojis, Error> {
         let user_id = <&UserId>::try_from(user_id)
@@ -894,17 +939,23 @@ impl ManyMatrixClient {
 
     /// Download media content by mxc:// URI.
     pub async fn download_media(&self, mxc_uri: &str) -> Result<Vec<u8>, Error> {
-        let uri: OwnedMxcUri = mxc_uri.into();
-        let request = MediaRequest {
-            source: MediaSource::Plain(uri),
-            format: MediaFormat::File,
-        };
-        let data = self
+        let (server_name, media_id) = parse_mxc_uri(mxc_uri)?;
+        let access_token = self
             .client
-            .media()
-            .get_media_content(&request, true)
-            .await?;
-        Ok(data)
+            .matrix_auth()
+            .access_token()
+            .ok_or_else(|| Error::Other("client is not authenticated".into()))?;
+        let url = format!(
+            "{}/_matrix/client/v1/media/download/{server_name}/{media_id}",
+            self.homeserver.trim_end_matches('/')
+        );
+        let response = reqwest::Client::new()
+            .get(url)
+            .bearer_auth(access_token)
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(response.bytes().await?.to_vec())
     }
 
     /// Fetch a thumbnail by mxc:// URI at the requested dimensions.
@@ -914,21 +965,28 @@ impl ManyMatrixClient {
         width: u32,
         height: u32,
     ) -> Result<Vec<u8>, Error> {
-        let uri: OwnedMxcUri = mxc_uri.into();
-        let request = MediaRequest {
-            source: MediaSource::Plain(uri),
-            format: MediaFormat::Thumbnail(MediaThumbnailSize {
-                method: Method::Scale,
-                width: UInt::from(width),
-                height: UInt::from(height),
-            }),
-        };
-        let data = self
+        let (server_name, media_id) = parse_mxc_uri(mxc_uri)?;
+        let access_token = self
             .client
-            .media()
-            .get_media_content(&request, true)
-            .await?;
-        Ok(data)
+            .matrix_auth()
+            .access_token()
+            .ok_or_else(|| Error::Other("client is not authenticated".into()))?;
+        let url = format!(
+            "{}/_matrix/client/v1/media/thumbnail/{server_name}/{media_id}",
+            self.homeserver.trim_end_matches('/')
+        );
+        let response = reqwest::Client::new()
+            .get(url)
+            .query(&[
+                ("method", "scale".to_owned()),
+                ("width", width.to_string()),
+                ("height", height.to_string()),
+            ])
+            .bearer_auth(access_token)
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(response.bytes().await?.to_vec())
     }
 
     /// Register an HTTP pusher for push notifications.
@@ -977,4 +1035,14 @@ impl ManyMatrixClient {
     pub async fn sync_token_clone(&self) -> Option<String> {
         self.sync_token.lock().await.clone()
     }
+}
+
+fn parse_mxc_uri(mxc_uri: &str) -> Result<(&str, &str), Error> {
+    let trimmed = mxc_uri
+        .strip_prefix("mxc://")
+        .ok_or_else(|| Error::IdParse("invalid MXC URI: missing mxc:// prefix".into()))?;
+    let (server_name, media_id) = trimmed
+        .split_once('/')
+        .ok_or_else(|| Error::IdParse("invalid MXC URI: missing media ID".into()))?;
+    Ok((server_name, media_id))
 }

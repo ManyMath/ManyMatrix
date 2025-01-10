@@ -12,5 +12,6 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 url.workspace = true
+reqwest.workspace = true
 thiserror = "1"
 mime = "0.3"

@@ -62,6 +62,44 @@ pub unsafe extern "C" fn manymatrix_accept_verification(
     }
 }
 
+/// Transition an accepted verification request into a SAS flow.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_start_sas(
+    handle: *mut ManyMatrixClient,
+    user_id: *const c_char,
+    flow_id: *const c_char,
+) -> FfiResult {
+    let client = &*handle;
+    let user_id = str_from_ptr(user_id);
+    let flow_id = str_from_ptr(flow_id);
+    match RUNTIME.block_on(client.start_sas(user_id, flow_id)) {
+        Ok(()) => FfiResult::success_void(),
+        Err(e) => FfiResult::error(&e.to_string()),
+    }
+}
+
+/// Accept an in-progress SAS verification so short auth strings can be shown.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_accept_sas(
+    handle: *mut ManyMatrixClient,
+    user_id: *const c_char,
+    flow_id: *const c_char,
+) -> FfiResult {
+    let client = &*handle;
+    let user_id = str_from_ptr(user_id);
+    let flow_id = str_from_ptr(flow_id);
+    match RUNTIME.block_on(client.accept_sas(user_id, flow_id)) {
+        Ok(()) => FfiResult::success_void(),
+        Err(e) => FfiResult::error(&e.to_string()),
+    }
+}
+
 /// Get the SAS emoji set for visual comparison during verification.
 ///
 /// Returns a JSON-serialized `SasEmojis` in `FfiResult.data`.

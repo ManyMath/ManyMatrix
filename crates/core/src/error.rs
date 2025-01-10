@@ -9,6 +9,9 @@ pub enum Error {
     #[error("HTTP error: {0}")]
     Http(#[from] matrix_sdk::HttpError),
 
+    #[error("request error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
