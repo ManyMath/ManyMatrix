@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::{bail, Context, Result};
 #[cfg(feature = "docker-tests")]
 use testcontainers::core::wait::HttpWaitStrategy;
@@ -292,18 +294,8 @@ async fn register_user_via_api(
         "inhibit_login": false,
     });
 
-    let initial_resp = http
-        .post(&url)
-        .json(&initial_body)
-        .send()
-        .await
-        .context("register request failed")?;
-
-    let initial_status = initial_resp.status();
-    let initial_json: serde_json::Value = initial_resp
-        .json()
-        .await
-        .context("register response was not JSON")?;
+    let (initial_status, initial_json) =
+        post_json_with_retry(&http, &url, &initial_body, "register").await?;
 
     if initial_status.is_success() {
         return extract_registered_user(&initial_json);
@@ -326,18 +318,8 @@ async fn register_user_via_api(
                 "inhibit_login": false,
             });
 
-            let token_resp = http
-                .post(&url)
-                .json(&token_body)
-                .send()
-                .await
-                .context("token registration request failed")?;
-
-            let token_status = token_resp.status();
-            let token_json: serde_json::Value = token_resp
-                .json()
-                .await
-                .context("token registration response was not JSON")?;
+            let (token_status, token_json) =
+                post_json_with_retry(&http, &url, &token_body, "token registration").await?;
 
             if token_status.is_success() {
                 return extract_registered_user(&token_json);
@@ -356,6 +338,49 @@ async fn register_user_via_api(
         initial_status,
         serde_json::to_string_pretty(&initial_json)?
     );
+}
+
+async fn post_json_with_retry(
+    http: &reqwest::Client,
+    url: &str,
+    body: &serde_json::Value,
+    request_name: &str,
+) -> Result<(reqwest::StatusCode, serde_json::Value)> {
+    const MAX_ATTEMPTS: usize = 20;
+    const RETRY_DELAY: Duration = Duration::from_secs(1);
+
+    for attempt in 0..MAX_ATTEMPTS {
+        let response = match http.post(url).json(body).send().await {
+            Ok(response) => response,
+            Err(_) if attempt + 1 < MAX_ATTEMPTS => {
+                tokio::time::sleep(RETRY_DELAY).await;
+                continue;
+            }
+            Err(error) => {
+                return Err(error).with_context(|| format!("{request_name} request failed"));
+            }
+        };
+
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .with_context(|| format!("{request_name} response body could not be read"))?;
+
+        match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(json) => return Ok((status, json)),
+            Err(_) if attempt + 1 < MAX_ATTEMPTS => {
+                tokio::time::sleep(RETRY_DELAY).await;
+            }
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("{request_name} response was not JSON: {}", text.trim())
+                });
+            }
+        }
+    }
+
+    bail!("{request_name} request exhausted retries without a JSON response")
 }
 
 fn extract_registered_user(json: &serde_json::Value) -> Result<RegisteredUser> {

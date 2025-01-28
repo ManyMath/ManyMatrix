@@ -17,12 +17,17 @@ use tempfile::TempDir;
 // NOTE: This constant is duplicated in `testing/shadow-client/src/main.rs`.
 // Keep both definitions identical to ensure Shadow scenario assertions match.
 pub const LATENCY_MESSAGE_TEXT: &str = "hello from shadow latency scenario";
+pub const LATENCY_ENCRYPTED_MESSAGE_TEXT: &str = "hello from shadow encrypted latency scenario";
 
 const ALICE_START_TIME: &str = "8s";
 const BOB_START_TIME: &str = "10s";
+const ALICE_E2EE_START_TIME: &str = "6s";
+const BOB_E2EE_START_TIME: &str = "8s";
 const SHADOW_CLIENT_SUBCOMMAND: &str = "latency-message";
+const SHADOW_CLIENT_E2EE_SUBCOMMAND: &str = "latency-encrypted-message";
 const SHADOW_DATA_DIR_NAME: &str = "shadow.data";
 const SHADOW_STOP_TIME: &str = "45s";
+const SHADOW_E2EE_STOP_TIME: &str = "90s";
 const TUWUNEL_DATABASE_PATH: &str = "data";
 const TUWUNEL_SERVER_NAME: &str = "tuwunel-server";
 
@@ -310,6 +315,32 @@ struct ShadowArtifacts {
 }
 
 pub fn run_latency_message_scenario(seed: u32) -> Result<ShadowRun> {
+    run_shadow_scenario(
+        seed,
+        SHADOW_CLIENT_SUBCOMMAND,
+        SHADOW_STOP_TIME,
+        ALICE_START_TIME,
+        BOB_START_TIME,
+    )
+}
+
+pub fn run_latency_encrypted_message_scenario(seed: u32) -> Result<ShadowRun> {
+    run_shadow_scenario(
+        seed,
+        SHADOW_CLIENT_E2EE_SUBCOMMAND,
+        SHADOW_E2EE_STOP_TIME,
+        ALICE_E2EE_START_TIME,
+        BOB_E2EE_START_TIME,
+    )
+}
+
+fn run_shadow_scenario(
+    seed: u32,
+    subcommand: &str,
+    stop_time: &str,
+    alice_start: &str,
+    bob_start: &str,
+) -> Result<ShadowRun> {
     ensure_shadow_host_requirements()?;
 
     let workspace_root = workspace_root()?;
@@ -332,11 +363,11 @@ pub fn run_latency_message_scenario(seed: u32) -> Result<ShadowRun> {
         &artifacts.client_bin,
         &tuwunel_config_path,
         &data_dir,
-        SHADOW_CLIENT_SUBCOMMAND,
-        SHADOW_STOP_TIME,
+        subcommand,
+        stop_time,
         seed,
-        ALICE_START_TIME,
-        BOB_START_TIME,
+        alice_start,
+        bob_start,
         &topology,
     );
     let shadow_config_path = tempdir.path().join("shadow.yaml");

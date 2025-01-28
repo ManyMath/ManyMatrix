@@ -11,9 +11,11 @@ const DEFAULT_PASSWORD: &str = "shadow_test_pass";
 // NOTE: This constant is duplicated in `testing/test-harness/src/shadow.rs`.
 // Keep both definitions identical to ensure Shadow scenario assertions match.
 const LATENCY_MESSAGE_TEXT: &str = "hello from shadow latency scenario";
+const LATENCY_ENCRYPTED_MESSAGE_TEXT: &str = "hello from shadow encrypted latency scenario";
 const REGISTRATION_TOKEN: &str = "shadow_test_token";
 const ROOM_ALIAS_FULL: &str = "#shadow-latency-room:tuwunel-server";
 const ROOM_ALIAS_LOCALPART: &str = "shadow-latency-room";
+const SHADOW_SYNC_TIMEOUT: Duration = Duration::from_secs(1);
 
 struct Args {
     subcommand: String,
@@ -37,6 +39,9 @@ async fn async_main() -> Result<()> {
 
     match args.subcommand.as_str() {
         "latency-message" => run_latency_message(&args.server_url, &args.role).await,
+        "latency-encrypted-message" => {
+            run_latency_encrypted_message(&args.server_url, &args.role).await
+        }
         other => bail!("unsupported shadow-client subcommand: {other}"),
     }
 }
@@ -74,6 +79,16 @@ async fn run_latency_message(server_url: &str, role: &str) -> Result<()> {
     }
 }
 
+async fn run_latency_encrypted_message(server_url: &str, role: &str) -> Result<()> {
+    wait_for_server(server_url, 60, 500).await?;
+
+    match role {
+        "alice" => run_alice_encrypted(server_url).await,
+        "bob" => run_bob_encrypted(server_url).await,
+        other => bail!("unsupported latency-encrypted-message role: {other}"),
+    }
+}
+
 async fn run_alice(server_url: &str) -> Result<()> {
     register_user_via_api(
         server_url,
@@ -100,7 +115,7 @@ async fn run_alice(server_url: &str) -> Result<()> {
         .to_owned();
     eprintln!("alice: created room {room_id}");
 
-    client.sync_once().await?;
+    client.sync_once_with_timeout(SHADOW_SYNC_TIMEOUT).await?;
     tokio::time::sleep(Duration::from_secs(5)).await;
     client
         .send_text(room_id.as_str(), LATENCY_MESSAGE_TEXT)
@@ -147,7 +162,7 @@ async fn run_bob(server_url: &str) -> Result<()> {
         });
 
     for attempt in 0..20 {
-        client.sync_once().await?;
+        client.sync_once_with_timeout(SHADOW_SYNC_TIMEOUT).await?;
 
         if let Ok(Some(message)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await {
             if message == LATENCY_MESSAGE_TEXT {
@@ -161,6 +176,101 @@ async fn run_bob(server_url: &str) -> Result<()> {
     }
 
     bail!("bob did not receive expected message: {LATENCY_MESSAGE_TEXT}")
+}
+
+async fn run_alice_encrypted(server_url: &str) -> Result<()> {
+    register_user_via_api(
+        server_url,
+        "alice",
+        DEFAULT_PASSWORD,
+        Some(REGISTRATION_TOKEN),
+    )
+    .await?;
+
+    let store = tempfile::tempdir().context("failed to create Alice store dir")?;
+    let client = ManyMatrixClient::new(server_url, store.path()).await?;
+    client.login("alice", DEFAULT_PASSWORD).await?;
+
+    let mut request = CreateRoomRequest::new();
+    request.name = Some("Shadow Encrypted Room".to_owned());
+    request.room_alias_name = Some(ROOM_ALIAS_LOCALPART.to_owned());
+    request.visibility = Visibility::Public;
+
+    let room_id = client
+        .inner()
+        .create_room(request)
+        .await?
+        .room_id()
+        .to_owned();
+    eprintln!("alice: created encrypted room {room_id}");
+
+    client.sync_once_with_timeout(SHADOW_SYNC_TIMEOUT).await?;
+
+    for attempt in 0..30 {
+        client.sync_once_with_timeout(SHADOW_SYNC_TIMEOUT).await?;
+        let members = client.room_members(room_id.as_str()).await?;
+        if members.len() >= 2 {
+            eprintln!("alice: bob joined encrypted room on attempt {attempt}");
+            break;
+        }
+        if attempt == 29 {
+            bail!("alice: bob never joined encrypted room {room_id}");
+        }
+        eprintln!("alice: waiting for bob to join encrypted room (attempt {attempt})");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    client.enable_encryption(room_id.as_str()).await?;
+    eprintln!("alice: enabled room encryption");
+
+    for attempt in 0..12 {
+        client.sync_once_with_timeout(SHADOW_SYNC_TIMEOUT).await?;
+        eprintln!("alice: waiting for Bob device discovery attempt {attempt}");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    client
+        .send_text(room_id.as_str(), LATENCY_ENCRYPTED_MESSAGE_TEXT)
+        .await?;
+    eprintln!("alice: sent encrypted message {LATENCY_ENCRYPTED_MESSAGE_TEXT}");
+
+    Ok(())
+}
+
+async fn run_bob_encrypted(server_url: &str) -> Result<()> {
+    register_user_via_api(
+        server_url,
+        "bob",
+        DEFAULT_PASSWORD,
+        Some(REGISTRATION_TOKEN),
+    )
+    .await?;
+
+    let store = tempfile::tempdir().context("failed to create Bob store dir")?;
+    let client = ManyMatrixClient::new(server_url, store.path()).await?;
+    client.login("bob", DEFAULT_PASSWORD).await?;
+
+    let room_id =
+        join_room_with_retry(&client, ROOM_ALIAS_FULL, 30, Duration::from_secs(1)).await?;
+    eprintln!("bob: joined encrypted room {room_id}");
+
+    for attempt in 0..20 {
+        client.sync_once_with_timeout(SHADOW_SYNC_TIMEOUT).await?;
+        let messages = client.get_messages(room_id.as_str(), None, 20).await?;
+        if messages
+            .messages
+            .iter()
+            .any(|message| message.body == LATENCY_ENCRYPTED_MESSAGE_TEXT)
+        {
+            eprintln!("bob: received encrypted message {LATENCY_ENCRYPTED_MESSAGE_TEXT}");
+            return Ok(());
+        }
+
+        eprintln!("bob: waiting for encrypted message (attempt {attempt})");
+        tokio::time::sleep(Duration::from_millis(750)).await;
+    }
+
+    bail!("bob did not receive expected encrypted message: {LATENCY_ENCRYPTED_MESSAGE_TEXT}")
 }
 
 async fn join_room_with_retry(
