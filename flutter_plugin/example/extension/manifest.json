@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "ManyMatrix",
+  "version": "1.0.0",
+  "description": "ManyMatrix canonical example packaged as a Chrome extension.",
+  "action": {},
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "permissions": [
+    "sidePanel"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}

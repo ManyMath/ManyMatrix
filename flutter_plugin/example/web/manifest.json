@@ -1,0 +1,9 @@
+{
+  "name": "ManyMatrix Example",
+  "short_name": "ManyMatrix",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1d4ed8",
+  "description": "Canonical ManyMatrix example app."
+}

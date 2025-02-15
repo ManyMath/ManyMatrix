@@ -1,0 +1,43 @@
+name: manymatrix_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+dev_dependencies:
+  melos: ^7.5.0
+
+workspace:
+  - flutter_plugin
+  - flutter_plugin/example
+
+melos:
+  repository: https://github.com/manymatrix/manymatrix
+  packages:
+    - flutter_plugin
+    - flutter_plugin/example
+  command:
+    bootstrap:
+      usePubspecOverrides: true
+  scripts:
+    analyze:
+      run: melos exec -c 1 -- flutter analyze
+      description: Run flutter analyze in all packages.
+    test:
+      run: melos exec -c 1 -- flutter test
+      description: Run flutter test in all packages.
+    test:integration:
+      run: melos exec -c 1 --scope manymatrix_example -- xvfb-run -a flutter test -d linux integration_test
+      description: Run Flutter integration tests for the canonical example app.
+    build:web:
+      run: melos exec -c 1 --scope manymatrix_example -- flutter build web --csp --no-web-resources-cdn --no-wasm-dry-run --release
+      description: Build the canonical example app for web.
+    build:extension:
+      run: melos exec -c 1 --scope manymatrix_example -- dart run tool/build_extension.dart
+      description: Build the Chrome extension package from the canonical example app.
+    codegen:
+      run: melos exec -c 1 -- flutter pub run build_runner build --delete-conflicting-outputs
+      description: Run build_runner in all packages.
+    clean:
+      run: melos exec -c 1 -- flutter clean
+      description: Run flutter clean in all packages.
