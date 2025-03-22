@@ -32,3 +32,48 @@ Shadow requirements:
 - Build and run with dynamically linked `x86_64-unknown-linux-gnu` binaries; the Shadow harness verifies this with `ldd`.
 - If you run Shadow inside Docker or another restricted container, use `seccomp=unconfined`.
 - The system `shadow` binary must be installed and on `PATH`.
+
+## Flutter Workspace
+
+This project uses a Dart/Flutter workspace at the repository root.
+
+See [docs/LOCAL_CONSUMPTION.md](docs/LOCAL_CONSUMPTION.md) for a guide on how to use the `manymatrix` plugin in your own local app.
+
+### Tools
+
+- **Melos**: For managing multi-package workflows.
+- **Flutter Pub Workspace**: For dependency management with a single root lockfile.
+
+### Workflows
+
+| Command | Description | Tool |
+|---------|-------------|------|
+| `flutter pub get` | Bootstrap workspace and fetch dependencies | Pub |
+| `dart run melos run analyze` | Run flutter analyze in all packages | Melos |
+| `dart run melos run test` | Run flutter test in all packages | Melos |
+| `dart run melos run test:integration` | Run Linux desktop integration smoke for the canonical example app | Melos |
+| `dart run melos run build:web` | Build the canonical example app for web | Melos |
+| `dart run melos run build:extension` | Build the Chrome extension package from the canonical example app | Melos |
+| `dart run melos run codegen` | Run build_runner in all packages | Melos |
+| `dart run melos run clean` | Run flutter clean in all packages | Melos |
+
+The canonical example under `flutter_plugin/example/` now owns the web scaffold,
+Chrome extension packaging assets, and Linux desktop integration smoke surface.
+The plugin package itself remains native-first; browser packaging is restored as
+an example-app regression surface rather than a published web plugin contract.
+
+### Rust Workflows
+
+| Command | Description | Tool |
+|---------|-------------|------|
+| `cargo build` | Build the Rust libraries and CLI | Cargo |
+| `cargo test` | Run Rust tests | Cargo |
+
+### Generated Artifact Policy
+
+This project tracks generated artifacts (like FFI bindings and JSON serialization) in Git to ensure consistent behavior for consumers. 
+If you modify Rust FFI signatures or models, you **must** update the generated code:
+
+1.  Build Rust to update headers: `cargo build -p manymatrix-ffi`
+2.  Run Flutter codegen: `dart run melos run codegen` (or `dart run build_runner build` in `flutter_plugin`)
+3.  Commit both source and generated changes.
