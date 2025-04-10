@@ -1,1 +1,51 @@
+# Rust
 /target
+
+# Dart/Flutter
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Android
+**/*.iml
+**/local.properties
+**/GeneratedPluginRegistrant.java
+.gradle/
+build/
+captures/
+externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+
+# iOS/macOS
+**/*.mode1v3
+**/*.mode2v3
+**/*.perspectivev3
+**/Pods
+**/DerivedData
+**/Runner.xcworkspace
+**/xcuserdata
+**/config.h
+**/module.modulemap
+**/GeneratedPluginRegistrant.h
+**/GeneratedPluginRegistrant.m
+**/unity_config.h
+**/Podfile.lock
+
+# Windows
+**/CMakeSettings.json
+**/Visual Studio/
+**/x64/
+**/x86/
+**/out/
+**/build/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
