@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:manymatrix_app/src/native_bridge.dart';
+import 'package:manymatrix/manymatrix.dart';
 
 void main() {
   test('ManyMatrixBridge class exists and has expected API', () {

@@ -1,6 +1,7 @@
-name: manymatrix_app
-description: "ManyMatrix Flutter app powered by Rust core via FFI."
+name: manymatrix
+description: "ManyMatrix Flutter plugin powered by Rust core via FFI."
 publish_to: 'none'
+resolution: workspace
 
 version: 1.0.0+1
 
@@ -20,7 +21,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  ffigen: ^16.0.0
+  ffigen: ^11.0.0
   build_runner: ^2.4.0
   json_serializable: ^6.7.0
   flutter_lints: ^5.0.0

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:manymatrix_app/src/models/models.dart';
+import 'package:manymatrix/manymatrix.dart';
 
 void main() {
   group('RoomSummary', () {
