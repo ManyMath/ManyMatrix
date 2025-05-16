@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../models/room_summary.dart';
+import 'package:manymatrix/manymatrix.dart';
 
 /// Reusable list tile for displaying a room in a list.
 ///

@@ -2,8 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../native_bridge.dart';
-import '../models/models.dart';
+import 'package:manymatrix/manymatrix.dart';
 
 /// Notifier that holds the active [ManyMatrixBridge] instance.
 ///

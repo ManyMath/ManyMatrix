@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../models/message_event.dart';
+import 'package:manymatrix/manymatrix.dart';
 
 /// Chat message bubble widget.
 ///

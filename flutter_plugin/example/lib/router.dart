@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'providers/providers.dart';
-import 'screens/login_screen.dart';
-import 'screens/room_list_screen.dart';
-import 'screens/chat_screen.dart';
+import 'src/providers/providers.dart';
+import 'src/screens/login_screen.dart';
+import 'src/screens/room_list_screen.dart';
+import 'src/screens/chat_screen.dart';
 
 /// GoRouter configuration driven by auth state.
 ///
