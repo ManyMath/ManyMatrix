@@ -1,9 +1,0 @@
-// Cargokit integration for building Rust FFI library on Android
-// Applied from build.gradle.kts via: apply(from = "cargokit.gradle")
-
-apply from: "../../cargokit/gradle/plugin.gradle"
-
-cargokit {
-    manifestDir = "../../../crates/ffi"
-    libname = "manymatrix_ffi"
-}
