@@ -4,6 +4,7 @@ use std::time::Duration;
 #[cfg(feature = "docker-tests")]
 use anyhow::Context;
 use anyhow::Result;
+
 #[cfg(feature = "docker-tests")]
 use manymatrix_core::CreateRoomOptions;
 use manymatrix_core::ManyMatrixClient;

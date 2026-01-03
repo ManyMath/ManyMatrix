@@ -1,0 +1,337 @@
+name: Main
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{github.workflow}}-${{github.ref}}
+  cancel-in-progress: false
+
+jobs:
+  init:
+    name: Init
+    runs-on: ${{matrix.runner}}
+    env:
+      default_cargo_profiles: '["test", "bench", "release"]'
+      default_feat_sets: '["none", "default", "all"]'
+      default_rust_toolchains: '["nightly", "stable"]'
+      default_sys_names: '["debian"]'
+      default_sys_versions: '["testing-slim"]'
+      default_rust_targets: '["x86_64-unknown-linux-gnu"]'
+      default_sys_targets: '["x86_64-v1-linux-gnu", "x86_64-v3-linux-gnu"]'
+      default_machines: '["X64"]'
+
+    outputs:
+      cargo_profiles: ${{vars.CARGO_PROFILES || env.default_cargo_profiles}}
+      feat_sets: ${{vars.FEAT_SETS || env.default_feat_sets}}
+      rust_toolchains: ${{vars.RUST_TOOLCHAINS || env.default_rust_toolchains}}
+      rust_targets: ${{vars.RUST_TARGETS || env.default_rust_targets}}
+      sys_names: ${{vars.SYS_NAMES || env.default_sys_names}}
+      sys_targets: ${{vars.SYS_TARGETS || env.default_sys_targets}}
+      sys_versions: ${{vars.SYS_VERSIONS || env.default_sys_versions}}
+      machines: ${{vars.MACHINES || env.default_machines}}
+      package: ${{vars.PACKAGE != 'false'}}
+      publish: ${{vars.PUBLISH != 'false'}}
+      build_nix: ${{vars.BUILD_NIX != 'false'}}
+      build_pkgs: ${{vars.BUILD_PKGS || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test' || contains(github.ref, 'tags/v')}}
+      check_pkgs: ${{vars.CHECK_PKGS || github.ref == 'refs/heads/test'}}
+      complement: ${{vars.COMPLEMENT != 'false'}}
+      complement_runner: 'het'
+      docker_repo: ${{vars.DOCKER_REPO}}
+      release_url: ${{steps.release.outputs.upload_url}}
+      pages_url: 'https://matrix-construct.github.io/tuwunel/'
+      rust_sdk_integ: ${{vars.RUST_SDK_INTEGRATION != 'false'}}
+      head_msg: ${{github.event.head_commit.message || github.event.workflow_run.head_commit.message}}
+
+    strategy:
+      fail-fast: true
+      matrix:
+        runner: ${{fromJSON(vars.RUNNERS || '["het"]')}}
+        machine: ${{fromJSON(vars.MACHINES || '["X64"]')}}
+        exclude: ${{fromJSON(vars.RUNNERS_EXCLUDES || '[]')}}
+
+    steps:
+    - name: Initialize Builder
+      env:
+        runner: ${{matrix.runner}}
+        reserved_space: '{"het": "192GB", "aws": "48GB", "gcp": "160GB"}'
+        max_used_space: '{"het": "384GB", "aws": "64GB", "gcp": "192GB"}'
+      run: |
+        set +e
+        docker buildx inspect "${GITHUB_ACTOR}"
+        if test x"$?" = x"0"; then
+          exit 0
+        fi
+
+        set -eux
+        reserved_space=$(echo -n "$reserved_space" | jq -r ".$runner")
+        max_used_space=$(echo -n "$max_used_space" | jq -r ".$runner")
+        cat <<EOF > ./buildkitd.toml
+        [system]
+          platformsCacheMaxAge = "504h"
+        [worker.oci]
+          enabled = true
+          rootless = false
+          gc = true
+          reservedSpace = "${reserved_space}"
+          maxUsedSpace = "${max_used_space}"
+        [[worker.oci.gcpolicy]]
+          reservedSpace = "${reserved_space}"
+          maxUsedSpace = "${max_used_space}"
+          filters = ["label!=cache==pin"]
+          all = true
+        EOF
+
+        docker buildx create \
+          --bootstrap \
+          --driver docker-container \
+          --buildkitd-config ./buildkitd.toml \
+          --name "${GITHUB_ACTOR}" \
+          --buildkitd-flags "--allow-insecure-entitlement network.host"
+
+    - if: >
+        !failure() && !cancelled()
+        && contains(github.ref, 'refs/tags/v')
+        && matrix.runner == 'het'
+
+      id: release
+      name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      with:
+        release_name: Release ${{github.ref_name}}
+        tag_name: ${{github.ref}}
+        body_path: RELEASE.md
+        draft: ${{ contains(github.ref, '-draft') }}
+        prerelease: ${{ contains(github.ref, '-rc') }}
+
+  lint:
+    if: >
+      !failure() && !cancelled()
+      && !contains(github.ref, 'refs/tags/v')
+      && !contains(needs.init.outputs.head_msg, '[ci no lint]')
+      && !contains(needs.init.outputs.head_msg, '[ci only it]')
+
+    name: Lint
+    needs: [init] #needs: [init, deps]
+    uses: ./.github/workflows/lint.yml
+    with:
+      cargo_profiles: ${{needs.init.outputs.cargo_profiles}}
+      feat_sets: ${{needs.init.outputs.feat_sets}}
+      rust_toolchains: ${{needs.init.outputs.rust_toolchains}}
+      rust_targets: ${{needs.init.outputs.rust_targets}}
+      sys_names: ${{needs.init.outputs.sys_names}}
+      sys_targets: ${{needs.init.outputs.sys_targets}}
+      sys_versions: ${{needs.init.outputs.sys_versions}}
+      machines: ${{needs.init.outputs.machines}}
+      excludes: >
+        [
+          {"cargo_profile": "test", "feat_set": "logging"},
+          {"cargo_profile": "test", "rust_toolchain": "stable", "feat_set": "none"},
+          {"cargo_profile": "test", "rust_target": "aarch64-unknown-linux-gnu"},
+          {"cargo_profile": "bench"},
+          {"cargo_profile": "release", "rust_toolchain": "nightly", "feat_set": "none"},
+          {"cargo_profile": "release", "rust_toolchain": "nightly", "feat_set": "default"},
+          {"cargo_profile": "release", "rust_toolchain": "nightly", "feat_set": "logging"},
+          {"cargo_profile": "release-debuginfo"},
+          {"cargo_profile": "release-native", "feat_set": "none"},
+          {"cargo_profile": "release-native", "feat_set": "default"},
+          {"cargo_profile": "release-native", "feat_set": "logging"},
+          {"cargo_profile": "release-native", "rust_toolchain": "stable"},
+          {"cargo_profile": "release-native", "rust_target": "aarch64-unknown-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "none"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "default"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "logging"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "rust_toolchain": "nightly"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v1-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v2-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v3-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v4-linux-gnu"},
+          {"rust_target": "x86_64-unknown-linux-gnu", "sys_target": "aarch64-v8-linux-gnu"},
+          {"sys_target": "aarch64-v8-linux-gnu", "machine": "X64"},
+          {"sys_target": "x86_64-v1-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu"},
+          {"sys_target": "x86_64-v3-linux-gnu"},
+          {"sys_target": "x86_64-v4-linux-gnu"},
+        ]
+
+  test:
+    if: >
+      !failure() && !cancelled()
+      && !contains(github.ref, 'refs/tags/v')
+      && !contains(needs.init.outputs.head_msg, '[ci no test]')
+
+    name: Test
+    needs: [init, lint]
+    uses: ./.github/workflows/test.yml
+    with:
+      head_msg: ${{needs.init.outputs.head_msg}}
+      build_nix: ${{fromJSON(needs.init.outputs.build_nix)}}
+      rust_sdk_integ: ${{fromJSON(needs.init.outputs.rust_sdk_integ)}}
+      complement: ${{fromJSON(needs.init.outputs.complement)}}
+      complement_runner: ${{needs.init.outputs.complement_runner}}
+      cargo_profiles: ${{needs.init.outputs.cargo_profiles}}
+      feat_sets: ${{needs.init.outputs.feat_sets}}
+      rust_toolchains: ${{needs.init.outputs.rust_toolchains}}
+      rust_targets: ${{needs.init.outputs.rust_targets}}
+      sys_names: ${{needs.init.outputs.sys_names}}
+      sys_targets: ${{needs.init.outputs.sys_targets}}
+      sys_versions: ${{needs.init.outputs.sys_versions}}
+      machines: ${{needs.init.outputs.machines}}
+      excludes: >
+        [
+          {"cargo_profile": "test", "rust_toolchain": "stable", "feat_set": "none"},
+          {"cargo_profile": "test", "rust_target": "aarch64-unknown-linux-gnu"},
+          {"cargo_profile": "release-debuginfo"},
+          {"cargo_profile": "release-native", "feat_set": "none"},
+          {"cargo_profile": "release-native", "feat_set": "default"},
+          {"cargo_profile": "release-native", "rust_toolchain": "stable"},
+          {"cargo_profile": "release-native", "rust_target": "aarch64-unknown-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "none"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "default"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "logging"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "rust_toolchain": "nightly"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v1-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v2-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v3-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v4-linux-gnu"},
+          {"rust_target": "x86_64-unknown-linux-gnu", "sys_target": "aarch64-v8-linux-gnu"},
+          {"sys_target": "aarch64-v8-linux-gnu", "machine": "X64"},
+          {"sys_target": "x86_64-v1-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu", "feat_set": "none"},
+          {"sys_target": "x86_64-v2-linux-gnu", "feat_set": "default"},
+          {"sys_target": "x86_64-v3-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v3-linux-gnu", "feat_set": "none"},
+          {"sys_target": "x86_64-v3-linux-gnu", "feat_set": "default"},
+          {"sys_target": "x86_64-v4-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v4-linux-gnu", "feat_set": "none"},
+          {"sys_target": "x86_64-v4-linux-gnu", "feat_set": "default"},
+        ]
+
+  package:
+    if: >
+      !failure() && !cancelled()
+      && needs.init.outputs.package
+      && !contains(github.ref, 'refs/pull')
+      && !contains(needs.init.outputs.head_msg, '[ci only it]')
+      && !contains(needs.init.outputs.head_msg, '[ci no build]')
+      && !contains(needs.init.outputs.head_msg, '[ci no package]')
+
+    name: Package
+    needs: [init, test]
+    uses: ./.github/workflows/package.yml
+    with:
+      release_url: ${{needs.init.outputs.release_url}}
+      check_pkgs: ${{needs.init.outputs.check_pkgs}}
+      build_pkgs: ${{needs.init.outputs.build_pkgs}}
+      build_nix: ${{fromJSON(needs.init.outputs.build_nix)}}
+      cargo_profiles: ${{needs.init.outputs.cargo_profiles}}
+      feat_sets: ${{needs.init.outputs.feat_sets}}
+      rust_toolchains: ${{needs.init.outputs.rust_toolchains}}
+      rust_targets: ${{needs.init.outputs.rust_targets}}
+      sys_names: ${{needs.init.outputs.sys_names}}
+      sys_targets: ${{needs.init.outputs.sys_targets}}
+      sys_versions: ${{needs.init.outputs.sys_versions}}
+      machines: ${{needs.init.outputs.machines}}
+      excludes: >
+        [
+          {"feat_set": "none"},
+          {"cargo_profile": "test"},
+          {"cargo_profile": "bench"},
+          {"cargo_profile": "release-native"},
+          {"cargo_profile": "release-debuginfo", "feat_set": "default"},
+          {"cargo_profile": "release-debuginfo", "feat_set": "logging"},
+          {"cargo_profile": "release-debuginfo", "rust_toolchain": "nightly"},
+          {"cargo_profile": "release-debuginfo", "bake_target": "oci"},
+          {"cargo_profile": "release-debuginfo", "rust_target": "aarch64-unknown-linux-gnu"},
+          {"cargo_profile": "release-debuginfo", "sys_target": "x86_64-v2-linux-gnu"},
+          {"cargo_profile": "release-debuginfo", "sys_target": "x86_64-v3-linux-gnu"},
+          {"cargo_profile": "release-debuginfo", "sys_target": "x86_64-v4-linux-gnu"},
+          {"cargo_profile": "release", "rust_toolchain": "nightly"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "default"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "logging"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "bake_target": "nix"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v1-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v2-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v3-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v4-linux-gnu"},
+          {"rust_target": "x86_64-unknown-linux-gnu", "sys_target": "aarch64-v8-linux-gnu"},
+          {"sys_target": "aarch64-v8-linux-gnu", "machine": "X64"},
+          {"sys_target": "x86_64-v1-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu", "feat_set": "default"},
+          {"sys_target": "x86_64-v2-linux-gnu", "feat_set": "logging"},
+          {"sys_target": "x86_64-v2-linux-gnu", "bake_target": "nix"},
+          {"sys_target": "x86_64-v3-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v3-linux-gnu", "feat_set": "default"},
+          {"sys_target": "x86_64-v3-linux-gnu", "feat_set": "logging"},
+          {"sys_target": "x86_64-v3-linux-gnu", "bake_target": "nix"},
+          {"sys_target": "x86_64-v4-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v4-linux-gnu", "feat_set": "default"},
+          {"sys_target": "x86_64-v4-linux-gnu", "feat_set": "logging"},
+          {"sys_target": "x86_64-v4-linux-gnu", "bake_target": "nix"},
+        ]
+
+  publish:
+    if: >
+      !failure() && !cancelled()
+      && needs.init.outputs.publish
+      && !contains(github.ref, 'refs/pull')
+      && !contains(needs.init.outputs.head_msg, '[ci only it]')
+      && !contains(needs.init.outputs.head_msg, '[ci no build]')
+      && !contains(needs.init.outputs.head_msg, '[ci no package]')
+      && !contains(needs.init.outputs.head_msg, '[ci no publish]')
+
+    name: Publish
+    needs: [init, test, package]
+    uses: ./.github/workflows/publish.yml
+    with:
+      docker_repo: ${{needs.init.outputs.docker_repo}}
+      release_url: ${{needs.init.outputs.release_url}}
+      pages_url: ${{needs.init.outputs.pages_url}}
+      cargo_profiles: ${{needs.init.outputs.cargo_profiles}}
+      feat_sets: ${{needs.init.outputs.feat_sets}}
+      rust_toolchains: ${{needs.init.outputs.rust_toolchains}}
+      rust_targets: ${{needs.init.outputs.rust_targets}}
+      sys_names: ${{needs.init.outputs.sys_names}}
+      sys_targets: ${{needs.init.outputs.sys_targets}}
+      sys_versions: ${{needs.init.outputs.sys_versions}}
+      machines: ${{needs.init.outputs.machines}}
+      excludes: >
+        [
+          {"feat_set": "none"},
+          {"feat_set": "default"},
+          {"cargo_profile": "test"},
+          {"cargo_profile": "bench"},
+          {"cargo_profile": "release-debuginfo"},
+          {"cargo_profile": "release-native"},
+          {"rust_toolchain": "nightly"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "logging"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v1-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v2-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v3-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v4-linux-gnu"},
+          {"rust_target": "x86_64-unknown-linux-gnu", "sys_target": "aarch64-v8-linux-gnu"},
+          {"sys_target": "aarch64-v8-linux-gnu", "machine": "X64"},
+          {"sys_target": "x86_64-v1-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu", "feat_set": "logging"},
+          {"sys_target": "x86_64-v3-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v3-linux-gnu", "feat_set": "logging"},
+          {"sys_target": "x86_64-v4-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v4-linux-gnu", "feat_set": "logging"},
+        ]
+
+    secrets:
+      ghcr_token: ${{ secrets.GHCR_TOKEN }}
+      dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}

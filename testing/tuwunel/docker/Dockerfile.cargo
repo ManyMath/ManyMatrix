@@ -1,0 +1,105 @@
+# syntax = docker/dockerfile:1.11-labs
+
+FROM input AS cargo
+ARG sys_triple
+ARG rust_target
+ARG rust_toolchain
+ARG RUST_HOME
+ARG RUSTUP_HOME
+ARG CARGO_HOME
+ARG CARGO_TARGET
+ARG CARGO_TARGET_DIR
+ARG cargo_target_profile
+ARG cargo_target_artifact
+ARG cargo_target_share
+ARG cargo_share
+ARG CARGO_TERM_VERBOSE=0
+ARG RUST_BACKTRACE
+ARG JEMALLOC_OVERRIDE
+ARG ROCKSDB_LIB_DIR
+ARG VALGRINDFLAGS=""
+ARG CARGO_BUILD_RUSTFLAGS
+ARG CARGO_PROFILE_TEST_DEBUG
+ARG CARGO_PROFILE_TEST_INCREMENTAL
+ARG CARGO_PROFILE_BENCH_DEBUG
+ARG CARGO_PROFILE_BENCH_LTO
+ARG CARGO_PROFILE_RELEASE_LTO
+ARG CARGO_PROFILE_RELEASE_DEBUGINFO_DEBUG
+ARG CARGO_PROFILE_RELEASE_DEBUGINFO_LTO
+ARG cargo_profile
+ARG cargo_features
+ARG cargo_spec_features
+ARG cargo_cmd
+ARG color_args="--color always"
+ARG recipe_args=""
+ARG cargo_args=""
+ARG git_checkout
+ARG targ_dir="${CARGO_TARGET_DIR}/${cargo_target_profile}"
+ARG targ_targ_dir="${CARGO_TARGET_DIR}/${rust_target}/${cargo_target_profile}"
+
+WORKDIR /
+COPY --link --from=input . .
+COPY --link --from=rust ${RUST_HOME} ${RUST_HOME}
+COPY --link --from=deps /usr/src/tuwunel /usr/src/tuwunel
+
+WORKDIR /usr/lib/${sys_triple}
+COPY --link --from=rocksdb . .
+
+WORKDIR /usr/src/tuwunel
+SHELL ["/bin/bash", "-c"]
+ENV PATH="${CARGO_HOME}/bin:$PATH"
+ENV CARGO_TERM_VERBOSE="${CARGO_TERM_VERBOSE}"
+ENV RUST_BACKTRACE="${RUST_BACKTRACE}"
+ENV JEMALLOC_OVERRIDE="${JEMALLOC_OVERRIDE}"
+ENV ROCKSDB_LIB_DIR="${ROCKSDB_LIB_DIR}"
+ENV VALGRINDFLAGS="${VALGRINDFLAGS}"
+ENV CARGO_PROFILE_TEST_DEBUG="${CARGO_PROFILE_TEST_DEBUG}"
+ENV CARGO_PROFILE_TEST_INCREMENTAL="${CARGO_PROFILE_TEST_INCREMENTAL}"
+ENV CARGO_PROFILE_BENCH_DEBUG="${CARGO_PROFILE_BENCH_DEBUG}"
+ENV CARGO_PROFILE_BENCH_LTO="${CARGO_PROFILE_BENCH_LTO}"
+ENV CARGO_PROFILE_RELEASE_LTO="${CARGO_PROFILE_RELEASE_LTO}"
+ENV CARGO_PROFILE_RELEASE_DEBUGINFO_DEBUG="${CARGO_PROFILE_RELEASE_DEBUGINFO_DEBUG}"
+ENV CARGO_PROFILE_RELEASE_DEBUGINFO_LTO="${CARGO_PROFILE_RELEASE_DEBUGINFO_LTO}"
+ENV CARGO_BUILD_RUSTFLAGS="${CARGO_BUILD_RUSTFLAGS}"
+ENV CARGO_TARGET_DIR="${CARGO_TARGET_DIR}"
+RUN \
+--mount=type=cache,dst=${RUSTUP_HOME}/downloads,sharing=shared \
+--mount=type=cache,dst=${CARGO_HOME}/registry,sharing=shared \
+--mount=type=cache,dst=${CARGO_HOME}/git,sharing=shared \
+--mount=type=cache,dst=${targ_dir}/deps,id=${cargo_share}/deps,sharing=locked \
+--mount=type=cache,dst=${targ_dir}/build,id=${cargo_share}/build,sharing=locked \
+--mount=type=cache,dst=${targ_dir}/examples,id=${cargo_share}/examples,sharing=locked \
+--mount=type=cache,dst=${targ_dir}/incremental,id=${cargo_share}/incremental,sharing=locked \
+--mount=type=cache,dst=${targ_dir}/.fingerprint,id=${cargo_share}/fingerprint,sharing=locked \
+--mount=type=cache,dst=${targ_targ_dir}/deps,id=${cargo_target_share}/deps,sharing=locked \
+--mount=type=cache,dst=${targ_targ_dir}/build,id=${cargo_target_share}/build,sharing=locked \
+--mount=type=cache,dst=${targ_targ_dir}/examples,id=${cargo_target_share}/examples,sharing=locked \
+--mount=type=cache,dst=${targ_targ_dir}/incremental,id=${cargo_target_share}/incremental,sharing=locked \
+--mount=type=cache,dst=${targ_targ_dir}/.fingerprint,id=${cargo_target_share}/fingerprint,sharing=locked \
+<<EOF
+    set -eux
+    ulimit -n 65535
+
+    rustup run "${rust_toolchain}" \
+        cargo ${cargo_cmd} \
+            --verbose \
+            --locked \
+            --workspace \
+            "${cargo_spec_features}" \
+            "--features=${cargo_features}" \
+            "--profile=${cargo_profile}" \
+            "--target=${CARGO_TARGET}" \
+            "--target-dir=${CARGO_TARGET_DIR}" \
+            "--manifest-path=Cargo.toml" \
+            ${recipe_args} \
+            ${color_args} \
+            ${cargo_args}
+
+    # If this image is further reused with other cargo commands, all
+    # modifications made by cargo chef cook outside of target-dir have to be
+    # cleared. If not, resulting build artifacts will link incorrectly, even
+    # without error. For example, a target executable may be produced which
+    # does nothing except exit(0). If you have observed a smoketest failing in
+    # such a manner, investigate this as a cause of the issue.
+    git restore -W -S --source=${git_checkout} .
+EOF

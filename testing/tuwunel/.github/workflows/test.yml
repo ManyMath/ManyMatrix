@@ -1,0 +1,404 @@
+name: Testing
+
+on:
+  workflow_call:
+    inputs:
+      cargo_profiles:
+        type: string
+        description: Cargo profiles
+      feat_sets:
+        type: string
+        description: Cargo feature groups
+      rust_toolchains:
+        type: string
+        description: Rust toolchains
+      sys_names:
+        type: string
+        description: System names
+      sys_versions:
+        type: string
+        description: System versions
+      rust_targets:
+        type: string
+        description: Rust targets
+      sys_targets:
+        type: string
+        description: System targets
+      machines:
+        type: string
+        description: Hardware platform vector
+      excludes:
+        type: string
+        default: '[]'
+        description: Matrix exclusions
+      includes:
+        type: string
+        default: '[]'
+        description: Matrix inclusions
+      complement:
+        type: boolean
+        default: true
+      complement_runner:
+        type: string
+      rust_sdk_integ:
+        type: boolean
+        default: true
+      build_nix:
+        type: boolean
+        default: true
+      head_msg:
+        type: string
+
+jobs:
+  docs:
+    if: >
+      !contains(inputs.head_msg, '[ci only it]')
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["test"]')[0])
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["all"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["nightly"]')[0])
+      && contains(fromJSON(inputs.sys_targets), fromJSON('["x86_64-v1-linux-gnu"]')[0])
+
+    name: Docs
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["docs"]'
+      cargo_profiles: '["test"]'
+      feat_sets: '["all"]'
+      rust_toolchains: '["nightly"]'
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: '["x86_64-v1-linux-gnu"]'
+      machines: ${{inputs.machines}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+
+  unit:
+    if: >
+      !contains(inputs.head_msg, '[ci only it]')
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["test"]')[0])
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["all"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["nightly"]')[0])
+      && contains(fromJSON(inputs.sys_targets), fromJSON('["x86_64-v1-linux-gnu"]')[0])
+
+    name: Module
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["unit", "integ"]'
+      cargo_profiles: '["test"]'
+      feat_sets: '["all"]'
+      rust_toolchains: ${{inputs.rust_toolchains}}
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: '["x86_64-v1-linux-gnu"]'
+      machines: ${{inputs.machines}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+
+  bench:
+    if: >
+      !contains(inputs.head_msg, '[ci only it]')
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["bench"]')[0])
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["all"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["nightly"]')[0])
+      && contains(fromJSON(inputs.sys_targets), fromJSON('["x86_64-v3-linux-gnu"]')[0])
+
+    name: Bench
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["unit", "integ"]'
+      cargo_profiles: '["bench"]'
+      feat_sets: '["all"]'
+      rust_toolchains: '["nightly"]'
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: '["x86_64-v3-linux-gnu"]'
+      machines: ${{inputs.machines}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+
+  memcheck:
+    if: >
+      !contains(inputs.head_msg, '[ci only it]')
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["bench"]')[0])
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["all"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["nightly"]')[0])
+      && contains(fromJSON(inputs.sys_targets), fromJSON('["x86_64-v3-linux-gnu"]')[0])
+
+    name: Memcheck
+    uses: ./.github/workflows/bake.yml
+    with:
+      #bake_targets: '["unit-valgrind", "integ-valgrind"]'
+      bake_targets: '["integ-valgrind"]'
+      cargo_profiles: '["bench"]' # use bench not release for debug syms
+      feat_sets: '["all"]'
+      rust_toolchains: '["nightly"]'
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: '["x86_64-v3-linux-gnu"]'
+      machines: ${{inputs.machines}}
+      includes: ${{inputs.includes}}
+      excludes: ${{inputs.excludes}}
+
+  smoke:
+    if: >
+      !failure() && !cancelled()
+      && !contains(inputs.head_msg, '[ci only it]')
+      && !contains(inputs.head_msg, '[ci no build]')
+      && inputs.cargo_profiles
+      && inputs.machines
+
+    name: Smoke
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["smoke", "smoke-valgrind"]'
+      cargo_profiles: ${{inputs.cargo_profiles}}
+      feat_sets: ${{inputs.feat_sets}}
+      rust_toolchains: ${{inputs.rust_toolchains}}
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: ${{inputs.sys_targets}}
+      machines: ${{inputs.machines}}
+      includes: ${{inputs.includes}}
+      excludes: >
+        [
+          {"cargo_profile": "test", "feat_set": "default"},
+          {"cargo_profile": "test", "feat_set": "logging"},
+          {"cargo_profile": "test", "feat_set": "none", "bake_target": "smoke-valgrind"},
+          {"cargo_profile": "test", "rust_toolchain": "stable"},
+          {"cargo_profile": "test", "rust_target": "aarch64-unknown-linux-gnu"},
+          {"cargo_profile": "test", "sys_target": "x86_64-v2-linux-gnu"},
+          {"cargo_profile": "test", "sys_target": "x86_64-v3-linux-gnu"},
+          {"cargo_profile": "test", "bake_target": "smoke-valgrind"},
+          {"cargo_profile": "bench"},
+          {"cargo_profile": "release", "rust_toolchain": "nightly"},
+          {"cargo_profile": "release", "rust_toolchain": "stable", "feat_set": "none"},
+          {"cargo_profile": "release", "bake_target": "smoke-valgrind"},
+          {"cargo_profile": "release-debuginfo", "feat_set": "logging"},
+          {"cargo_profile": "release-debuginfo", "rust_toolchain": "nightly"},
+          {"cargo_profile": "release-debuginfo", "rust_toolchain": "stable", "feat_set": "none"},
+          {"cargo_profile": "release-debuginfo", "bake_target": "smoke"},
+          {"cargo_profile": "release-debuginfo", "rust_target": "aarch64-unknown-linux-gnu"},
+          {"cargo_profile": "release-native", "rust_toolchain": "stable"},
+          {"cargo_profile": "release-native", "feat_set": "none"},
+          {"cargo_profile": "release-native", "feat_set": "default"},
+          {"cargo_profile": "release-native", "feat_set": "logging"},
+          {"cargo_profile": "release-native", "bake_target": "smoke-valgrind"},
+          {"cargo_profile": "release-native", "rust_target": "aarch64-unknown-linux-gnu"},
+          {"cargo_profile": "release-native", "sys_target": "x86_64-v2-linux-gnu"},
+          {"cargo_profile": "release-native", "sys_target": "x86_64-v3-linux-gnu"},
+          {"cargo_profile": "release-native", "sys_target": "x86_64-v4-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "none"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "default"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "feat_set": "logging"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v1-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v2-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v3-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu", "sys_target": "x86_64-v4-linux-gnu"},
+          {"rust_target": "x86_64-unknown-linux-gnu", "sys_target": "aarch64-v8-linux-gnu"},
+          {"sys_target": "aarch64-v8-linux-gnu", "machine": "X64"},
+          {"sys_target": "x86_64-v1-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v2-linux-gnu", "feat_set": "none"},
+          {"sys_target": "x86_64-v2-linux-gnu", "feat_set": "default"},
+          {"sys_target": "x86_64-v2-linux-gnu", "feat_set": "logging"},
+          {"sys_target": "x86_64-v3-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v3-linux-gnu", "feat_set": "none"},
+          {"sys_target": "x86_64-v3-linux-gnu", "feat_set": "default"},
+          {"sys_target": "x86_64-v3-linux-gnu", "feat_set": "logging"},
+          {"sys_target": "x86_64-v3-linux-gnu", "bake_target": "smoke-valgrind"},
+          {"sys_target": "x86_64-v4-linux-gnu", "machine": "ARM64"},
+          {"sys_target": "x86_64-v4-linux-gnu", "feat_set": "none"},
+          {"sys_target": "x86_64-v4-linux-gnu", "feat_set": "default"},
+          {"sys_target": "x86_64-v4-linux-gnu", "feat_set": "logging"},
+          {"sys_target": "x86_64-v4-linux-gnu", "bake_target": "smoke-valgrind"},
+        ]
+
+  nix:
+    if: >
+      !failure() && !cancelled()
+      && !contains(inputs.head_msg, '[ci only it]')
+      && !contains(inputs.head_msg, '[ci no build]')
+      && !contains(github.ref, 'refs/pull')
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["release"]')[0])
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["all"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["stable"]')[0])
+      && contains(fromJSON(inputs.sys_targets), fromJSON('["x86_64-v1-linux-gnu"]')[0])
+      && fromJSON(inputs.build_nix)
+
+    name: Smoke NixOS
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["smoke-nix"]'
+      cargo_profiles: '["release"]'
+      feat_sets: '["all"]'
+      rust_toolchains: '["stable"]'
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: '["x86_64-v1-linux-gnu"]'
+      machines: ${{inputs.machines}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+
+  rust-sdk-integ:
+    if: >
+      !failure() && !cancelled()
+      && !contains(inputs.head_msg, '[ci no build]')
+      && inputs.rust_sdk_integ
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["all"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["nightly"]')[0])
+      && contains(fromJSON(inputs.rust_targets), fromJSON('["x86_64-unknown-linux-gnu"]')[0])
+
+    name: Matrix SDK Integration
+    needs: [smoke]
+    uses: ./.github/workflows/bake.yml
+    with:
+      #bake_targets: '["rust-sdk-integ", "rust-sdk-valgrind"]'
+      bake_targets: '["rust-sdk-integ"]'
+      cargo_profiles: ${{inputs.cargo_profiles}}
+      feat_sets: '["all"]'
+      rust_toolchains: '["nightly"]'
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: '["x86_64-unknown-linux-gnu"]'
+      sys_targets: ${{inputs.sys_targets}}
+      machines: '["X64"]'
+      runner: ${{inputs.complement_runner}}
+      includes: ${{inputs.includes}}
+      artifact: >
+        {
+          "rust-sdk-integ": {
+            "src": "/var/log/tuwunel.log",
+            "dst": "rust-sdk-integ.tuwunel.log",
+          },
+          "rust-sdk-valgrind": {
+            "src": "/var/log/tuwunel.log",
+            "dst": "rust-sdk-valgrind.tuwunel.log",
+          }
+        }
+      excludes: >
+        [
+          {"bake_target": "rust-sdk-valgrind", "cargo_profile": "test"},
+          {"feat_set": "none"},
+          {"feat_set": "logging"},
+          {"cargo_profile": "release"},
+          {"cargo_profile": "release-debuginfo"},
+          {"cargo_profile": "release-native"},
+          {"cargo_profile": "test", "sys_target": "x86_64-v2-linux-gnu"},
+          {"cargo_profile": "test", "sys_target": "x86_64-v3-linux-gnu"},
+          {"cargo_profile": "bench", "sys_target": "x86_64-v1-linux-gnu"},
+          {"cargo_profile": "bench", "sys_target": "x86_64-v2-linux-gnu"},
+          {"rust_target": "aarch64-unknown-linux-gnu"},
+          {"sys_target": "aarch64-v8-linux-gnu"},
+        ]
+
+  complement:
+    if: >
+      !failure() && !cancelled()
+      && !contains(inputs.head_msg, '[ci no build]')
+      && inputs.complement
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["bench"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["nightly"]')[0])
+      && contains(fromJSON(inputs.sys_targets), fromJSON('["x86_64-v3-linux-gnu"]')[0])
+
+    name: Complement
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["complement-tester", "complement-testee"]'
+      cargo_profiles: '["bench"]'
+      feat_sets: '["logging"]'
+      rust_toolchains: '["nightly"]'
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: '["x86_64-v3-linux-gnu"]'
+      machines: ${{inputs.machines}}
+      runner: ${{inputs.complement_runner}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+
+  compliance:
+    if: >
+      !failure() && !cancelled()
+      && !contains(inputs.head_msg, '[ci no build]')
+      && inputs.complement
+      && inputs.machines
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["bench"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["nightly"]')[0])
+      && contains(fromJSON(inputs.sys_targets), fromJSON('["x86_64-v3-linux-gnu"]')[0])
+
+    name: Matrix Compliance
+    needs: [complement, smoke]
+    runs-on: ["${{matrix.machine}}", "${{inputs.complement_runner}}"]
+    concurrency:
+      group: complement-cant-walk-and-chew-bubblegum
+      cancel-in-progress: false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cargo_profile: ${{fromJSON('["bench"]')}}
+        feat_set: ${{fromJSON('["logging"]')}}
+        rust_toolchain: ${{fromJSON('["nightly"]')}}
+        sys_name: ${{fromJSON(inputs.sys_names)}}
+        sys_version: ${{fromJSON(inputs.sys_versions)}}
+        rust_target: ${{fromJSON(inputs.rust_targets)}}
+        sys_target: ${{fromJSON('["x86_64-v3-linux-gnu"]')}}
+        machine: ${{fromJSON(inputs.machines)}}
+        exclude: ${{fromJSON(inputs.excludes)}}
+        include: ${{fromJSON(inputs.includes)}}
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Execute
+      id: execute
+      env:
+        cargo_profile: ${{matrix.cargo_profile}}
+        rust_toolchain: ${{matrix.rust_toolchain}}
+        rust_target: ${{matrix.rust_target}}
+        feat_set: ${{matrix.feat_set}}
+        sys_name: ${{matrix.sys_name}}
+        sys_target: ${{matrix.sys_target}}
+        sys_version: ${{matrix.sys_version}}
+        machine: ${{matrix.machine}}
+
+      run: |
+        docker/complement.sh
+
+    - if: success() || failure() && steps.execute.outcome == 'failure'
+      name: Extract
+      id: extract
+      env:
+        name: complement_tester__${{matrix.sys_name}}__${{matrix.sys_version}}__${{matrix.sys_target}}
+        tag: latest
+
+      run: |
+        cid=$(cat "$name")
+        docker cp "$cid:/usr/src/complement/new_results.jsonl" tests/complement/results.jsonl
+
+    - if: success() || failure() && steps.execute.outcome == 'failure'
+      name: Upload New Results
+      id: upload-result
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement_results-${{matrix.feat_set}}-${{matrix.sys_name}}-${{matrix.sys_target}}.jsonl
+        path: ./tests/complement/results.jsonl
+
+    - if: failure() && steps.execute.outcome == 'failure'
+      name: Upload Failure Output
+      id: upload-output
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement_output-${{matrix.feat_set}}-${{matrix.sys_name}}-${{matrix.sys_target}}.jsonl
+        path: ./tests/complement/logs.jsonl
+        if-no-files-found: ignore
+
+    - name: Accept
+      id: accept
+      run: |
+        git diff --exit-code --color --color-moved

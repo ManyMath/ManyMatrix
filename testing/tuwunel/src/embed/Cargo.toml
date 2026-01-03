@@ -1,0 +1,32 @@
+[package]
+name = "tuwunel-embed"
+categories.workspace = true
+description = "Embeddable tuwunel homeserver for in-process testing"
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["log"]
+
+[dependencies]
+axum = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+log = { workspace = true }
+figment = { workspace = true }
+reqwest = { workspace = true }
+ruma = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tempfile = "3"
+tokio = { workspace = true }
+tower = { workspace = true, features = ["util"] }
+tuwunel-api = { workspace = true }
+tuwunel-core = { workspace = true }
+tuwunel-router = { workspace = true }
+tuwunel-service = { workspace = true }
+tuwunel = { package = "tuwunel", path = "../main", default-features = false }

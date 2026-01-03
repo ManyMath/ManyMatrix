@@ -1,4 +1,4 @@
-#![cfg(feature = "docker-tests")]
+
 use std::ffi::{c_char, CStr, CString};
 
 use anyhow::Result;
@@ -38,24 +38,19 @@ unsafe fn assert_ok(r: &manymatrix_ffi::FfiResult) {
     assert!(r.ok, "FFI failed: {}", ffi_err(r));
 }
 
-/// Run FFI calls on a dedicated thread (no tokio runtime in scope),
-/// mimicking how Dart's worker isolate calls the C API.
-fn on_ffi_thread<F, R>(f: F) -> R
+/// Spawns a blocking thread and awaits it — matches how Dart isolates call into C.
+async fn on_ffi_thread<F, R>(f: F) -> R
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
-    std::thread::spawn(f).join().unwrap()
+    tokio::task::spawn_blocking(f).await.unwrap()
 }
 
-/// Full FFI lifecycle against a real Synapse:
-/// create client → login → sync ��� create room → send → rooms list → room name → logout → free
-#[tokio::test]
-async fn ffi_login_sync_send_logout() -> Result<()> {
-    init_tracing();
-
-    let server = TestHomeserver::start(ServerKind::Synapse).await?;
-    eprintln!("Synapse ready at {}", server.base_url());
+/// Full FFI lifecycle: new → login → sync → create room → send → rooms list → room name → logout → free.
+async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+    eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
     let _alice = server.register_user("alice_ffi", "password1").await?;
     let store = tempfile::tempdir()?;
     let base_url = server.base_url().to_owned();
@@ -112,18 +107,14 @@ async fn ffi_login_sync_send_logout() -> Result<()> {
 
         manymatrix_ffi::manymatrix_free(h);
         eprintln!("FFI lifecycle complete");
-    });
+    }).await;
 
     Ok(())
 }
 
-/// Two users communicate entirely through FFI:
-/// Alice creates room → invites Bob → Bob joins → Alice sends → Bob reads via pagination
-#[tokio::test]
-async fn ffi_two_user_messaging() -> Result<()> {
-    init_tracing();
-
-    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+/// Alice creates room, invites Bob, sends messages; Bob joins and reads via FFI pagination.
+async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
     let _alice = server.register_user("alice_ffi2", "pass1").await?;
     let _bob = server.register_user("bob_ffi2", "pass2").await?;
     let base_url = server.base_url().to_owned();
@@ -228,17 +219,14 @@ async fn ffi_two_user_messaging() -> Result<()> {
 
         manymatrix_ffi::manymatrix_free(alice);
         manymatrix_ffi::manymatrix_free(bob);
-    });
+    }).await;
 
     Ok(())
 }
 
-/// FFI whoami returns the logged-in user's Matrix ID.
-#[tokio::test]
-async fn ffi_whoami() -> Result<()> {
-    init_tracing();
-
-    let server = TestHomeserver::start(ServerKind::Synapse).await?;
+/// Verifies whoami returns the correct Matrix ID over FFI.
+async fn ffi_whoami(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
     let _alice = server
         .register_user("alice_ffi_whoami", "password1")
         .await?;
@@ -250,18 +238,15 @@ async fn ffi_whoami() -> Result<()> {
         let url = cstr(&base_url);
         let path = cstr(&store_path);
 
-        // Create client
         let r = manymatrix_ffi::manymatrix_new(url.as_ptr(), path.as_ptr());
         assert_ok(&r);
         let handle = r.data as *mut manymatrix_core::ManyMatrixClient;
 
-        // Login
         let user = cstr("alice_ffi_whoami");
         let pass = cstr("password1");
         let r = manymatrix_ffi::manymatrix_login(handle, user.as_ptr(), pass.as_ptr());
         assert_ok(&r);
 
-        // Call whoami
         let r = manymatrix_ffi::manymatrix_whoami(handle);
         let user_id = read_string(&r);
         assert!(
@@ -271,9 +256,38 @@ async fn ffi_whoami() -> Result<()> {
         );
         eprintln!("FFI whoami returned: {}", user_id);
 
-        // Cleanup
         manymatrix_ffi::manymatrix_free(handle);
-    });
+    }).await;
 
     Ok(())
 }
+
+macro_rules! e2e_test {
+    ($name:ident) => {
+        paste::paste! {
+            #[tokio::test]
+            async fn [<$name _embedded>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::TuwunelEmbedded).await
+            }
+
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _tuwunel_docker>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::TuwunelDocker).await
+            }
+
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _synapse>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::Synapse).await
+            }
+        }
+    };
+}
+
+e2e_test!(ffi_login_sync_send_logout);
+e2e_test!(ffi_two_user_messaging);
+e2e_test!(ffi_whoami);

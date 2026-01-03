@@ -1,4 +1,3 @@
-#![cfg(feature = "docker-tests")]
 use std::time::Duration;
 
 use anyhow::Result;
@@ -15,13 +14,36 @@ fn init_tracing() {
         .try_init();
 }
 
-/// MSG-06: Reaction round-trip — Alice sends reaction, Bob receives via on_reaction callback.
-#[tokio::test]
-async fn reaction_round_trip() -> Result<()> {
-    init_tracing();
+macro_rules! e2e_test {
+    ($name:ident) => {
+        paste::paste! {
+            #[tokio::test]
+            async fn [<$name _embedded>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::TuwunelEmbedded).await
+            }
 
-    let server = TestHomeserver::start(ServerKind::Synapse).await?;
-    eprintln!("Synapse ready at {}", server.base_url());
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _tuwunel_docker>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::TuwunelDocker).await
+            }
+
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _synapse>]() -> Result<()> {
+                init_tracing();
+                $name(ServerKind::Synapse).await
+            }
+        }
+    };
+}
+
+/// Reaction round-trip: Alice sends a reaction, Bob receives it via on_reaction.
+async fn reaction_round_trip(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+    eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let _alice_reg = server.register_user("alice_react", "password1").await?;
     let _bob_reg = server.register_user("bob_react", "password2").await?;
@@ -95,14 +117,10 @@ async fn reaction_round_trip() -> Result<()> {
     Ok(())
 }
 
-/// MSG-08: Read receipt round-trip — Bob sends read receipt for Alice's message,
-/// Alice receives via on_receipt callback with correct event ID and user ID.
-#[tokio::test]
-async fn read_receipt_round_trip() -> Result<()> {
-    init_tracing();
-
-    let server = TestHomeserver::start(ServerKind::Synapse).await?;
-    eprintln!("Synapse ready at {}", server.base_url());
+/// Read receipt round-trip: Bob sends a read receipt, Alice receives it via on_receipt.
+async fn read_receipt_round_trip(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+    eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let _alice_reg = server.register_user("alice_rcpt", "password1").await?;
     let _bob_reg = server.register_user("bob_rcpt", "password2").await?;
@@ -192,14 +210,10 @@ async fn read_receipt_round_trip() -> Result<()> {
     Ok(())
 }
 
-/// MSG-11: Threaded message round-trip — Alice sends thread reply, Bob sees it
-/// via get_messages with thread_root populated.
-#[tokio::test]
-async fn threaded_message_round_trip() -> Result<()> {
-    init_tracing();
-
-    let server = TestHomeserver::start(ServerKind::Synapse).await?;
-    eprintln!("Synapse ready at {}", server.base_url());
+/// Threaded message round-trip: Alice sends a thread reply, Bob reads it via get_messages.
+async fn threaded_message_round_trip(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+    eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let _alice_reg = server.register_user("alice_thread", "password1").await?;
     let _bob_reg = server.register_user("bob_thread", "password2").await?;
@@ -287,3 +301,7 @@ async fn threaded_message_round_trip() -> Result<()> {
 
     Ok(())
 }
+
+e2e_test!(reaction_round_trip);
+e2e_test!(read_receipt_round_trip);
+e2e_test!(threaded_message_round_trip);

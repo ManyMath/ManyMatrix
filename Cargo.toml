@@ -7,10 +7,23 @@ members = [
     "testing/test-harness",
     "testing/shadow-client",
 ]
+exclude = ["testing/tuwunel"]
 
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
+rust-version = "1.80.0"
+version = "0.1.0"
+authors = []
+homepage = "https://example.com"
+repository = "https://example.com"
+description = "description"
+keywords = []
+categories = []
+readme = "README.md"
+
+[workspace.package.metadata.crane]
+name = "manymatrix"
 
 [workspace.dependencies]
 matrix-sdk = { version = "0.7", default-features = false, features = [
@@ -46,3 +59,14 @@ rev = "fe4aebeeaae435af60087ddd56b573a2e0be671d"
 [patch.crates-io.async-channel]
 git = "https://github.com/matrix-construct/async-channel"
 rev = "92e5e74063bf2a3b10414bcc8a0d68b235644280"
+
+[patch."https://github.com/sneurlax/tuwunel"]
+tuwunel-embed = { path = "testing/tuwunel/src/embed" }
+tuwunel = { path = "testing/tuwunel/src/main" }
+tuwunel_core = { path = "testing/tuwunel/src/core" }
+tuwunel_admin = { path = "testing/tuwunel/src/admin" }
+tuwunel_database = { path = "testing/tuwunel/src/database" }
+tuwunel_macros = { path = "testing/tuwunel/src/macros" }
+tuwunel_service = { path = "testing/tuwunel/src/service" }
+tuwunel_api = { path = "testing/tuwunel/src/api" }
+tuwunel_router = { path = "testing/tuwunel/src/router" }

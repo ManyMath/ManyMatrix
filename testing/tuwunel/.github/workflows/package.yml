@@ -1,0 +1,213 @@
+name: Package
+
+on:
+  workflow_call:
+    inputs:
+      cargo_profiles:
+        type: string
+        description: Cargo profiles
+      feat_sets:
+        type: string
+        description: Cargo feature groups
+      rust_toolchains:
+        type: string
+        description: Rust toolchains
+      sys_names:
+        type: string
+        description: System names
+      sys_versions:
+        type: string
+        description: System versions
+      rust_targets:
+        type: string
+        description: Rust targets
+      sys_targets:
+        type: string
+        description: System targets
+      machines:
+        type: string
+        description: Hardware platform vector
+      excludes:
+        type: string
+        default: '[]'
+        description: Matrix exclusions
+      includes:
+        type: string
+        default: '[]'
+        description: Matrix inclusions
+      release_url:
+        type: string
+        description: For release assets
+      build_pkgs:
+        type: string
+        default: 'true'
+      check_pkgs:
+        type: string
+        default: 'false'
+      build_nix:
+        type: string
+        default: 'true'
+
+jobs:
+  book:
+    if: >
+      !failure() && !cancelled()
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["release"]')[0])
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["default"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["stable"]')[0])
+      && contains(fromJSON(inputs.sys_targets), fromJSON('["x86_64-v1-linux-gnu"]')[0])
+
+    name: Book
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["book"]'
+      cargo_profiles: '["release"]'
+      feat_sets: '["default"]'
+      rust_toolchains: '["stable"]'
+      rust_targets: ${{inputs.rust_targets}}
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      sys_targets: '["x86_64-v1-linux-gnu"]'
+      machines: ${{inputs.machines}}
+      runner: 'het'
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+      release_url: ${{inputs.release_url}}
+      artifact: >
+        {
+          "book": {
+            "dst": "book",
+            "src": "/book",
+            "pages": true
+          }
+        }
+
+  binary:
+    if: >
+      !failure() && !cancelled()
+
+    name: Binaries
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["static"]'
+      cargo_profiles: ${{inputs.cargo_profiles}}
+      feat_sets: ${{inputs.feat_sets}}
+      rust_toolchains: ${{inputs.rust_toolchains}}
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: ${{inputs.sys_targets}}
+      machines: ${{inputs.machines}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+      release_url: ${{inputs.release_url}}
+      artifact: >
+        {
+          "static": {
+            "dst": "tuwunel.zst",
+            "src": "/usr/bin/tuwunel",
+            "mime": "application/zstd",
+            "zstd": 11,
+            "chmod": "a+x"
+          }
+        }
+
+  container:
+    if: >
+      !failure() && !cancelled()
+
+    name: Containers
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["docker", "oci"]'
+      cargo_profiles: ${{inputs.cargo_profiles}}
+      feat_sets: ${{inputs.feat_sets}}
+      rust_toolchains: ${{inputs.rust_toolchains}}
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: ${{inputs.sys_targets}}
+      machines: ${{inputs.machines}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+      release_url: ${{inputs.release_url}}
+      artifact: >
+        {
+          "docker": {
+            "dst": "tuwunel-docker.tar.gz",
+            "img": true,
+            "mime": "application/gzip",
+            "gzip": 7
+          },
+          "oci": {
+            "dst": "tuwunel-oci.tar.zst",
+            "runner": true,
+            "mime": "application/zstd",
+            "zstd": 11
+          }
+        }
+
+  pkgs:
+    if: >
+      !failure() && !cancelled()
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["all"]')[0])
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["release"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["stable"]')[0])
+      && fromJSON(inputs.build_pkgs)
+
+    name: Distro Packages
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["deb", "rpm", "nix"]'
+      cargo_profiles: '["release"]'
+      feat_sets: '["all"]'
+      rust_toolchains: '["stable"]'
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: ${{inputs.sys_targets}}
+      machines: ${{inputs.machines}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}
+      release_url: ${{inputs.release_url}}
+      artifact: >
+        {
+          "deb": {
+            "dst": "tuwunel.deb",
+            "mime": "application/vnd.debian.binary-package"
+          },
+          "rpm": {
+            "dst": "tuwunel.rpm",
+            "mime": "application/x-rpm"
+          },
+          "nix": {
+            "dst": "tuwunel.nix.tar.zst",
+            "src": "/opt/tuwunel.nix.tar",
+            "mime": "application/zstd",
+            "zstd": 11
+          }
+        }
+
+  check_pkgs:
+    if: >
+      !failure() && !cancelled()
+      && contains(fromJSON(inputs.feat_sets), fromJSON('["all"]')[0])
+      && contains(fromJSON(inputs.cargo_profiles), fromJSON('["release"]')[0])
+      && contains(fromJSON(inputs.rust_toolchains), fromJSON('["stable"]')[0])
+      && fromJSON(inputs.check_pkgs)
+
+    name: Check Packages
+    needs: [pkgs]
+    uses: ./.github/workflows/bake.yml
+    with:
+      bake_targets: '["deb-install", "rpm-install"]'
+      cargo_profiles: '["release"]'
+      feat_sets: '["all"]'
+      rust_toolchains: '["stable"]'
+      sys_names: ${{inputs.sys_names}}
+      sys_versions: ${{inputs.sys_versions}}
+      rust_targets: ${{inputs.rust_targets}}
+      sys_targets: ${{inputs.sys_targets}}
+      machines: ${{inputs.machines}}
+      excludes: ${{inputs.excludes}}
+      includes: ${{inputs.includes}}

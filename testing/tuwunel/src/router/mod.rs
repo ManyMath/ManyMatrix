@@ -1,0 +1,60 @@
+#![type_length_limit = "32768"] //TODO: reduce me
+
+mod layers;
+mod request;
+mod router;
+mod run;
+mod serve;
+
+use std::{panic::AssertUnwindSafe, pin::Pin, sync::Arc};
+
+use axum::Router;
+use futures::{Future, FutureExt, TryFutureExt};
+use tuwunel_api::router::state::Guard;
+use tuwunel_core::{Error, Result, Server};
+use tuwunel_service::Services;
+
+tuwunel_core::mod_ctor! {}
+tuwunel_core::mod_dtor! {}
+tuwunel_core::rustc_flags_capture! {}
+
+#[unsafe(no_mangle)]
+pub extern "Rust" fn start(
+	server: &Arc<Server>,
+) -> Pin<Box<dyn Future<Output = Result<Arc<Services>>> + Send>> {
+	AssertUnwindSafe(run::start(server.clone()))
+		.catch_unwind()
+		.map_err(Error::from_panic)
+		.unwrap_or_else(Err)
+		.boxed()
+}
+
+#[unsafe(no_mangle)]
+pub extern "Rust" fn stop(
+	services: Arc<Services>,
+) -> Pin<Box<dyn Future<Output = Result> + Send>> {
+	AssertUnwindSafe(run::stop(services))
+		.catch_unwind()
+		.map_err(Error::from_panic)
+		.unwrap_or_else(Err)
+		.boxed()
+}
+
+#[unsafe(no_mangle)]
+pub extern "Rust" fn run(
+	services: &Arc<Services>,
+) -> Pin<Box<dyn Future<Output = Result> + Send>> {
+	AssertUnwindSafe(run::run(services.clone()))
+		.catch_unwind()
+		.map_err(Error::from_panic)
+		.unwrap_or_else(Err)
+		.boxed()
+}
+
+/// Build the axum [`Router`] with all middleware. The returned
+/// [`Guard`] must outlive the Router.
+pub fn build_router(
+	services: &Arc<Services>,
+) -> Result<(Router, Guard)> {
+	layers::build(services)
+}

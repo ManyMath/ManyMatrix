@@ -1,0 +1,96 @@
+# syntax = docker/dockerfile:1.11-labs
+
+FROM input AS rocksdb-fetch
+ARG rocksdb_branch="tuwunel-changes"
+ARG rust_rocksdb_branch="conduwuit-changes"
+ARG librocksdb_submodule="librocksdb-sys/rocksdb"
+
+WORKDIR /
+COPY --link --from=input . .
+
+WORKDIR /usr/src
+COPY --link --from=recipe rocksdb.url .
+
+RUN <<EOF
+    set -eux
+    rocksdb_url="$(cat rocksdb.url)"
+    git clone \
+        --depth 1 \
+        --single-branch \
+        --branch "${rust_rocksdb_branch}" \
+        "--recurse-submodules=${librocksdb_submodule}" \
+        "${rocksdb_url}" \
+        /usr/src/rocksdb
+EOF
+
+
+FROM input AS rocksdb-build
+ARG rocksdb_shared=0
+ARG rocksdb_portable="1"
+ARG rocksdb_opt_level="3"
+ARG rocksdb_lto="-flto -ffat-lto-objects"
+ARG rocksdb_build_type="Release"
+ARG rocksdb_cxx_flags="-ftls-model=initial-exec"
+ARG rocksdb_make_verbose="ON"
+ARG rocksdb_make_rule_messages="OFF"
+ARG rocksdb_numa=0
+ARG rocksdb_jemalloc=1
+ARG rocksdb_iouring=1
+ARG rocksdb_zstd=1
+ARG rocksdb_lz4=0
+ARG rocksdb_bz2=0
+ARG rocksdb_zlib=0
+ARG rocksdb_snappy=0
+ARG nprocs
+
+WORKDIR /
+COPY --link --from=input . .
+COPY --link --from=rocksdb-fetch /usr/src/rocksdb /usr/src/rocksdb
+
+WORKDIR /usr/src/rocksdb/librocksdb-sys/rocksdb
+ENV CC="clang"
+ENV CXX="clang++"
+ENV nprocs=${nprocs}
+RUN <<EOF
+    set -eux
+
+    cmake -H. -Bbuild \
+        "-DCMAKE_RULE_MESSAGES:BOOL=${rocksdb_make_rule_messages}" \
+        "-DCMAKE_VERBOSE_MAKEFILE:BOOL=${rocksdb_make_verbose}" \
+        "-DCMAKE_BUILD_TYPE=${rocksdb_build_type}" \
+        "-DBUILD_SHARED_LIBS=${rocksdb_shared}" \
+        "-DROCKSDB_BUILD_SHARED=${rocksdb_shared}" \
+        "-DCMAKE_CXX_FLAGS:STRING=${rocksdb_cxx_flags}" \
+        "-DCMAKE_CXX_FLAGS_RELEASE:STRING=-g0 -O${rocksdb_opt_level} -DNDEBUG ${rocksdb_lto}" \
+        "-DPORTABLE=${rocksdb_portable}" \
+        "-DFAIL_ON_WARNINGS=0" \
+        "-DUSE_RTTI=0" \
+        "-DWITH_RUNTIME_DEBUG=0" \
+        "-DWITH_JNI=0" \
+        "-DWITH_EXAMPLES=0" \
+        "-DWITH_BENCHMARK=0" \
+        "-DWITH_BENCHMARK_TOOLS=0" \
+        "-DWITH_TRACE_TOOLS=0" \
+        "-DWITH_CORE_TOOLS=0" \
+        "-DWITH_TOOLS=0" \
+        "-DWITH_TESTS=0" \
+        "-DWITH_GFLAGS=0" \
+        "-DWITH_NUMA=${rocksdb_numa}" \
+        "-DWITH_LIBURING=${rocksdb_iouring}" \
+        "-DWITH_JEMALLOC=${rocksdb_jemalloc}" \
+        "-DWITH_ZSTD=${rocksdb_zstd}" \
+        "-DWITH_LZ4=${rocksdb_lz4}" \
+        "-DWITH_BZ2=${rocksdb_bz2}" \
+        "-DWITH_ZLIB=${rocksdb_zlib}" \
+        "-DWITH_SNAPPY=${rocksdb_snappy}"
+
+    nprocs=${nprocs:=$(nproc)}
+    cmake \
+        --build build \
+        --target install \
+        --parallel "${nprocs}"
+EOF
+
+
+FROM scratch AS rocksdb
+COPY --from=input /usr/src/rocksdb/librocksdb-sys/rocksdb/build/librocksdb.* .

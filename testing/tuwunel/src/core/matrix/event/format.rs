@@ -1,0 +1,231 @@
+use ruma::{
+	CanonicalJsonMemberOptional as JsonMember, CanonicalJsonMembersOptional as JsonMembers,
+	events::{
+		AnyMessageLikeEvent, AnyStateEvent, AnyStrippedStateEvent, AnySyncMessageLikeEvent,
+		AnySyncStateEvent, AnySyncTimelineEvent, AnyTimelineEvent, StateEvent,
+		room::member::RoomMemberEventContent, space::child::HierarchySpaceChildEvent,
+	},
+	serde::Raw,
+};
+use serde_json::value::to_raw_value;
+
+use super::{Event, redact};
+
+pub struct Owned<E: Event>(pub(super) E);
+
+pub struct Ref<'a, E: Event>(pub(super) &'a E);
+
+impl<E: Event> From<Owned<E>> for Raw<AnySyncTimelineEvent> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<AnySyncTimelineEvent> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let (redacts, content) = redact::copy(event);
+		let members: [JsonMember<_>; _] = [
+			("content", Some(content.into())),
+			("event_id", Some(event.event_id().as_str().into())),
+			("origin_server_ts", Some(event.origin_server_ts().get().into())),
+			("redacts", redacts.map(|e| e.as_str().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+			("unsigned", event.unsigned().map(Into::into)),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
+
+impl<E: Event> From<Owned<E>> for Raw<AnyTimelineEvent> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<AnyTimelineEvent> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let (redacts, content) = redact::copy(event);
+		let members: [JsonMember<_>; _] = [
+			("content", Some(content.into())),
+			("event_id", Some(event.event_id().as_str().into())),
+			("origin_server_ts", Some(event.origin_server_ts().get().into())),
+			("redacts", redacts.map(|e| e.as_str().into())),
+			("room_id", Some(event.room_id().as_str().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+			("unsigned", event.unsigned().map(Into::into)),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
+
+impl<E: Event> From<Owned<E>> for Raw<AnyMessageLikeEvent> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<AnyMessageLikeEvent> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let (redacts, content) = redact::copy(event);
+		let members: [JsonMember<_>; _] = [
+			("content", Some(content.into())),
+			("event_id", Some(event.event_id().as_str().into())),
+			("origin_server_ts", Some(event.origin_server_ts().get().into())),
+			("redacts", redacts.map(|e| e.as_str().into())),
+			("room_id", Some(event.room_id().as_str().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+			("unsigned", event.unsigned().map(Into::into)),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
+
+impl<E: Event> From<Owned<E>> for Raw<AnySyncMessageLikeEvent> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<AnySyncMessageLikeEvent> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let (redacts, content) = redact::copy(event);
+		let members: [JsonMember<_>; _] = [
+			("content", Some(content.into())),
+			("event_id", Some(event.event_id().as_str().into())),
+			("origin_server_ts", Some(event.origin_server_ts().get().into())),
+			("redacts", redacts.map(|e| e.as_str().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+			("unsigned", event.unsigned().map(Into::into)),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
+
+impl<E: Event> From<Owned<E>> for Raw<AnyStateEvent> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<AnyStateEvent> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let members: [JsonMember<_>; _] = [
+			("content", Some(event.content().into())),
+			("event_id", Some(event.event_id().as_str().into())),
+			("origin_server_ts", Some(event.origin_server_ts().get().into())),
+			("room_id", Some(event.room_id().as_str().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+			("unsigned", event.unsigned().map(Into::into)),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
+
+impl<E: Event> From<Owned<E>> for Raw<AnySyncStateEvent> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<AnySyncStateEvent> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let members: [JsonMember<_>; _] = [
+			("content", Some(event.content().into())),
+			("event_id", Some(event.event_id().as_str().into())),
+			("origin_server_ts", Some(event.origin_server_ts().get().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+			("unsigned", event.unsigned().map(Into::into)),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
+
+impl<E: Event> From<Owned<E>> for Raw<AnyStrippedStateEvent> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<AnyStrippedStateEvent> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let members: [JsonMember<_>; _] = [
+			("content", Some(event.content().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
+
+impl<E: Event> From<Owned<E>> for Raw<HierarchySpaceChildEvent> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<HierarchySpaceChildEvent> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let members: [JsonMember<_>; _] = [
+			("content", Some(event.content().into())),
+			("origin_server_ts", Some(event.origin_server_ts().get().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
+
+impl<E: Event> From<Owned<E>> for Raw<StateEvent<RoomMemberEventContent>> {
+	fn from(event: Owned<E>) -> Self { Ref(&event.0).into() }
+}
+
+impl<'a, E: Event> From<Ref<'a, E>> for Raw<StateEvent<RoomMemberEventContent>> {
+	fn from(event: Ref<'a, E>) -> Self {
+		let event = event.0;
+		let members: [JsonMember<_>; _] = [
+			("content", Some(event.content().into())),
+			("event_id", Some(event.event_id().as_str().into())),
+			("origin_server_ts", Some(event.origin_server_ts().get().into())),
+			("redacts", event.redacts().map(|e| e.as_str().into())),
+			("room_id", Some(event.room_id().as_str().into())),
+			("sender", Some(event.sender().as_str().into())),
+			("state_key", event.state_key().map(Into::into)),
+			("type", Some(event.event_type().to_string().into())),
+			("unsigned", event.unsigned().map(Into::into)),
+		];
+
+		to_raw_value(&JsonMembers(&members))
+			.map(Self::from_json)
+			.expect("Failed to serialize Event value")
+	}
+}
