@@ -15,6 +15,33 @@ use tuwunel_embed::EmbeddedHomeserver;
 #[cfg(feature = "shadow-tests")]
 pub mod shadow;
 
+#[macro_export]
+macro_rules! e2e_test {
+    ($name:ident) => {
+        paste::paste! {
+            #[tokio::test]
+            async fn [<$name _embedded>]() -> anyhow::Result<()> {
+                init_tracing();
+                $name($crate::ServerKind::TuwunelEmbedded).await
+            }
+
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _tuwunel_docker>]() -> anyhow::Result<()> {
+                init_tracing();
+                $name($crate::ServerKind::TuwunelDocker).await
+            }
+
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _synapse>]() -> anyhow::Result<()> {
+                init_tracing();
+                $name($crate::ServerKind::Synapse).await
+            }
+        }
+    };
+}
+
 const EMBEDDED_SERVER_NAME: &str = "localhost";
 const EMBEDDED_REGISTRATION_TOKEN: &str = "manymatrix_embed_test_token";
 
@@ -91,8 +118,7 @@ pub struct RegisteredUser {
 }
 
 impl TestHomeserver {
-    /// Start a fresh homeserver of the given kind.
-    /// Returns when the server is ready to accept requests.
+    /// Start a homeserver of the given kind; blocks until ready.
     pub async fn start(kind: ServerKind) -> Result<Self> {
         match kind {
             #[cfg(feature = "embedded-tests")]
@@ -191,17 +217,17 @@ impl TestHomeserver {
         })
     }
 
-    /// The base URL of the running homeserver.
+    /// Base URL of the running homeserver.
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
 
-    /// The actual port the homeserver bound to.
+    /// Port the homeserver bound to.
     pub fn bound_port(&self) -> u16 {
         self.bound_port
     }
 
-    /// Which server implementation is running.
+    /// Which implementation is running.
     pub fn server_kind(&self) -> ServerKind {
         self.kind
     }
@@ -221,7 +247,7 @@ impl TestHomeserver {
         Ok(())
     }
 
-    /// Retrieve homeserver stdout logs for diagnostics.
+    /// Captured stdout from the homeserver.
     pub async fn logs_stdout(&self) -> Result<String> {
         match &self.backend {
             #[cfg(feature = "embedded-tests")]
@@ -239,7 +265,7 @@ impl TestHomeserver {
         }
     }
 
-    /// Retrieve homeserver stderr logs for diagnostics.
+    /// Captured stderr from the homeserver.
     pub async fn logs_stderr(&self) -> Result<String> {
         match &self.backend {
             #[cfg(feature = "embedded-tests")]
@@ -257,7 +283,7 @@ impl TestHomeserver {
         }
     }
 
-    /// Register a user via the Matrix registration API.
+    /// Register a user on the homeserver.
     pub async fn register_user(&self, username: &str, password: &str) -> Result<RegisteredUser> {
         register_user_via_api(
             &self.base_url,

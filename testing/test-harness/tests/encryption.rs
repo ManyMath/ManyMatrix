@@ -19,32 +19,6 @@ fn init_tracing() {
         .try_init();
 }
 
-macro_rules! e2e_test {
-    ($name:ident) => {
-        paste::paste! {
-            #[tokio::test]
-            async fn [<$name _embedded>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::TuwunelEmbedded).await
-            }
-
-            #[cfg(feature = "docker-tests")]
-            #[tokio::test]
-            async fn [<$name _tuwunel_docker>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::TuwunelDocker).await
-            }
-
-            #[cfg(feature = "docker-tests")]
-            #[tokio::test]
-            async fn [<$name _synapse>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::Synapse).await
-            }
-        }
-    };
-}
-
 async fn finalize_server(server: TestHomeserver, run_result: Result<()>) -> Result<()> {
     if let Err(stop_err) = server.stop().await {
         if run_result.is_ok() {
@@ -272,4 +246,4 @@ async fn cross_signing_bootstrap(kind: ServerKind) -> Result<()> {
     finalize_server(server, run_result).await
 }
 
-e2e_test!(cross_signing_bootstrap);
+test_harness::e2e_test!(cross_signing_bootstrap);

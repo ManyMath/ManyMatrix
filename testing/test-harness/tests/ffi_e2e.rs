@@ -262,32 +262,6 @@ async fn ffi_whoami(kind: ServerKind) -> Result<()> {
     Ok(())
 }
 
-macro_rules! e2e_test {
-    ($name:ident) => {
-        paste::paste! {
-            #[tokio::test]
-            async fn [<$name _embedded>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::TuwunelEmbedded).await
-            }
-
-            #[cfg(feature = "docker-tests")]
-            #[tokio::test]
-            async fn [<$name _tuwunel_docker>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::TuwunelDocker).await
-            }
-
-            #[cfg(feature = "docker-tests")]
-            #[tokio::test]
-            async fn [<$name _synapse>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::Synapse).await
-            }
-        }
-    };
-}
-
-e2e_test!(ffi_login_sync_send_logout);
-e2e_test!(ffi_two_user_messaging);
-e2e_test!(ffi_whoami);
+test_harness::e2e_test!(ffi_login_sync_send_logout);
+test_harness::e2e_test!(ffi_two_user_messaging);
+test_harness::e2e_test!(ffi_whoami);

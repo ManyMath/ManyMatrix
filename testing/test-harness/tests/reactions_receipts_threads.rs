@@ -14,32 +14,6 @@ fn init_tracing() {
         .try_init();
 }
 
-macro_rules! e2e_test {
-    ($name:ident) => {
-        paste::paste! {
-            #[tokio::test]
-            async fn [<$name _embedded>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::TuwunelEmbedded).await
-            }
-
-            #[cfg(feature = "docker-tests")]
-            #[tokio::test]
-            async fn [<$name _tuwunel_docker>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::TuwunelDocker).await
-            }
-
-            #[cfg(feature = "docker-tests")]
-            #[tokio::test]
-            async fn [<$name _synapse>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::Synapse).await
-            }
-        }
-    };
-}
-
 /// Reaction round-trip: Alice sends a reaction, Bob receives it via on_reaction.
 async fn reaction_round_trip(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
@@ -302,6 +276,6 @@ async fn threaded_message_round_trip(kind: ServerKind) -> Result<()> {
     Ok(())
 }
 
-e2e_test!(reaction_round_trip);
-e2e_test!(read_receipt_round_trip);
-e2e_test!(threaded_message_round_trip);
+test_harness::e2e_test!(reaction_round_trip);
+test_harness::e2e_test!(read_receipt_round_trip);
+test_harness::e2e_test!(threaded_message_round_trip);

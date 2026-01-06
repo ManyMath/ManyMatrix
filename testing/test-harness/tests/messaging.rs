@@ -41,32 +41,6 @@ async fn sync_pair_retry(alice: &ManyMatrixClient, bob: &ManyMatrixClient) -> Re
     Ok(())
 }
 
-macro_rules! e2e_test {
-    ($name:ident) => {
-        paste::paste! {
-            #[tokio::test]
-            async fn [<$name _embedded>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::TuwunelEmbedded).await
-            }
-
-            #[cfg(feature = "docker-tests")]
-            #[tokio::test]
-            async fn [<$name _tuwunel_docker>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::TuwunelDocker).await
-            }
-
-            #[cfg(feature = "docker-tests")]
-            #[tokio::test]
-            async fn [<$name _synapse>]() -> Result<()> {
-                init_tracing();
-                $name(ServerKind::Synapse).await
-            }
-        }
-    };
-}
-
 async fn finalize_server(server: TestHomeserver, run_result: Result<()>) -> Result<()> {
     if let Err(stop_err) = server.stop().await {
         if run_result.is_ok() {
@@ -592,10 +566,10 @@ async fn mxc_uri_on_message_event(kind: ServerKind) -> Result<()> {
     finalize_server(server, run_result).await
 }
 
-e2e_test!(encrypted_messaging);
-e2e_test!(message_types);
-e2e_test!(edit_reply_redact);
-e2e_test!(whoami);
-e2e_test!(is_room_encrypted);
-e2e_test!(media_upload_download);
-e2e_test!(mxc_uri_on_message_event);
+test_harness::e2e_test!(encrypted_messaging);
+test_harness::e2e_test!(message_types);
+test_harness::e2e_test!(edit_reply_redact);
+test_harness::e2e_test!(whoami);
+test_harness::e2e_test!(is_room_encrypted);
+test_harness::e2e_test!(media_upload_download);
+test_harness::e2e_test!(mxc_uri_on_message_event);
