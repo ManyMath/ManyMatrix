@@ -5,6 +5,7 @@ members = [
     "crates/cli",
     "crates/ffi",
     "testing/test-harness",
+    "testing/shadow-common",
     "testing/shadow-client",
 ]
 exclude = ["testing/tuwunel"]

@@ -14,10 +14,7 @@ use anyhow::{bail, Context, Result};
 use serde::Serialize;
 use tempfile::TempDir;
 
-// NOTE: This constant is duplicated in `testing/shadow-client/src/main.rs`.
-// Keep both definitions identical to ensure Shadow scenario assertions match.
-pub const LATENCY_MESSAGE_TEXT: &str = "hello from shadow latency scenario";
-pub const LATENCY_ENCRYPTED_MESSAGE_TEXT: &str = "hello from shadow encrypted latency scenario";
+pub use shadow_common::{LATENCY_ENCRYPTED_MESSAGE_TEXT, LATENCY_MESSAGE_TEXT};
 
 const ALICE_START_TIME: &str = "8s";
 const BOB_START_TIME: &str = "10s";
@@ -394,6 +391,20 @@ fn ensure_shadow_host_requirements() -> Result<()> {
         bail!("Shadow tests require a Linux host");
     }
 
+    if let Ok(status) = fs::read_to_string("/proc/self/status") {
+        if let Some(line) = status.lines().find(|line| line.starts_with("Seccomp:")) {
+            if let Some(mode) = line.split_whitespace().nth(1) {
+                if mode == "2" {
+                    bail!(
+                        "Shadow tests detected seccomp filtering (Seccomp: 2).\n\
+                         Shadow requires `seccomp=unconfined` when executed inside Docker or another restricted container.\n\
+                         If running in Docker, add: `--security-opt seccomp=unconfined`."
+                    );
+                }
+            }
+        }
+    }
+
     let rustc_output = Command::new("rustc")
         .arg("-vV")
         .output()
@@ -486,6 +497,23 @@ fn build_tuwunel_binary(workspace_root: &Path) -> Result<PathBuf> {
 }
 
 fn discover_tuwunel_checkout_root(workspace_root: &Path) -> Result<PathBuf> {
+    if let Ok(override_root) = std::env::var("TUWUNEL_CHECKOUT_ROOT") {
+        let override_root = PathBuf::from(override_root);
+        let override_root = override_root
+            .canonicalize()
+            .with_context(|| format!("failed to canonicalize TUWUNEL_CHECKOUT_ROOT={override_root:?}"))?;
+
+        let tuwunel_manifest = override_root.join("src/main/Cargo.toml");
+        if !tuwunel_manifest.exists() {
+            bail!(
+                "TUWUNEL_CHECKOUT_ROOT={} does not contain src/main/Cargo.toml",
+                override_root.display()
+            );
+        }
+
+        return Ok(override_root);
+    }
+
     let output = Command::new("cargo")
         .current_dir(workspace_root)
         .args(["metadata", "--format-version", "1"])
@@ -513,22 +541,32 @@ fn discover_tuwunel_checkout_root(workspace_root: &Path) -> Result<PathBuf> {
         .context("failed to locate tuwunel-embed manifest in cargo metadata")?;
 
     let manifest_path = PathBuf::from(manifest_path);
-    let checkout_root = manifest_path
+    let mut cursor = manifest_path
         .parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .context("failed to derive tuwunel checkout root from manifest path")?;
+        .context("tuwunel-embed manifest path had no parent directory")?;
 
-    let checkout_root = checkout_root.to_path_buf();
-    let tuwunel_manifest = checkout_root.join("src/main/Cargo.toml");
-    if !tuwunel_manifest.exists() {
-        bail!(
-            "derived tuwunel checkout root {} does not contain src/main/Cargo.toml",
-            checkout_root.display()
-        );
+    loop {
+        let candidate = cursor.to_path_buf();
+        let tuwunel_manifest = candidate.join("src/main/Cargo.toml");
+        if tuwunel_manifest.exists() {
+            return Ok(candidate);
+        }
+
+        if candidate == workspace_root {
+            break;
+        }
+
+        cursor = cursor
+            .parent()
+            .context("failed to derive tuwunel checkout root from manifest path (reached filesystem root)")?;
     }
 
-    Ok(checkout_root)
+    bail!(
+        "failed to locate tuwunel checkout root from cargo metadata.\n\
+         Expected to find src/main/Cargo.toml while walking upward from {}\n\
+         If tuwunel is checked out elsewhere, set TUWUNEL_CHECKOUT_ROOT=/path/to/tuwunel.",
+        manifest_path.display()
+    )
 }
 
 fn ensure_dynamically_linked(binary_path: &Path) -> Result<()> {

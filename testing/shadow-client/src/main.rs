@@ -5,13 +5,10 @@ use manymatrix_core::ManyMatrixClient;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
 use matrix_sdk::ruma::api::client::room::Visibility;
 use matrix_sdk::ruma::events::room::message::SyncRoomMessageEvent;
+use shadow_common::{LATENCY_ENCRYPTED_MESSAGE_TEXT, LATENCY_MESSAGE_TEXT};
 use tokio::sync::mpsc;
 
 const DEFAULT_PASSWORD: &str = "shadow_test_pass";
-// NOTE: This constant is duplicated in `testing/test-harness/src/shadow.rs`.
-// Keep both definitions identical to ensure Shadow scenario assertions match.
-const LATENCY_MESSAGE_TEXT: &str = "hello from shadow latency scenario";
-const LATENCY_ENCRYPTED_MESSAGE_TEXT: &str = "hello from shadow encrypted latency scenario";
 const REGISTRATION_TOKEN: &str = "shadow_test_token";
 const ROOM_ALIAS_FULL: &str = "#shadow-latency-room:tuwunel-server";
 const ROOM_ALIAS_LOCALPART: &str = "shadow-latency-room";
