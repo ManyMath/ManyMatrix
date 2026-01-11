@@ -1,4 +1,3 @@
-
 use std::ffi::{c_char, CStr, CString};
 
 use anyhow::Result;
@@ -38,7 +37,7 @@ unsafe fn assert_ok(r: &manymatrix_ffi::FfiResult) {
     assert!(r.ok, "FFI failed: {}", ffi_err(r));
 }
 
-/// Spawns a blocking thread and awaits it — matches how Dart isolates call into C.
+/// Spawns a blocking thread and awaits it, matches how Dart isolates call into C.
 async fn on_ffi_thread<F, R>(f: F) -> R
 where
     F: FnOnce() -> R + Send + 'static,
@@ -47,7 +46,7 @@ where
     tokio::task::spawn_blocking(f).await.unwrap()
 }
 
-/// Full FFI lifecycle: new → login → sync → create room → send → rooms list → room name → logout → free.
+/// Full FFI lifecycle: new -> login -> sync -> create room -> send -> rooms list -> room name -> logout -> free.
 async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
@@ -107,7 +106,8 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
 
         manymatrix_ffi::manymatrix_free(h);
         eprintln!("FFI lifecycle complete");
-    }).await;
+    })
+    .await;
 
     Ok(())
 }
@@ -219,7 +219,8 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
 
         manymatrix_ffi::manymatrix_free(alice);
         manymatrix_ffi::manymatrix_free(bob);
-    }).await;
+    })
+    .await;
 
     Ok(())
 }
@@ -257,7 +258,8 @@ async fn ffi_whoami(kind: ServerKind) -> Result<()> {
         eprintln!("FFI whoami returned: {}", user_id);
 
         manymatrix_ffi::manymatrix_free(handle);
-    }).await;
+    })
+    .await;
 
     Ok(())
 }

@@ -499,9 +499,9 @@ fn build_tuwunel_binary(workspace_root: &Path) -> Result<PathBuf> {
 fn discover_tuwunel_checkout_root(workspace_root: &Path) -> Result<PathBuf> {
     if let Ok(override_root) = std::env::var("TUWUNEL_CHECKOUT_ROOT") {
         let override_root = PathBuf::from(override_root);
-        let override_root = override_root
-            .canonicalize()
-            .with_context(|| format!("failed to canonicalize TUWUNEL_CHECKOUT_ROOT={override_root:?}"))?;
+        let override_root = override_root.canonicalize().with_context(|| {
+            format!("failed to canonicalize TUWUNEL_CHECKOUT_ROOT={override_root:?}")
+        })?;
 
         let tuwunel_manifest = override_root.join("src/main/Cargo.toml");
         if !tuwunel_manifest.exists() {
@@ -556,9 +556,9 @@ fn discover_tuwunel_checkout_root(workspace_root: &Path) -> Result<PathBuf> {
             break;
         }
 
-        cursor = cursor
-            .parent()
-            .context("failed to derive tuwunel checkout root from manifest path (reached filesystem root)")?;
+        cursor = cursor.parent().context(
+            "failed to derive tuwunel checkout root from manifest path (reached filesystem root)",
+        )?;
     }
 
     bail!(

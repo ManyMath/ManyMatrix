@@ -198,7 +198,6 @@ async fn session_persist_across_restart(kind: ServerKind) -> Result<()> {
 
 test_harness::e2e_test!(session_persist_across_restart);
 
-
 /// Verify logout invalidates session and cleans up local state.
 async fn logout_clears_state(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
@@ -222,7 +221,6 @@ async fn logout_clears_state(kind: ServerKind) -> Result<()> {
 }
 
 test_harness::e2e_test!(logout_clears_state);
-
 
 /// Verify sync populates room list with RoomSummary data.
 async fn sync_populates_room_list(kind: ServerKind) -> Result<()> {
@@ -274,7 +272,6 @@ async fn sync_populates_room_list(kind: ServerKind) -> Result<()> {
 
 test_harness::e2e_test!(sync_populates_room_list);
 
-
 /// Verify that server_name_or_homeserver_url handles URL input correctly.
 /// Full .well-known resolution requires a domain name setup, but we verify
 /// the SDK accepts both URL and server-name-style input.
@@ -297,7 +294,6 @@ async fn well_known_resolution(kind: ServerKind) -> Result<()> {
 }
 
 test_harness::e2e_test!(well_known_resolution);
-
 
 /// Create room with options, invite+join another user, read room state.
 async fn create_join_and_read_state(kind: ServerKind) -> Result<()> {
@@ -358,7 +354,6 @@ async fn create_join_and_read_state(kind: ServerKind) -> Result<()> {
 
 test_harness::e2e_test!(create_join_and_read_state);
 
-
 /// User can leave a room.
 async fn leave_room_test(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
@@ -400,7 +395,6 @@ async fn leave_room_test(kind: ServerKind) -> Result<()> {
 }
 
 test_harness::e2e_test!(leave_room_test);
-
 
 /// User can kick and ban members with optional reasons.
 async fn kick_and_ban(kind: ServerKind) -> Result<()> {
