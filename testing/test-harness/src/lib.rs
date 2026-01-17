@@ -15,6 +15,8 @@ use tuwunel_embed::EmbeddedHomeserver;
 #[cfg(feature = "shadow-tests")]
 pub mod shadow;
 
+pub mod compat;
+
 #[macro_export]
 macro_rules! e2e_test {
     ($name:ident) => {
@@ -70,6 +72,82 @@ pub enum ServerKind {
 }
 
 impl ServerKind {
+    pub fn slug(self) -> &'static str {
+        match self {
+            #[cfg(feature = "embedded-tests")]
+            Self::TuwunelEmbedded => "tuwunel-embedded",
+            #[cfg(feature = "docker-tests")]
+            Self::Synapse => "synapse",
+            #[cfg(feature = "docker-tests")]
+            Self::TuwunelDocker => "tuwunel-docker",
+        }
+    }
+
+    pub fn implementation_family(self) -> &'static str {
+        match self {
+            #[cfg(feature = "embedded-tests")]
+            Self::TuwunelEmbedded => "tuwunel",
+            #[cfg(feature = "docker-tests")]
+            Self::Synapse => "synapse",
+            #[cfg(feature = "docker-tests")]
+            Self::TuwunelDocker => "tuwunel",
+        }
+    }
+
+    pub fn readiness_endpoint(self) -> &'static str {
+        match self {
+            #[cfg(feature = "embedded-tests")]
+            Self::TuwunelEmbedded => "/_matrix/client/versions",
+            #[cfg(feature = "docker-tests")]
+            Self::Synapse => "/_matrix/client/versions",
+            #[cfg(feature = "docker-tests")]
+            Self::TuwunelDocker => "/_matrix/client/versions",
+        }
+    }
+
+    pub fn registration_mode(self) -> &'static str {
+        match self {
+            #[cfg(feature = "embedded-tests")]
+            Self::TuwunelEmbedded => "registration_token",
+            #[cfg(feature = "docker-tests")]
+            Self::Synapse => "open_registration",
+            #[cfg(feature = "docker-tests")]
+            Self::TuwunelDocker => "open_registration",
+        }
+    }
+
+    pub fn source_metadata(self) -> compat::ServerSourceMetadata {
+        match self {
+            #[cfg(feature = "embedded-tests")]
+            Self::TuwunelEmbedded => compat::ServerSourceMetadata {
+                source_type: "embedded".to_owned(),
+                label: "tuwunel-embed@3c69fdd5".to_owned(),
+                image: None,
+                tag: None,
+                digest: None,
+                revision: Some("3c69fdd5".to_owned()),
+            },
+            #[cfg(feature = "docker-tests")]
+            Self::Synapse => compat::ServerSourceMetadata {
+                source_type: "docker".to_owned(),
+                label: format!("{SYNAPSE_IMAGE}:{SYNAPSE_TAG}"),
+                image: Some(SYNAPSE_IMAGE.to_owned()),
+                tag: Some(SYNAPSE_TAG.to_owned()),
+                digest: None,
+                revision: None,
+            },
+            #[cfg(feature = "docker-tests")]
+            Self::TuwunelDocker => compat::ServerSourceMetadata {
+                source_type: "docker".to_owned(),
+                label: format!("{TUWUNEL_IMAGE}:{TUWUNEL_TAG}"),
+                image: Some(TUWUNEL_IMAGE.to_owned()),
+                tag: Some(TUWUNEL_TAG.to_owned()),
+                digest: None,
+                revision: None,
+            },
+        }
+    }
+
     pub fn is_synapse(self) -> bool {
         #[cfg(feature = "docker-tests")]
         if matches!(self, Self::Synapse) {
@@ -230,6 +308,19 @@ impl TestHomeserver {
     /// Which implementation is running.
     pub fn server_kind(&self) -> ServerKind {
         self.kind
+    }
+
+    /// Stable metadata used by compatibility reports.
+    pub fn metadata(&self) -> compat::ServerMetadata {
+        compat::ServerMetadata {
+            kind: self.kind.slug().to_owned(),
+            display_name: self.kind.to_string(),
+            implementation_family: self.kind.implementation_family().to_owned(),
+            base_url: self.base_url.clone(),
+            readiness_endpoint: self.kind.readiness_endpoint().to_owned(),
+            registration_mode: self.kind.registration_mode().to_owned(),
+            source: self.kind.source_metadata(),
+        }
     }
 
     /// Stop the homeserver.
