@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+use crate::TestHomeserver;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompatibilityReport {
@@ -146,6 +149,43 @@ pub async fn probe_versions(base_url: &str) -> Result<VersionsProbe> {
         raw: Some(raw),
         error: None,
     })
+}
+
+pub async fn build_server_report(
+    server: &TestHomeserver,
+    behaviors: Vec<BehaviorResult>,
+) -> ServerCompatibilityReport {
+    let versions = match probe_versions(server.base_url()).await {
+        Ok(probe) => probe,
+        Err(error) => VersionsProbe::failed(server.base_url(), error.to_string()),
+    };
+
+    ServerCompatibilityReport {
+        metadata: server.metadata(),
+        versions,
+        behaviors,
+    }
+}
+
+pub fn default_report_path() -> PathBuf {
+    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
+        return PathBuf::from(target_dir).join("compat/compatibility-report.json");
+    }
+
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/compat/compatibility-report.json")
+}
+
+pub fn write_json_report(report: &CompatibilityReport, path: impl AsRef<Path>) -> Result<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create compatibility report dir {parent:?}"))?;
+    }
+
+    let json =
+        serde_json::to_string_pretty(report).context("failed to serialize compatibility report")?;
+    std::fs::write(path, json)
+        .with_context(|| format!("failed to write compatibility report {}", path.display()))
 }
 
 fn versions_endpoint(base_url: &str) -> String {
