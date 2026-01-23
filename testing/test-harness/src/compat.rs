@@ -191,3 +191,37 @@ pub fn write_json_report(report: &CompatibilityReport, path: impl AsRef<Path>) -
 fn versions_endpoint(base_url: &str) -> String {
     format!("{}/_matrix/client/versions", base_url.trim_end_matches('/'))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serializes_behavior_status_as_lowercase() {
+        assert_eq!(
+            serde_json::to_value(BehaviorStatus::Pass).unwrap(),
+            serde_json::Value::String("pass".to_owned())
+        );
+        assert_eq!(
+            serde_json::to_value(BehaviorStatus::Fail).unwrap(),
+            serde_json::Value::String("fail".to_owned())
+        );
+        assert_eq!(
+            serde_json::to_value(BehaviorStatus::Skip).unwrap(),
+            serde_json::Value::String("skip".to_owned())
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "skip reason must not be empty")]
+    fn skip_requires_reason() {
+        let _ = BehaviorResult::skip("media", " ");
+    }
+
+    #[test]
+    fn default_report_path_uses_target_compat() {
+        let path = default_report_path();
+        let text = path.to_string_lossy();
+        assert!(text.contains("target/compat/compatibility-report.json"));
+    }
+}
