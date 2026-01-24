@@ -27,7 +27,7 @@ readme = "README.md"
 name = "manymatrix"
 
 [workspace.dependencies]
-matrix-sdk = { version = "0.7", default-features = false, features = [
+matrix-sdk = { version = "0.16.0", default-features = false, features = [
     "bundled-sqlite",
     "markdown",
     "e2e-encryption",
@@ -60,6 +60,9 @@ rev = "fe4aebeeaae435af60087ddd56b573a2e0be671d"
 [patch.crates-io.async-channel]
 git = "https://github.com/matrix-construct/async-channel"
 rev = "92e5e74063bf2a3b10414bcc8a0d68b235644280"
+
+[patch.crates-io.ruma-client-api]
+path = "vendor/ruma-client-api-0.22.0"
 
 [patch."https://github.com/sneurlax/tuwunel"]
 tuwunel-embed = { path = "testing/tuwunel/src/embed" }
