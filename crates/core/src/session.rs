@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use matrix_sdk::matrix_auth::MatrixSession;
+use matrix_sdk::authentication::matrix::MatrixSession;
 use serde::{Deserialize, Serialize};
 
 /// Wrapper around [`MatrixSession`] that can be persisted to disk.

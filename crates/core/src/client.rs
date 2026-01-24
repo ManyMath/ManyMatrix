@@ -191,8 +191,7 @@ impl ManyMatrixClient {
             event_id.to_owned(),
             None,
         );
-        let edit_content =
-            RoomMessageEventContent::text_plain(new_body).make_replacement(metadata, None);
+        let edit_content = RoomMessageEventContent::text_plain(new_body).make_replacement(metadata);
         room.send(edit_content).await?;
         Ok(())
     }
@@ -274,12 +273,12 @@ impl ManyMatrixClient {
         event_id: &EventId,
     ) -> Result<matrix_sdk::ruma::events::room::message::OriginalRoomMessageEvent, Error> {
         let timeline_event = room
-            .event(event_id)
+            .event(event_id, None)
             .await
             .map_err(|e| Error::Other(format!("fetch event failed: {e}")))?;
-        let full_event = timeline_event
-            .event
-            .deserialize()
+        let full_event: AnyTimelineEvent = timeline_event
+            .raw()
+            .deserialize_as_unchecked()
             .map_err(|e| Error::Other(format!("deserialize event failed: {e}")))?;
         match full_event {
             AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomMessage(
@@ -310,8 +309,8 @@ impl ManyMatrixClient {
                 match room.messages(options).await {
                     Ok(response) => {
                         response.chunk.first().and_then(|timeline_event| {
-                            let raw = &timeline_event.event;
-                            let event: serde_json::Value = raw.deserialize_as().ok()?;
+                            let event: serde_json::Value =
+                                timeline_event.raw().deserialize_as_unchecked().ok()?;
                             // Only extract from m.room.message events
                             let msgtype = event["content"]["msgtype"].as_str()?;
                             if msgtype.starts_with("m.") {
@@ -546,8 +545,8 @@ impl ManyMatrixClient {
             .chunk
             .iter()
             .filter_map(|timeline_event| {
-                let raw = &timeline_event.event;
-                let event: serde_json::Value = raw.deserialize_as().ok()?;
+                let event: serde_json::Value =
+                    timeline_event.raw().deserialize_as_unchecked().ok()?;
                 Some(MessageEvent {
                     event_id: event["event_id"].as_str()?.to_owned(),
                     room_id: room_id.to_owned(),
@@ -942,7 +941,6 @@ impl ManyMatrixClient {
         let (server_name, media_id) = parse_mxc_uri(mxc_uri)?;
         let access_token = self
             .client
-            .matrix_auth()
             .access_token()
             .ok_or_else(|| Error::Other("client is not authenticated".into()))?;
         let url = format!(
@@ -968,7 +966,6 @@ impl ManyMatrixClient {
         let (server_name, media_id) = parse_mxc_uri(mxc_uri)?;
         let access_token = self
             .client
-            .matrix_auth()
             .access_token()
             .ok_or_else(|| Error::Other("client is not authenticated".into()))?;
         let url = format!(
@@ -1010,7 +1007,7 @@ impl ManyMatrixClient {
             profile_tag: None,
             lang: lang.to_owned(),
         };
-        self.client.set_pusher(pusher_init.into()).await?;
+        self.client.pusher().set(pusher_init.into()).await?;
         Ok(())
     }
 
@@ -1027,7 +1024,7 @@ impl ManyMatrixClient {
     /// Check whether a room has encryption enabled.
     pub async fn is_room_encrypted(&self, room_id: &str) -> Result<bool, Error> {
         let room = self.get_room_parsed(room_id)?;
-        let encrypted = room.is_encrypted().await?;
+        let encrypted = room.latest_encryption_state().await?.is_encrypted();
         Ok(encrypted)
     }
 
