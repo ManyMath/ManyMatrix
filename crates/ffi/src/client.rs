@@ -1,10 +1,19 @@
 use std::ffi::{c_char, c_void};
 use std::path::Path;
 
-use manymatrix_core::ManyMatrixClient;
+use manymatrix_core::ManyMatrixClient as CoreClient;
 
 use crate::types::FfiResult;
 use crate::{str_from_ptr, RUNTIME};
+
+/// Opaque FFI handle for the core Matrix client.
+pub struct ManyMatrixClient {
+    _private: [u8; 0],
+}
+
+pub(crate) unsafe fn client_from_handle<'a>(handle: *mut ManyMatrixClient) -> &'a CoreClient {
+    &*(handle as *const CoreClient)
+}
 
 /// Create a new ManyMatrixClient pointing at the given homeserver URL.
 ///
@@ -20,9 +29,9 @@ pub unsafe extern "C" fn manymatrix_new(
 ) -> FfiResult {
     let url = str_from_ptr(homeserver_url);
     let path = str_from_ptr(store_path);
-    match RUNTIME.block_on(ManyMatrixClient::new(url, Path::new(path))) {
+    match RUNTIME.block_on(CoreClient::new(url, Path::new(path))) {
         Ok(client) => {
-            let handle = Box::into_raw(Box::new(client));
+            let handle = Box::into_raw(Box::new(client)) as *mut ManyMatrixClient;
             FfiResult::success(handle as *mut c_void)
         }
         Err(e) => FfiResult::error(&e.to_string()),
@@ -42,7 +51,7 @@ pub unsafe extern "C" fn manymatrix_login(
     username: *const c_char,
     password: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let username = str_from_ptr(username);
     let password = str_from_ptr(password);
     match RUNTIME.block_on(client.login(username, password)) {
@@ -64,7 +73,7 @@ pub unsafe extern "C" fn manymatrix_restore(
     handle: *mut ManyMatrixClient,
     session_json: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let json = str_from_ptr(session_json);
     let session: manymatrix_core::StoredSession = match serde_json::from_str(json) {
         Ok(s) => s,
@@ -82,7 +91,7 @@ pub unsafe extern "C" fn manymatrix_restore(
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_sync_once(handle: *mut ManyMatrixClient) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     match RUNTIME.block_on(client.sync_once()) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error(&e.to_string()),
@@ -97,7 +106,7 @@ pub unsafe extern "C" fn manymatrix_sync_once(handle: *mut ManyMatrixClient) -> 
 pub unsafe extern "C" fn manymatrix_sync_forever(handle: *mut ManyMatrixClient) -> FfiResult {
     // We need a 'static reference for the spawned thread. The caller guarantees
     // the handle remains valid (they must call manymatrix_free only after stopping sync).
-    let client_ref: &'static ManyMatrixClient = &*(handle as *const ManyMatrixClient);
+    let client_ref: &'static CoreClient = &*(handle as *const CoreClient);
     std::thread::spawn(move || {
         RUNTIME.block_on(client_ref.sync_forever()).ok();
     });
@@ -110,7 +119,7 @@ pub unsafe extern "C" fn manymatrix_sync_forever(handle: *mut ManyMatrixClient) 
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_joined_rooms(handle: *mut ManyMatrixClient) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let rooms = RUNTIME.block_on(client.joined_rooms());
     match serde_json::to_string(&rooms) {
         Ok(json) => FfiResult::success_string(&json),
@@ -124,7 +133,7 @@ pub unsafe extern "C" fn manymatrix_joined_rooms(handle: *mut ManyMatrixClient) 
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_logout(handle: *mut ManyMatrixClient) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     match RUNTIME.block_on(client.logout()) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error(&e.to_string()),
@@ -140,7 +149,7 @@ pub unsafe extern "C" fn manymatrix_logout(handle: *mut ManyMatrixClient) -> Ffi
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_free(handle: *mut ManyMatrixClient) {
     if !handle.is_null() {
-        let client = Box::from_raw(handle);
+        let client = Box::from_raw(handle as *mut CoreClient);
         // Drop inside runtime context so deadpool (SQLite pool) can clean up.
         RUNTIME.block_on(async move { drop(client) });
     }
@@ -154,7 +163,7 @@ pub unsafe extern "C" fn manymatrix_free(handle: *mut ManyMatrixClient) {
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_sync_token(handle: *mut ManyMatrixClient) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     match RUNTIME.block_on(client.sync_token_clone()) {
         Some(token) => FfiResult::success_string(&token),
         None => FfiResult::success_void(),
@@ -169,7 +178,7 @@ pub unsafe extern "C" fn manymatrix_sync_token(handle: *mut ManyMatrixClient) ->
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_whoami(handle: *mut ManyMatrixClient) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     match client.current_user_id() {
         Some(id) => FfiResult::success_string(&id),
         None => FfiResult::error("not logged in"),
@@ -188,7 +197,7 @@ pub unsafe extern "C" fn manymatrix_is_room_encrypted(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     match RUNTIME.block_on(client.is_room_encrypted(room_id)) {
         Ok(encrypted) => FfiResult::success_string(if encrypted { "true" } else { "false" }),

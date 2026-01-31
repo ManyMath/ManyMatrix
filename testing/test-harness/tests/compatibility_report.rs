@@ -329,7 +329,7 @@ async fn ffi_smoke_behavior(server: &TestHomeserver) -> Result<String> {
 
         let new_result = manymatrix_ffi::manymatrix_new(url.as_ptr(), path.as_ptr());
         assert_ffi_ok(&new_result)?;
-        let handle = new_result.data as *mut manymatrix_core::ManyMatrixClient;
+        let handle = new_result.data as *mut manymatrix_ffi::ManyMatrixClient;
 
         let username = cstr("compat_ffi");
         let password = cstr("compat_ffi_pass");

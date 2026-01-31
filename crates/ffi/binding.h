@@ -11,6 +11,11 @@
 #include <stdlib.h>
 
 /**
+ * Opaque FFI handle for the core Matrix client.
+ */
+typedef struct ManyMatrixClient ManyMatrixClient;
+
+/**
  * Uniform result type for all FFI functions.
  *
  * - `ok`: true on success, false on error
@@ -86,7 +91,7 @@ typedef void (*ReceiptCallback)(const char*);
  * `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
  * valid for the lifetime of the client.
  */
- void manymatrix_on_message(ManyMatrixClient *handle, MessageCallback callback);
+ void manymatrix_on_message(struct ManyMatrixClient *handle, MessageCallback callback);
 
 /**
  * Register a callback for incoming reactions (JSON `ReactionEvent`).
@@ -96,7 +101,7 @@ typedef void (*ReceiptCallback)(const char*);
  * `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
  * valid for the lifetime of the client.
  */
- void manymatrix_on_reaction(ManyMatrixClient *handle, ReactionCallback callback);
+ void manymatrix_on_reaction(struct ManyMatrixClient *handle, ReactionCallback callback);
 
 /**
  * Register a callback for read receipts (JSON `ReceiptEvent`).
@@ -106,7 +111,7 @@ typedef void (*ReceiptCallback)(const char*);
  * `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
  * valid for the lifetime of the client.
  */
- void manymatrix_on_receipt(ManyMatrixClient *handle, ReceiptCallback callback);
+ void manymatrix_on_receipt(struct ManyMatrixClient *handle, ReceiptCallback callback);
 
 /**
  * Create a new ManyMatrixClient pointing at the given homeserver URL.
@@ -129,7 +134,7 @@ typedef void (*ReceiptCallback)(const char*);
  * must be valid, NUL-terminated UTF-8 strings.
  */
 
-struct FfiResult manymatrix_login(ManyMatrixClient *handle,
+struct FfiResult manymatrix_login(struct ManyMatrixClient *handle,
                                   const char *username,
                                   const char *password);
 
@@ -140,7 +145,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer. `session_json` must be a
  * valid, NUL-terminated UTF-8 string containing a JSON-serialized StoredSession.
  */
- struct FfiResult manymatrix_restore(ManyMatrixClient *handle, const char *session_json);
+ struct FfiResult manymatrix_restore(struct ManyMatrixClient *handle, const char *session_json);
 
 /**
  * Perform a single sync round.
@@ -148,7 +153,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_sync_once(ManyMatrixClient *handle);
+ struct FfiResult manymatrix_sync_once(struct ManyMatrixClient *handle);
 
 /**
  * Start the sync loop on a background thread.
@@ -156,7 +161,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
  */
- struct FfiResult manymatrix_sync_forever(ManyMatrixClient *handle);
+ struct FfiResult manymatrix_sync_forever(struct ManyMatrixClient *handle);
 
 /**
  * Get the list of joined rooms as a JSON array of RoomSummary objects.
@@ -164,7 +169,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_joined_rooms(ManyMatrixClient *handle);
+ struct FfiResult manymatrix_joined_rooms(struct ManyMatrixClient *handle);
 
 /**
  * Logout: invalidate server token and delete local state.
@@ -172,7 +177,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_logout(ManyMatrixClient *handle);
+ struct FfiResult manymatrix_logout(struct ManyMatrixClient *handle);
 
 /**
  * Free a ManyMatrixClient handle.
@@ -182,7 +187,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * `manymatrix_new`, or null (in which case this is a no-op).
  * After calling this, the handle must not be used again.
  */
- void manymatrix_free(ManyMatrixClient *handle);
+ void manymatrix_free(struct ManyMatrixClient *handle);
 
 /**
  * Get the current sync token, if any.
@@ -192,7 +197,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_sync_token(ManyMatrixClient *handle);
+ struct FfiResult manymatrix_sync_token(struct ManyMatrixClient *handle);
 
 /**
  * Get the current logged-in user's Matrix ID (e.g. "@alice:example.com").
@@ -202,7 +207,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_whoami(ManyMatrixClient *handle);
+ struct FfiResult manymatrix_whoami(struct ManyMatrixClient *handle);
 
 /**
  * Check whether a room has encryption enabled.
@@ -213,7 +218,9 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer. `room_id` must be a valid,
  * NUL-terminated UTF-8 string.
  */
- struct FfiResult manymatrix_is_room_encrypted(ManyMatrixClient *handle, const char *room_id);
+
+struct FfiResult manymatrix_is_room_encrypted(struct ManyMatrixClient *handle,
+                                              const char *room_id);
 
 /**
  * Enable end-to-end encryption on a room.
@@ -221,7 +228,9 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_enable_encryption(ManyMatrixClient *handle, const char *room_id);
+
+struct FfiResult manymatrix_enable_encryption(struct ManyMatrixClient *handle,
+                                              const char *room_id);
 
 /**
  * Start SAS device verification with a specific user's device.
@@ -232,7 +241,7 @@ struct FfiResult manymatrix_login(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_start_verification(ManyMatrixClient *handle,
+struct FfiResult manymatrix_start_verification(struct ManyMatrixClient *handle,
                                                const char *user_id,
                                                const char *device_id);
 
@@ -243,7 +252,7 @@ struct FfiResult manymatrix_start_verification(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_accept_verification(ManyMatrixClient *handle,
+struct FfiResult manymatrix_accept_verification(struct ManyMatrixClient *handle,
                                                 const char *user_id,
                                                 const char *flow_id);
 
@@ -254,7 +263,7 @@ struct FfiResult manymatrix_accept_verification(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_start_sas(ManyMatrixClient *handle,
+struct FfiResult manymatrix_start_sas(struct ManyMatrixClient *handle,
                                       const char *user_id,
                                       const char *flow_id);
 
@@ -265,7 +274,7 @@ struct FfiResult manymatrix_start_sas(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_accept_sas(ManyMatrixClient *handle,
+struct FfiResult manymatrix_accept_sas(struct ManyMatrixClient *handle,
                                        const char *user_id,
                                        const char *flow_id);
 
@@ -278,7 +287,7 @@ struct FfiResult manymatrix_accept_sas(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_get_sas_emojis(ManyMatrixClient *handle,
+struct FfiResult manymatrix_get_sas_emojis(struct ManyMatrixClient *handle,
                                            const char *user_id,
                                            const char *flow_id);
 
@@ -289,7 +298,7 @@ struct FfiResult manymatrix_get_sas_emojis(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_confirm_sas(ManyMatrixClient *handle,
+struct FfiResult manymatrix_confirm_sas(struct ManyMatrixClient *handle,
                                         const char *user_id,
                                         const char *flow_id);
 
@@ -300,7 +309,7 @@ struct FfiResult manymatrix_confirm_sas(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_cancel_verification(ManyMatrixClient *handle,
+struct FfiResult manymatrix_cancel_verification(struct ManyMatrixClient *handle,
                                                 const char *user_id,
                                                 const char *flow_id);
 
@@ -310,7 +319,7 @@ struct FfiResult manymatrix_cancel_verification(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_bootstrap_cross_signing(ManyMatrixClient *handle);
+ struct FfiResult manymatrix_bootstrap_cross_signing(struct ManyMatrixClient *handle);
 
 /**
  * Create a new server-side key backup.
@@ -318,7 +327,7 @@ struct FfiResult manymatrix_cancel_verification(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_setup_key_backup(ManyMatrixClient *handle);
+ struct FfiResult manymatrix_setup_key_backup(struct ManyMatrixClient *handle);
 
 /**
  * Restore room keys from a server-side backup using the recovery key.
@@ -326,7 +335,9 @@ struct FfiResult manymatrix_cancel_verification(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_restore_key_backup(ManyMatrixClient *handle, const char *recovery_key);
+
+struct FfiResult manymatrix_restore_key_backup(struct ManyMatrixClient *handle,
+                                               const char *recovery_key);
 
 /**
  * Upload a file as an attachment to a room.
@@ -338,7 +349,7 @@ struct FfiResult manymatrix_cancel_verification(ManyMatrixClient *handle,
  * `data_len` valid bytes.
  */
 
-struct FfiResult manymatrix_upload_media(ManyMatrixClient *handle,
+struct FfiResult manymatrix_upload_media(struct ManyMatrixClient *handle,
                                          const char *room_id,
                                          const char *filename,
                                          const char *mime_type,
@@ -353,7 +364,7 @@ struct FfiResult manymatrix_upload_media(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_download_media(ManyMatrixClient *handle, const char *mxc_uri);
+ struct FfiResult manymatrix_download_media(struct ManyMatrixClient *handle, const char *mxc_uri);
 
 /**
  * Fetch a thumbnail of media content by its mxc:// URI.
@@ -364,7 +375,7 @@ struct FfiResult manymatrix_upload_media(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_get_thumbnail(ManyMatrixClient *handle,
+struct FfiResult manymatrix_get_thumbnail(struct ManyMatrixClient *handle,
                                           const char *mxc_uri,
                                           uint32_t width,
                                           uint32_t height);
@@ -377,7 +388,7 @@ struct FfiResult manymatrix_get_thumbnail(ManyMatrixClient *handle,
  * valid, NUL-terminated UTF-8.
  */
 
-struct FfiResult manymatrix_register_pusher(ManyMatrixClient *handle,
+struct FfiResult manymatrix_register_pusher(struct ManyMatrixClient *handle,
                                             const char *app_id,
                                             const char *push_key,
                                             const char *app_display_name,
@@ -392,7 +403,7 @@ struct FfiResult manymatrix_register_pusher(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_send_text(ManyMatrixClient *handle,
+struct FfiResult manymatrix_send_text(struct ManyMatrixClient *handle,
                                       const char *room_id,
                                       const char *body);
 
@@ -403,7 +414,7 @@ struct FfiResult manymatrix_send_text(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_send_html(ManyMatrixClient *handle,
+struct FfiResult manymatrix_send_html(struct ManyMatrixClient *handle,
                                       const char *room_id,
                                       const char *body,
                                       const char *html);
@@ -415,7 +426,7 @@ struct FfiResult manymatrix_send_html(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_send_notice(ManyMatrixClient *handle,
+struct FfiResult manymatrix_send_notice(struct ManyMatrixClient *handle,
                                         const char *room_id,
                                         const char *body);
 
@@ -426,7 +437,7 @@ struct FfiResult manymatrix_send_notice(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_send_emote(ManyMatrixClient *handle,
+struct FfiResult manymatrix_send_emote(struct ManyMatrixClient *handle,
                                        const char *room_id,
                                        const char *body);
 
@@ -437,7 +448,7 @@ struct FfiResult manymatrix_send_emote(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_edit_message(ManyMatrixClient *handle,
+struct FfiResult manymatrix_edit_message(struct ManyMatrixClient *handle,
                                          const char *room_id,
                                          const char *event_id,
                                          const char *new_body);
@@ -449,7 +460,7 @@ struct FfiResult manymatrix_edit_message(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_reply_to(ManyMatrixClient *handle,
+struct FfiResult manymatrix_reply_to(struct ManyMatrixClient *handle,
                                      const char *room_id,
                                      const char *event_id,
                                      const char *body);
@@ -461,7 +472,7 @@ struct FfiResult manymatrix_reply_to(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_send_reaction(ManyMatrixClient *handle,
+struct FfiResult manymatrix_send_reaction(struct ManyMatrixClient *handle,
                                           const char *room_id,
                                           const char *event_id,
                                           const char *key);
@@ -473,7 +484,7 @@ struct FfiResult manymatrix_send_reaction(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer. `reason` may be null.
  */
 
-struct FfiResult manymatrix_redact(ManyMatrixClient *handle,
+struct FfiResult manymatrix_redact(struct ManyMatrixClient *handle,
                                    const char *room_id,
                                    const char *event_id,
                                    const char *reason);
@@ -485,7 +496,7 @@ struct FfiResult manymatrix_redact(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_send_thread_reply(ManyMatrixClient *handle,
+struct FfiResult manymatrix_send_thread_reply(struct ManyMatrixClient *handle,
                                               const char *room_id,
                                               const char *thread_root_id,
                                               const char *body);
@@ -497,7 +508,7 @@ struct FfiResult manymatrix_send_thread_reply(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_send_read_receipt(ManyMatrixClient *handle,
+struct FfiResult manymatrix_send_read_receipt(struct ManyMatrixClient *handle,
                                               const char *room_id,
                                               const char *event_id);
 
@@ -510,7 +521,7 @@ struct FfiResult manymatrix_send_read_receipt(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_send_typing(ManyMatrixClient *handle,
+struct FfiResult manymatrix_send_typing(struct ManyMatrixClient *handle,
                                         const char *room_id,
                                         bool typing);
 
@@ -524,7 +535,7 @@ struct FfiResult manymatrix_send_typing(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer. `from_token` may be null.
  */
 
-struct FfiResult manymatrix_get_messages(ManyMatrixClient *handle,
+struct FfiResult manymatrix_get_messages(struct ManyMatrixClient *handle,
                                          const char *room_id,
                                          const char *from_token,
                                          uint32_t limit);
@@ -538,7 +549,7 @@ struct FfiResult manymatrix_get_messages(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer. `name` and `topic` may be null.
  */
 
-struct FfiResult manymatrix_create_room(ManyMatrixClient *handle,
+struct FfiResult manymatrix_create_room(struct ManyMatrixClient *handle,
                                         const char *name,
                                         const char *topic);
 
@@ -550,7 +561,9 @@ struct FfiResult manymatrix_create_room(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer. `room_id_or_alias` must be valid UTF-8.
  */
- struct FfiResult manymatrix_join_room(ManyMatrixClient *handle, const char *room_id_or_alias);
+
+struct FfiResult manymatrix_join_room(struct ManyMatrixClient *handle,
+                                      const char *room_id_or_alias);
 
 /**
  * Invite a user to a room.
@@ -559,7 +572,7 @@ struct FfiResult manymatrix_create_room(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
 
-struct FfiResult manymatrix_invite(ManyMatrixClient *handle,
+struct FfiResult manymatrix_invite(struct ManyMatrixClient *handle,
                                    const char *room_id,
                                    const char *user_id);
 
@@ -569,7 +582,7 @@ struct FfiResult manymatrix_invite(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_leave_room(ManyMatrixClient *handle, const char *room_id);
+ struct FfiResult manymatrix_leave_room(struct ManyMatrixClient *handle, const char *room_id);
 
 /**
  * Kick a user from a room with optional reason.
@@ -578,7 +591,7 @@ struct FfiResult manymatrix_invite(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer. `reason` may be null.
  */
 
-struct FfiResult manymatrix_kick(ManyMatrixClient *handle,
+struct FfiResult manymatrix_kick(struct ManyMatrixClient *handle,
                                  const char *room_id,
                                  const char *user_id,
                                  const char *reason);
@@ -590,7 +603,7 @@ struct FfiResult manymatrix_kick(ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer. `reason` may be null.
  */
 
-struct FfiResult manymatrix_ban(ManyMatrixClient *handle,
+struct FfiResult manymatrix_ban(struct ManyMatrixClient *handle,
                                 const char *room_id,
                                 const char *user_id,
                                 const char *reason);
@@ -601,7 +614,7 @@ struct FfiResult manymatrix_ban(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_room_name(ManyMatrixClient *handle, const char *room_id);
+ struct FfiResult manymatrix_room_name(struct ManyMatrixClient *handle, const char *room_id);
 
 /**
  * Get the room's topic, or null data if not set.
@@ -609,7 +622,7 @@ struct FfiResult manymatrix_ban(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_room_topic(ManyMatrixClient *handle, const char *room_id);
+ struct FfiResult manymatrix_room_topic(struct ManyMatrixClient *handle, const char *room_id);
 
 /**
  * Get the room's avatar URL (mxc:// URI), or null data if not set.
@@ -617,7 +630,7 @@ struct FfiResult manymatrix_ban(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_room_avatar_url(ManyMatrixClient *handle, const char *room_id);
+ struct FfiResult manymatrix_room_avatar_url(struct ManyMatrixClient *handle, const char *room_id);
 
 /**
  * Get the list of joined member user IDs for a room as a JSON array.
@@ -625,6 +638,6 @@ struct FfiResult manymatrix_ban(ManyMatrixClient *handle,
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
  */
- struct FfiResult manymatrix_room_members(ManyMatrixClient *handle, const char *room_id);
+ struct FfiResult manymatrix_room_members(struct ManyMatrixClient *handle, const char *room_id);
 
 #endif  /* MANYMATRIX_FFI_H */

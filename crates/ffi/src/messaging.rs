@@ -1,7 +1,6 @@
 use std::ffi::c_char;
 
-use manymatrix_core::ManyMatrixClient;
-
+use crate::client::{client_from_handle, ManyMatrixClient};
 use crate::types::FfiResult;
 use crate::{optional_str_from_ptr, str_from_ptr, RUNTIME};
 
@@ -15,7 +14,7 @@ pub unsafe extern "C" fn manymatrix_send_text(
     room_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let body = str_from_ptr(body);
     match RUNTIME.block_on(client.send_text(room_id, body)) {
@@ -35,7 +34,7 @@ pub unsafe extern "C" fn manymatrix_send_html(
     body: *const c_char,
     html: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let body = str_from_ptr(body);
     let html = str_from_ptr(html);
@@ -55,7 +54,7 @@ pub unsafe extern "C" fn manymatrix_send_notice(
     room_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let body = str_from_ptr(body);
     match RUNTIME.block_on(client.send_notice(room_id, body)) {
@@ -74,7 +73,7 @@ pub unsafe extern "C" fn manymatrix_send_emote(
     room_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let body = str_from_ptr(body);
     match RUNTIME.block_on(client.send_emote(room_id, body)) {
@@ -94,7 +93,7 @@ pub unsafe extern "C" fn manymatrix_edit_message(
     event_id: *const c_char,
     new_body: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let event_id = str_from_ptr(event_id);
     let new_body = str_from_ptr(new_body);
@@ -115,7 +114,7 @@ pub unsafe extern "C" fn manymatrix_reply_to(
     event_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let event_id = str_from_ptr(event_id);
     let body = str_from_ptr(body);
@@ -136,7 +135,7 @@ pub unsafe extern "C" fn manymatrix_send_reaction(
     event_id: *const c_char,
     key: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let event_id = str_from_ptr(event_id);
     let key = str_from_ptr(key);
@@ -157,7 +156,7 @@ pub unsafe extern "C" fn manymatrix_redact(
     event_id: *const c_char,
     reason: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let event_id = str_from_ptr(event_id);
     let reason = optional_str_from_ptr(reason);
@@ -178,7 +177,7 @@ pub unsafe extern "C" fn manymatrix_send_thread_reply(
     thread_root_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let thread_root_id = str_from_ptr(thread_root_id);
     let body = str_from_ptr(body);
@@ -198,7 +197,7 @@ pub unsafe extern "C" fn manymatrix_send_read_receipt(
     room_id: *const c_char,
     event_id: *const c_char,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let event_id = str_from_ptr(event_id);
     match RUNTIME.block_on(client.send_read_receipt(room_id, event_id)) {
@@ -219,7 +218,7 @@ pub unsafe extern "C" fn manymatrix_send_typing(
     room_id: *const c_char,
     typing: bool,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     match RUNTIME.block_on(client.send_typing(room_id, typing)) {
         Ok(()) => FfiResult::success_void(),
@@ -241,7 +240,7 @@ pub unsafe extern "C" fn manymatrix_get_messages(
     from_token: *const c_char,
     limit: u32,
 ) -> FfiResult {
-    let client = &*handle;
+    let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let from_token = optional_str_from_ptr(from_token);
     match RUNTIME.block_on(client.get_messages(room_id, from_token, limit)) {

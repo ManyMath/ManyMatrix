@@ -61,7 +61,7 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
 
         let r = manymatrix_ffi::manymatrix_new(url.as_ptr(), path.as_ptr());
         assert_ok(&r);
-        let h = r.data as *mut manymatrix_core::ManyMatrixClient;
+        let h = r.data as *mut manymatrix_ffi::ManyMatrixClient;
 
         let u = cstr("alice_ffi");
         let p = cstr("password1");
@@ -131,7 +131,7 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
         let ap = cstr(&alice_path);
         let r = manymatrix_ffi::manymatrix_new(url.as_ptr(), ap.as_ptr());
         assert_ok(&r);
-        let alice = r.data as *mut manymatrix_core::ManyMatrixClient;
+        let alice = r.data as *mut manymatrix_ffi::ManyMatrixClient;
         let r = manymatrix_ffi::manymatrix_login(
             alice,
             cstr("alice_ffi2").as_ptr(),
@@ -143,7 +143,7 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
         let bp = cstr(&bob_path);
         let r = manymatrix_ffi::manymatrix_new(url.as_ptr(), bp.as_ptr());
         assert_ok(&r);
-        let bob = r.data as *mut manymatrix_core::ManyMatrixClient;
+        let bob = r.data as *mut manymatrix_ffi::ManyMatrixClient;
         let r = manymatrix_ffi::manymatrix_login(
             bob,
             cstr("bob_ffi2").as_ptr(),
@@ -241,7 +241,7 @@ async fn ffi_whoami(kind: ServerKind) -> Result<()> {
 
         let r = manymatrix_ffi::manymatrix_new(url.as_ptr(), path.as_ptr());
         assert_ok(&r);
-        let handle = r.data as *mut manymatrix_core::ManyMatrixClient;
+        let handle = r.data as *mut manymatrix_ffi::ManyMatrixClient;
 
         let user = cstr("alice_ffi_whoami");
         let pass = cstr("password1");
