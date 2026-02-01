@@ -1,4 +1,68 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// Matrix homeserver version and capability signals.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerCapabilities {
+    pub homeserver: String,
+    pub versions: Vec<String>,
+    pub unstable_features: BTreeMap<String, bool>,
+    pub raw_versions: Value,
+    pub raw_capabilities: Value,
+    pub capabilities_authenticated: bool,
+    pub supports_authenticated_media: bool,
+    pub supports_refresh_tokens: bool,
+}
+
+impl ServerCapabilities {
+    pub fn from_raw(
+        homeserver: String,
+        versions: Vec<String>,
+        unstable_features: BTreeMap<String, bool>,
+        raw_versions: Value,
+        raw_capabilities: Option<Value>,
+    ) -> Self {
+        let supports_authenticated_media = supports_matrix_version(&versions, 1, 11)
+            || unstable_feature_enabled(&unstable_features, "org.matrix.msc3916")
+            || unstable_feature_enabled(&unstable_features, "org.matrix.msc3916.stable");
+        let supports_refresh_tokens = supports_matrix_version(&versions, 1, 3)
+            || unstable_feature_enabled(&unstable_features, "org.matrix.msc2918")
+            || unstable_feature_enabled(&unstable_features, "org.matrix.msc2918.stable")
+            || unstable_feature_enabled(&unstable_features, "org.matrix.msc2918.refresh_token");
+        let capabilities_authenticated = raw_capabilities.is_some();
+
+        Self {
+            homeserver,
+            versions,
+            unstable_features,
+            raw_versions,
+            raw_capabilities: raw_capabilities.unwrap_or(Value::Null),
+            capabilities_authenticated,
+            supports_authenticated_media,
+            supports_refresh_tokens,
+        }
+    }
+}
+
+fn unstable_feature_enabled(features: &BTreeMap<String, bool>, key: &str) -> bool {
+    features.get(key).copied().unwrap_or(false)
+}
+
+fn supports_matrix_version(versions: &[String], required_major: u64, required_minor: u64) -> bool {
+    versions.iter().any(|version| {
+        parse_matrix_version(version).is_some_and(|(major, minor)| {
+            major > required_major || (major == required_major && minor >= required_minor)
+        })
+    })
+}
+
+fn parse_matrix_version(version: &str) -> Option<(u64, u64)> {
+    let version = version.strip_prefix('v')?;
+    let (major, minor) = version.split_once('.')?;
+    Some((major.parse().ok()?, minor.parse().ok()?))
+}
 
 /// Summary of a joined room for display in room lists.
 #[derive(Debug, Clone, Serialize, Deserialize)]

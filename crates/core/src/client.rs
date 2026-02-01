@@ -30,7 +30,7 @@ use tracing::info;
 use crate::session::StoredSession;
 use crate::types::{
     CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent, ReceiptEvent,
-    RoomSummary, RoomVisibility, SasEmoji, SasEmojis,
+    RoomSummary, RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
 };
 use crate::Error;
 
@@ -84,6 +84,31 @@ impl ManyMatrixClient {
     pub async fn restore(&self, session: &StoredSession) -> Result<(), Error> {
         self.client.restore_session(session.session.clone()).await?;
         Ok(())
+    }
+
+    /// Probe Matrix version and capability support for this homeserver.
+    pub async fn server_capabilities(&self) -> Result<ServerCapabilities, Error> {
+        let versions_response = self.client.fetch_server_versions(None).await?;
+        let versions = versions_response.versions.clone();
+        let unstable_features = versions_response.unstable_features.clone();
+        let raw_versions = serde_json::json!({
+            "versions": versions.clone(),
+            "unstable_features": unstable_features.clone(),
+        });
+        let raw_capabilities = if self.client.session().is_some() {
+            let capabilities = self.client.get_capabilities().await?;
+            Some(serde_json::to_value(&capabilities)?)
+        } else {
+            None
+        };
+
+        Ok(ServerCapabilities::from_raw(
+            self.client.homeserver().to_string(),
+            versions,
+            unstable_features,
+            raw_versions,
+            raw_capabilities,
+        ))
     }
 
     /// Run the sync loop, printing incoming messages to the log.
