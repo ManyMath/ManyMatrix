@@ -64,6 +64,31 @@ fn parse_matrix_version(version: &str) -> Option<(u64, u64)> {
     Some((major.parse().ok()?, minor.parse().ok()?))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_capabilities_serializes_version_and_support_booleans() {
+        let capabilities = ServerCapabilities::from_raw(
+            "http://localhost:8008".to_owned(),
+            vec!["v1.1".to_owned(), "v1.11".to_owned()],
+            BTreeMap::new(),
+            serde_json::json!({
+                "versions": ["v1.1", "v1.11"],
+                "unstable_features": {}
+            }),
+            None,
+        );
+
+        let json = serde_json::to_value(&capabilities).unwrap();
+        assert!(json.get("versions").is_some());
+        assert_eq!(json["supports_authenticated_media"], true);
+        assert_eq!(json["supports_refresh_tokens"], true);
+        assert_eq!(json["capabilities_authenticated"], false);
+    }
+}
+
 /// Summary of a joined room for display in room lists.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomSummary {

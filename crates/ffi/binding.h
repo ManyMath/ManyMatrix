@@ -172,6 +172,14 @@ struct FfiResult manymatrix_login(struct ManyMatrixClient *handle,
  struct FfiResult manymatrix_joined_rooms(struct ManyMatrixClient *handle);
 
 /**
+ * Get Matrix server version and capability data as JSON.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+ struct FfiResult manymatrix_server_capabilities(struct ManyMatrixClient *handle);
+
+/**
  * Logout: invalidate server token and delete local state.
  *
  * # Safety

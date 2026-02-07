@@ -11,8 +11,9 @@ use test_harness::compat::{
 use test_harness::{ServerKind, TestHomeserver};
 use tracing_subscriber::EnvFilter;
 
-const REQUIRED_BEHAVIORS: [&str; 7] = [
+const REQUIRED_BEHAVIORS: [&str; 8] = [
     "auth",
+    "capabilities",
     "sync",
     "rooms",
     "messaging",
@@ -73,6 +74,7 @@ fn compiled_server_kinds() -> Vec<ServerKind> {
 async fn run_behavior_matrix(server: &TestHomeserver) -> Vec<BehaviorResult> {
     vec![
         capture_behavior("auth", || auth_behavior(server)).await,
+        capture_behavior("capabilities", || capabilities_behavior(server)).await,
         capture_behavior("sync", || sync_behavior(server)).await,
         capture_behavior("rooms", || rooms_behavior(server)).await,
         capture_behavior("messaging", || messaging_behavior(server)).await,
@@ -91,6 +93,28 @@ where
         Ok(details) => BehaviorResult::pass(behavior, details),
         Err(error) => BehaviorResult::fail(behavior, format!("{error:#}")),
     }
+}
+
+async fn capabilities_behavior(server: &TestHomeserver) -> Result<String> {
+    let _user = server
+        .register_user("compat_caps", "compat_caps_pass")
+        .await?;
+    let store = tempfile::tempdir()?;
+    let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
+    client.login("compat_caps", "compat_caps_pass").await?;
+
+    let capabilities = client.server_capabilities().await?;
+    if capabilities.versions.is_empty() {
+        bail!("server_capabilities returned no Matrix versions");
+    }
+
+    Ok(format!(
+        "capability probe read versions={:?}, capabilities_authenticated={}, supports_authenticated_media={}, supports_refresh_tokens={}",
+        capabilities.versions,
+        capabilities.capabilities_authenticated,
+        capabilities.supports_authenticated_media,
+        capabilities.supports_refresh_tokens
+    ))
 }
 
 async fn auth_behavior(server: &TestHomeserver) -> Result<String> {

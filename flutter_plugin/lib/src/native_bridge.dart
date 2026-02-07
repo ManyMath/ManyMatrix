@@ -66,7 +66,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     _mainBindings = ManyMatrixBindings(lib);
 
     // Set up NativeFinalizer using the manymatrix_free function pointer
-    final freePtr = lib.lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ManyMatrixClient>)>>(
+    final freePtr = lib.lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ManyMatrixClient>)>>(
       'manymatrix_free',
     );
     _finalizer = ffi.NativeFinalizer(freePtr.cast());
@@ -121,6 +122,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
       case 'sync_forever':
         return _execHandleOnly(bindings, method, args);
       case 'joined_rooms':
+        return _execHandleOnly(bindings, method, args);
+      case 'server_capabilities':
         return _execHandleOnly(bindings, method, args);
       case 'logout':
         return _execHandleOnly(bindings, method, args);
@@ -203,7 +206,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
 
   // --- FFI dispatch helpers ---
 
-  static int _execClientNew(ManyMatrixBindings bindings, Map<String, dynamic> args) {
+  static int _execClientNew(
+      ManyMatrixBindings bindings, Map<String, dynamic> args) {
     final url = (args['homeserver_url'] as String).toNativeUtf8();
     final path = (args['store_path'] as String).toNativeUtf8();
     try {
@@ -222,7 +226,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     String method,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final FfiResult result;
     switch (method) {
       case 'sync_once':
@@ -231,6 +236,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         result = bindings.manymatrix_sync_forever(handle);
       case 'joined_rooms':
         result = bindings.manymatrix_joined_rooms(handle);
+      case 'server_capabilities':
+        result = bindings.manymatrix_server_capabilities(handle);
       case 'logout':
         result = bindings.manymatrix_logout(handle);
       case 'sync_token':
@@ -250,14 +257,17 @@ class ManyMatrixBridge implements ffi.Finalizable {
     String method,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     switch (method) {
       case 'login':
         final username = (args['username'] as String).toNativeUtf8();
         final password = (args['password'] as String).toNativeUtf8();
         try {
           final result = bindings.manymatrix_login(
-            handle, username.cast(), password.cast(),
+            handle,
+            username.cast(),
+            password.cast(),
           );
           return _extractStringResult(bindings, result);
         } finally {
@@ -267,7 +277,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
       case 'restore':
         final sessionJson = (args['session_json'] as String).toNativeUtf8();
         try {
-          final result = bindings.manymatrix_restore(handle, sessionJson.cast());
+          final result =
+              bindings.manymatrix_restore(handle, sessionJson.cast());
           return _extractStringResult(bindings, result);
         } finally {
           calloc.free(sessionJson);
@@ -282,7 +293,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     String method,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final s1 = (args['s1'] as String).toNativeUtf8();
     try {
       final FfiResult result;
@@ -317,7 +329,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     String method,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final s1 = (args['s1'] as String).toNativeUtf8();
     final s2 = (args['s2'] as String).toNativeUtf8();
     try {
@@ -328,21 +341,28 @@ class ManyMatrixBridge implements ffi.Finalizable {
         case 'send_text':
           result = bindings.manymatrix_send_text(handle, s1.cast(), s2.cast());
         case 'send_notice':
-          result = bindings.manymatrix_send_notice(handle, s1.cast(), s2.cast());
+          result =
+              bindings.manymatrix_send_notice(handle, s1.cast(), s2.cast());
         case 'send_emote':
           result = bindings.manymatrix_send_emote(handle, s1.cast(), s2.cast());
         case 'send_read_receipt':
-          result = bindings.manymatrix_send_read_receipt(handle, s1.cast(), s2.cast());
+          result = bindings.manymatrix_send_read_receipt(
+              handle, s1.cast(), s2.cast());
         case 'start_verification':
-          result = bindings.manymatrix_start_verification(handle, s1.cast(), s2.cast());
+          result = bindings.manymatrix_start_verification(
+              handle, s1.cast(), s2.cast());
         case 'accept_verification':
-          result = bindings.manymatrix_accept_verification(handle, s1.cast(), s2.cast());
+          result = bindings.manymatrix_accept_verification(
+              handle, s1.cast(), s2.cast());
         case 'get_sas_emojis':
-          result = bindings.manymatrix_get_sas_emojis(handle, s1.cast(), s2.cast());
+          result =
+              bindings.manymatrix_get_sas_emojis(handle, s1.cast(), s2.cast());
         case 'confirm_sas':
-          result = bindings.manymatrix_confirm_sas(handle, s1.cast(), s2.cast());
+          result =
+              bindings.manymatrix_confirm_sas(handle, s1.cast(), s2.cast());
         case 'cancel_verification':
-          result = bindings.manymatrix_cancel_verification(handle, s1.cast(), s2.cast());
+          result = bindings.manymatrix_cancel_verification(
+              handle, s1.cast(), s2.cast());
         default:
           throw Exception('Unknown two-string method: $method');
       }
@@ -358,7 +378,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     String method,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final s1 = (args['s1'] as String).toNativeUtf8();
     final s2 = (args['s2'] as String).toNativeUtf8();
     final s3 = (args['s3'] as String).toNativeUtf8();
@@ -367,19 +388,31 @@ class ManyMatrixBridge implements ffi.Finalizable {
       switch (method) {
         case 'edit_message':
           result = bindings.manymatrix_edit_message(
-            handle, s1.cast(), s2.cast(), s3.cast(),
+            handle,
+            s1.cast(),
+            s2.cast(),
+            s3.cast(),
           );
         case 'reply_to':
           result = bindings.manymatrix_reply_to(
-            handle, s1.cast(), s2.cast(), s3.cast(),
+            handle,
+            s1.cast(),
+            s2.cast(),
+            s3.cast(),
           );
         case 'send_reaction':
           result = bindings.manymatrix_send_reaction(
-            handle, s1.cast(), s2.cast(), s3.cast(),
+            handle,
+            s1.cast(),
+            s2.cast(),
+            s3.cast(),
           );
         case 'send_thread_reply':
           result = bindings.manymatrix_send_thread_reply(
-            handle, s1.cast(), s2.cast(), s3.cast(),
+            handle,
+            s1.cast(),
+            s2.cast(),
+            s3.cast(),
           );
         default:
           throw Exception('Unknown three-string method: $method');
@@ -396,14 +429,17 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final name = args['name'] as String?;
     final topic = args['topic'] as String?;
     final namePtr = name?.toNativeUtf8() ?? ffi.nullptr;
     final topicPtr = topic?.toNativeUtf8() ?? ffi.nullptr;
     try {
       final result = bindings.manymatrix_create_room(
-        handle, namePtr.cast(), topicPtr.cast(),
+        handle,
+        namePtr.cast(),
+        topicPtr.cast(),
       );
       return _extractStringResult(bindings, result);
     } finally {
@@ -417,7 +453,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     String method,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final roomId = (args['s1'] as String).toNativeUtf8();
     final userId = (args['s2'] as String).toNativeUtf8();
     final reason = args['reason'] as String?;
@@ -426,11 +463,17 @@ class ManyMatrixBridge implements ffi.Finalizable {
       final FfiResult result;
       if (method == 'kick') {
         result = bindings.manymatrix_kick(
-          handle, roomId.cast(), userId.cast(), reasonPtr.cast(),
+          handle,
+          roomId.cast(),
+          userId.cast(),
+          reasonPtr.cast(),
         );
       } else {
         result = bindings.manymatrix_ban(
-          handle, roomId.cast(), userId.cast(), reasonPtr.cast(),
+          handle,
+          roomId.cast(),
+          userId.cast(),
+          reasonPtr.cast(),
         );
       }
       return _extractStringResult(bindings, result);
@@ -445,13 +488,17 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final roomId = (args['s1'] as String).toNativeUtf8();
     final body = (args['s2'] as String).toNativeUtf8();
     final html = (args['s3'] as String).toNativeUtf8();
     try {
       final result = bindings.manymatrix_send_html(
-        handle, roomId.cast(), body.cast(), html.cast(),
+        handle,
+        roomId.cast(),
+        body.cast(),
+        html.cast(),
       );
       return _extractStringResult(bindings, result);
     } finally {
@@ -465,14 +512,18 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final roomId = (args['s1'] as String).toNativeUtf8();
     final eventId = (args['s2'] as String).toNativeUtf8();
     final reason = args['reason'] as String?;
     final reasonPtr = reason?.toNativeUtf8() ?? ffi.nullptr;
     try {
       final result = bindings.manymatrix_redact(
-        handle, roomId.cast(), eventId.cast(), reasonPtr.cast(),
+        handle,
+        roomId.cast(),
+        eventId.cast(),
+        reasonPtr.cast(),
       );
       return _extractStringResult(bindings, result);
     } finally {
@@ -486,12 +537,15 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final roomId = (args['s1'] as String).toNativeUtf8();
     final typing = args['typing'] as bool;
     try {
       final result = bindings.manymatrix_send_typing(
-        handle, roomId.cast(), typing,
+        handle,
+        roomId.cast(),
+        typing,
       );
       return _extractStringResult(bindings, result);
     } finally {
@@ -503,14 +557,18 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final roomId = (args['s1'] as String).toNativeUtf8();
     final fromToken = args['from_token'] as String?;
     final fromTokenPtr = fromToken?.toNativeUtf8() ?? ffi.nullptr;
     final limit = args['limit'] as int;
     try {
       final result = bindings.manymatrix_get_messages(
-        handle, roomId.cast(), fromTokenPtr.cast(), limit,
+        handle,
+        roomId.cast(),
+        fromTokenPtr.cast(),
+        limit,
       );
       return _extractStringResult(bindings, result);
     } finally {
@@ -523,7 +581,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final roomId = (args['room_id'] as String).toNativeUtf8();
     final filename = (args['filename'] as String).toNativeUtf8();
     final mimeType = (args['mime_type'] as String).toNativeUtf8();
@@ -534,8 +593,12 @@ class ManyMatrixBridge implements ffi.Finalizable {
     }
     try {
       final result = bindings.manymatrix_upload_media(
-        handle, roomId.cast(), filename.cast(), mimeType.cast(),
-        dataPtr, dataBytes.length,
+        handle,
+        roomId.cast(),
+        filename.cast(),
+        mimeType.cast(),
+        dataPtr,
+        dataBytes.length,
       );
       return _extractStringResult(bindings, result);
     } finally {
@@ -550,7 +613,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final mxcUri = (args['mxc_uri'] as String).toNativeUtf8();
     try {
       final result = bindings.manymatrix_download_media(handle, mxcUri.cast());
@@ -571,13 +635,17 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final mxcUri = (args['mxc_uri'] as String).toNativeUtf8();
     final width = args['width'] as int;
     final height = args['height'] as int;
     try {
       final result = bindings.manymatrix_get_thumbnail(
-        handle, mxcUri.cast(), width, height,
+        handle,
+        mxcUri.cast(),
+        width,
+        height,
       );
       _checkResult(bindings, result);
       if (result.data == ffi.nullptr) return null;
@@ -596,18 +664,24 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
   ) {
-    final handle = ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
     final appId = (args['app_id'] as String).toNativeUtf8();
     final pushKey = (args['push_key'] as String).toNativeUtf8();
     final appDisplayName = (args['app_display_name'] as String).toNativeUtf8();
-    final deviceDisplayName = (args['device_display_name'] as String).toNativeUtf8();
+    final deviceDisplayName =
+        (args['device_display_name'] as String).toNativeUtf8();
     final pushUrl = (args['push_url'] as String).toNativeUtf8();
     final lang = (args['lang'] as String).toNativeUtf8();
     try {
       final result = bindings.manymatrix_register_pusher(
         handle,
-        appId.cast(), pushKey.cast(), appDisplayName.cast(),
-        deviceDisplayName.cast(), pushUrl.cast(), lang.cast(),
+        appId.cast(),
+        pushKey.cast(),
+        appDisplayName.cast(),
+        deviceDisplayName.cast(),
+        pushUrl.cast(),
+        lang.cast(),
       );
       return _extractStringResult(bindings, result);
     } finally {
@@ -717,6 +791,12 @@ class ManyMatrixBridge implements ffi.Finalizable {
         .toList();
   }
 
+  /// Get Matrix server version and capability data as JSON.
+  Future<String> serverCapabilities() async {
+    final result = await _call('server_capabilities', {});
+    return result as String;
+  }
+
   /// Logout and invalidate the server token.
   Future<void> logout() async {
     await _call('logout', {});
@@ -791,7 +871,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Send a formatted HTML message. Returns event ID.
   Future<String> sendHtml(String roomId, String body, String html) async {
     final result = await _call('send_html', {
-      's1': roomId, 's2': body, 's3': html,
+      's1': roomId,
+      's2': body,
+      's3': html,
     });
     return result as String;
   }
@@ -809,14 +891,17 @@ class ManyMatrixBridge implements ffi.Finalizable {
   }
 
   /// Edit a previously sent message.
-  Future<void> editMessage(String roomId, String eventId, String newBody) async {
+  Future<void> editMessage(
+      String roomId, String eventId, String newBody) async {
     await _call('edit_message', {'s1': roomId, 's2': eventId, 's3': newBody});
   }
 
   /// Reply to a message. Returns event ID.
   Future<String> replyTo(String roomId, String eventId, String body) async {
     final result = await _call('reply_to', {
-      's1': roomId, 's2': eventId, 's3': body,
+      's1': roomId,
+      's2': eventId,
+      's3': body,
     });
     return result as String;
   }
@@ -824,7 +909,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Send a reaction emoji to an event. Returns event ID.
   Future<String> sendReaction(String roomId, String eventId, String key) async {
     final result = await _call('send_reaction', {
-      's1': roomId, 's2': eventId, 's3': key,
+      's1': roomId,
+      's2': eventId,
+      's3': key,
     });
     return result as String;
   }
@@ -841,7 +928,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
     String body,
   ) async {
     final result = await _call('send_thread_reply', {
-      's1': roomId, 's2': threadRootId, 's3': body,
+      's1': roomId,
+      's2': threadRootId,
+      's3': body,
     });
     return result as String;
   }
@@ -883,7 +972,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Start SAS device verification. Returns flow ID.
   Future<String> startVerification(String userId, String deviceId) async {
     final result = await _call('start_verification', {
-      's1': userId, 's2': deviceId,
+      's1': userId,
+      's2': deviceId,
     });
     return result as String;
   }
@@ -896,7 +986,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Get SAS emojis for visual comparison. Returns JSON string.
   Future<String> getSasEmojis(String userId, String flowId) async {
     final result = await _call('get_sas_emojis', {
-      's1': userId, 's2': flowId,
+      's1': userId,
+      's2': flowId,
     });
     return result as String;
   }
@@ -993,7 +1084,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
   ///
   /// The callback receives a JSON-serialized MessageEvent string.
   void onMessage(void Function(String json) callback) {
-    final nativeCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
+    final nativeCallable =
+        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
       (ffi.Pointer<ffi.Char> ptr) {
         final json = ptr.cast<Utf8>().toDartString();
         callback(json);
@@ -1003,28 +1095,35 @@ class ManyMatrixBridge implements ffi.Finalizable {
     // Keep reference to prevent GC
     _messageCallable = nativeCallable;
   }
-  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>? _messageCallable;
+
+  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
+      _messageCallable;
 
   /// Register a callback for incoming reaction events.
   ///
   /// The callback receives a JSON-serialized ReactionEvent string.
   void onReaction(void Function(String json) callback) {
-    final nativeCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
+    final nativeCallable =
+        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
       (ffi.Pointer<ffi.Char> ptr) {
         final json = ptr.cast<Utf8>().toDartString();
         callback(json);
       },
     );
-    _mainBindings.manymatrix_on_reaction(_handle, nativeCallable.nativeFunction);
+    _mainBindings.manymatrix_on_reaction(
+        _handle, nativeCallable.nativeFunction);
     _reactionCallable = nativeCallable;
   }
-  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>? _reactionCallable;
+
+  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
+      _reactionCallable;
 
   /// Register a callback for incoming read receipt events.
   ///
   /// The callback receives a JSON-serialized ReceiptEvent string.
   void onReceipt(void Function(String json) callback) {
-    final nativeCallable = ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
+    final nativeCallable =
+        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
       (ffi.Pointer<ffi.Char> ptr) {
         final json = ptr.cast<Utf8>().toDartString();
         callback(json);
@@ -1033,7 +1132,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
     _mainBindings.manymatrix_on_receipt(_handle, nativeCallable.nativeFunction);
     _receiptCallable = nativeCallable;
   }
-  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>? _receiptCallable;
+
+  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
+      _receiptCallable;
 
   /// Dispose the client, freeing native resources.
   ///

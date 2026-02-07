@@ -279,6 +279,26 @@ class ManyMatrixBindings {
   late final _manymatrix_joined_rooms = _manymatrix_joined_roomsPtr
       .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
 
+  /// Get Matrix server version and capability data as JSON.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_server_capabilities(
+    ffi.Pointer<ManyMatrixClient> handle,
+  ) {
+    return _manymatrix_server_capabilities(
+      handle,
+    );
+  }
+
+  late final _manymatrix_server_capabilitiesPtr = _lookup<
+          ffi
+          .NativeFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>>(
+      'manymatrix_server_capabilities');
+  late final _manymatrix_server_capabilities =
+      _manymatrix_server_capabilitiesPtr
+          .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
+
   /// Logout: invalidate server token and delete local state.
   ///
   /// # Safety

@@ -134,6 +134,50 @@ async fn login_and_sync(kind: ServerKind) -> Result<()> {
 
 test_harness::e2e_test!(login_and_sync);
 
+/// Server version/capability data is exposed as structured values after login.
+async fn server_capability_data_is_serializable(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+
+    let run_result = async {
+        let _user = server
+            .register_user("capability_user", "capability_pass")
+            .await?;
+
+        let store = tempfile::tempdir()?;
+        let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
+        client.login("capability_user", "capability_pass").await?;
+
+        let capabilities = client.server_capabilities().await?;
+        let json = serde_json::to_value(&capabilities)?;
+
+        assert!(
+            json.get("versions")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|versions| !versions.is_empty()),
+            "capability JSON should contain non-empty versions: {json}"
+        );
+        assert!(
+            json.get("supports_authenticated_media")
+                .and_then(serde_json::Value::as_bool)
+                .is_some(),
+            "capability JSON should contain supports_authenticated_media: {json}"
+        );
+        assert!(
+            json.get("supports_refresh_tokens")
+                .and_then(serde_json::Value::as_bool)
+                .is_some(),
+            "capability JSON should contain supports_refresh_tokens: {json}"
+        );
+
+        Ok(())
+    }
+    .await;
+
+    finalize_server(server, run_result).await
+}
+
+test_harness::e2e_test!(server_capability_data_is_serializable);
+
 #[tokio::test]
 async fn embedded_servers_bind_distinct_ports() -> Result<()> {
     init_tracing();

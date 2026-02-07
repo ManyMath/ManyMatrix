@@ -96,8 +96,10 @@ impl ManyMatrixClient {
             "unstable_features": unstable_features.clone(),
         });
         let raw_capabilities = if self.client.session().is_some() {
-            let capabilities = self.client.get_capabilities().await?;
-            Some(serde_json::to_value(&capabilities)?)
+            match self.client.get_capabilities().await {
+                Ok(capabilities) => Some(serde_json::to_value(&capabilities)?),
+                Err(_) => None,
+            }
         } else {
             None
         };

@@ -127,6 +127,24 @@ pub unsafe extern "C" fn manymatrix_joined_rooms(handle: *mut ManyMatrixClient) 
     }
 }
 
+/// Get Matrix server version and capability data as JSON.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_server_capabilities(
+    handle: *mut ManyMatrixClient,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    match RUNTIME.block_on(client.server_capabilities()) {
+        Ok(capabilities) => match serde_json::to_string(&capabilities) {
+            Ok(json) => FfiResult::success_string(&json),
+            Err(e) => FfiResult::error(&e.to_string()),
+        },
+        Err(e) => FfiResult::error(&e.to_string()),
+    }
+}
+
 /// Logout: invalidate server token and delete local state.
 ///
 /// # Safety

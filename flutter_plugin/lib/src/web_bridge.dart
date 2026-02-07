@@ -37,6 +37,7 @@ class ManyMatrixBridge {
   Future<void> syncOnce() => _unsupported();
   Future<void> syncForever() => _unsupported();
   Future<List<RoomSummary>> joinedRooms() => _unsupported();
+  Future<String> serverCapabilities() => _unsupported();
   Future<void> logout() => _unsupported();
   Future<String?> syncToken() => _unsupported();
   Future<String> createRoom({String? name, String? topic}) => _unsupported();
@@ -68,14 +69,16 @@ class ManyMatrixBridge {
     String roomId,
     String threadRootId,
     String body,
-  ) => _unsupported();
+  ) =>
+      _unsupported();
   Future<void> sendReadReceipt(String roomId, String eventId) => _unsupported();
   Future<void> sendTyping(String roomId, bool typing) => _unsupported();
   Future<PaginatedMessages> getMessages(
     String roomId, {
     String? fromToken,
     int limit = 20,
-  }) => _unsupported();
+  }) =>
+      _unsupported();
   Future<void> enableEncryption(String roomId) => _unsupported();
   Future<String> startVerification(String userId, String deviceId) =>
       _unsupported();
@@ -93,13 +96,15 @@ class ManyMatrixBridge {
     String filename,
     String mimeType,
     Uint8List data,
-  ) => _unsupported();
+  ) =>
+      _unsupported();
   Future<Uint8List?> downloadMedia(String mxcUri) => _unsupported();
   Future<Uint8List?> getThumbnail(
     String mxcUri, {
     int width = 128,
     int height = 128,
-  }) => _unsupported();
+  }) =>
+      _unsupported();
   Future<void> registerPusher({
     required String appId,
     required String pushKey,
@@ -107,7 +112,8 @@ class ManyMatrixBridge {
     required String deviceDisplayName,
     required String pushUrl,
     required String lang,
-  }) => _unsupported();
+  }) =>
+      _unsupported();
 
   void onMessage(void Function(String json) callback) {}
   void onReaction(void Function(String json) callback) {}

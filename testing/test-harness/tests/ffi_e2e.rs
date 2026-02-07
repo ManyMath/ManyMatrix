@@ -73,6 +73,21 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
         let r = manymatrix_ffi::manymatrix_sync_once(h);
         assert_ok(&r);
 
+        let r = manymatrix_ffi::manymatrix_server_capabilities(h);
+        let capabilities = read_string(&r);
+        assert!(
+            capabilities.contains("\"versions\""),
+            "capability JSON should include versions: {capabilities}"
+        );
+        assert!(
+            capabilities.contains("\"supports_authenticated_media\""),
+            "capability JSON should include supports_authenticated_media: {capabilities}"
+        );
+        assert!(
+            capabilities.contains("\"supports_refresh_tokens\""),
+            "capability JSON should include supports_refresh_tokens: {capabilities}"
+        );
+
         let name = cstr("FFI Test Room");
         let r = manymatrix_ffi::manymatrix_create_room(h, name.as_ptr(), std::ptr::null());
         let room_id = read_string(&r);
