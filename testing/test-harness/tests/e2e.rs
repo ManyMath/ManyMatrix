@@ -220,6 +220,11 @@ async fn session_persist_across_restart(kind: ServerKind) -> Result<()> {
     {
         let client = ManyMatrixClient::new(server.base_url(), store_dir.path()).await?;
         let session = client.login("persist_user", "password1").await?;
+        let capabilities = client.server_capabilities().await?;
+        assert!(
+            !capabilities.versions.is_empty(),
+            "server_capabilities should expose versions after login"
+        );
         session.save(&session_file)?;
         client.sync_once().await?;
     }
@@ -230,6 +235,8 @@ async fn session_persist_across_restart(kind: ServerKind) -> Result<()> {
     let loaded = StoredSession::load(&session_file)?;
     client2.restore(&loaded).await?;
     client2.sync_once().await?;
+    let restored_capabilities = client2.server_capabilities().await?;
+    let _supports_refresh_tokens = restored_capabilities.supports_refresh_tokens;
 
     // Verify we're logged in as the same user
     let rooms = client2.joined_rooms().await;

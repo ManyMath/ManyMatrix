@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
 use matrix_sdk::room::MessagesOptions;
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
@@ -22,7 +23,7 @@ use matrix_sdk::ruma::events::{
     AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
     SyncEphemeralRoomEvent,
 };
-use matrix_sdk::ruma::{DeviceId, EventId, RoomId, RoomOrAliasId, UInt, UserId};
+use matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
 use matrix_sdk::RoomMemberships;
 use matrix_sdk::{Client, Room};
 use tracing::info;
@@ -48,6 +49,7 @@ impl ManyMatrixClient {
         let client = Client::builder()
             .homeserver_url(homeserver_url)
             .sqlite_store(store_path, None)
+            .handle_refresh_tokens()
             .build()
             .await?;
         Ok(Self {
@@ -64,6 +66,7 @@ impl ManyMatrixClient {
             .matrix_auth()
             .login_username(username, password)
             .initial_device_display_name("matrix-rust-client")
+            .request_refresh_token()
             .send()
             .await?;
 
@@ -965,22 +968,17 @@ impl ManyMatrixClient {
 
     /// Download media content by mxc:// URI.
     pub async fn download_media(&self, mxc_uri: &str) -> Result<Vec<u8>, Error> {
-        let (server_name, media_id) = parse_mxc_uri(mxc_uri)?;
-        let access_token = self
-            .client
-            .access_token()
-            .ok_or_else(|| Error::Other("client is not authenticated".into()))?;
-        let url = format!(
-            "{}/_matrix/client/v1/media/download/{server_name}/{media_id}",
-            self.homeserver.trim_end_matches('/')
-        );
-        let response = reqwest::Client::new()
-            .get(url)
-            .bearer_auth(access_token)
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(response.bytes().await?.to_vec())
+        self.client
+            .media()
+            .get_media_content(
+                &MediaRequestParameters {
+                    source: plain_media_source_from_mxc(mxc_uri)?,
+                    format: MediaFormat::File,
+                },
+                true,
+            )
+            .await
+            .map_err(Error::from)
     }
 
     /// Fetch a thumbnail by mxc:// URI at the requested dimensions.
@@ -990,27 +988,20 @@ impl ManyMatrixClient {
         width: u32,
         height: u32,
     ) -> Result<Vec<u8>, Error> {
-        let (server_name, media_id) = parse_mxc_uri(mxc_uri)?;
-        let access_token = self
-            .client
-            .access_token()
-            .ok_or_else(|| Error::Other("client is not authenticated".into()))?;
-        let url = format!(
-            "{}/_matrix/client/v1/media/thumbnail/{server_name}/{media_id}",
-            self.homeserver.trim_end_matches('/')
-        );
-        let response = reqwest::Client::new()
-            .get(url)
-            .query(&[
-                ("method", "scale".to_owned()),
-                ("width", width.to_string()),
-                ("height", height.to_string()),
-            ])
-            .bearer_auth(access_token)
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(response.bytes().await?.to_vec())
+        self.client
+            .media()
+            .get_media_content(
+                &MediaRequestParameters {
+                    source: plain_media_source_from_mxc(mxc_uri)?,
+                    format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(
+                        UInt::from(width),
+                        UInt::from(height),
+                    )),
+                },
+                true,
+            )
+            .await
+            .map_err(Error::from)
     }
 
     /// Register an HTTP pusher for push notifications.
@@ -1061,12 +1052,9 @@ impl ManyMatrixClient {
     }
 }
 
-fn parse_mxc_uri(mxc_uri: &str) -> Result<(&str, &str), Error> {
-    let trimmed = mxc_uri
-        .strip_prefix("mxc://")
-        .ok_or_else(|| Error::IdParse("invalid MXC URI: missing mxc:// prefix".into()))?;
-    let (server_name, media_id) = trimmed
-        .split_once('/')
-        .ok_or_else(|| Error::IdParse("invalid MXC URI: missing media ID".into()))?;
-    Ok((server_name, media_id))
+fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
+    let uri = <&MxcUri>::try_from(mxc_uri)
+        .map_err(|e| Error::IdParse(format!("invalid MXC URI: {e}")))?
+        .to_owned();
+    Ok(MediaSource::Plain(uri))
 }

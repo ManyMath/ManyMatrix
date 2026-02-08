@@ -124,6 +124,11 @@ async fn auth_behavior(server: &TestHomeserver) -> Result<String> {
     let store = tempfile::tempdir()?;
     let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
     let session = client.login("compat_auth", "compat_auth_pass").await?;
+    let refresh_token_status = if session.session.tokens.refresh_token.is_some() {
+        "refresh-token returned"
+    } else {
+        "refresh-token gracefully absent"
+    };
 
     if !session
         .session
@@ -135,7 +140,9 @@ async fn auth_behavior(server: &TestHomeserver) -> Result<String> {
         bail!("login returned unexpected user ID");
     }
 
-    Ok("registered and logged in through ManyMatrixClient".to_owned())
+    Ok(format!(
+        "registered and logged in through ManyMatrixClient; {refresh_token_status}"
+    ))
 }
 
 async fn sync_behavior(server: &TestHomeserver) -> Result<String> {
@@ -244,6 +251,7 @@ async fn media_behavior(server: &TestHomeserver) -> Result<String> {
     let store = tempfile::tempdir()?;
     let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
     client.login("compat_media", "compat_media_pass").await?;
+    let capabilities = client.server_capabilities().await?;
 
     let room_id = client
         .create_room(CreateRoomOptions {
@@ -277,7 +285,10 @@ async fn media_behavior(server: &TestHomeserver) -> Result<String> {
         bail!("downloaded media did not match uploaded bytes");
     }
 
-    Ok("uploaded and downloaded media bytes".to_owned())
+    Ok(format!(
+        "uploaded and downloaded media bytes; supports_authenticated_media={}",
+        capabilities.supports_authenticated_media
+    ))
 }
 
 async fn e2ee_behavior(server: &TestHomeserver) -> Result<String> {
