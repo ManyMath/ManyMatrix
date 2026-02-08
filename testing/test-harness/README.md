@@ -2,6 +2,40 @@
 
 The test harness owns ManyMatrix end-to-end homeserver tiers and compatibility reporting.
 
+## Compatibility Commands
+
+Embedded Tuwunel is the default fast local tier:
+
+```bash
+cargo test -p test-harness
+scripts/compatibility.sh embedded
+```
+
+Generate the embedded compatibility report:
+
+```bash
+cargo test -p test-harness compatibility_report --no-default-features --features embedded-tests -- --nocapture
+scripts/compatibility.sh report
+```
+
+The report is retained at:
+
+```text
+target/compat/compatibility-report.json
+```
+
+Docker and Shadow are opt-in. They are not part of the default test command:
+
+```bash
+cargo test -p test-harness compatibility_report --features docker-tests -- --nocapture
+scripts/compatibility.sh docker
+
+cargo test -p test-harness --test shadow --no-default-features --features shadow-tests -- --nocapture
+scripts/compatibility.sh shadow
+```
+
+`scripts/compatibility.sh all-local` runs only embedded and report tiers. It intentionally excludes Docker and Shadow so CI-like local automation stays deterministic on hosts without Docker or Shadow installed.
+
 ## Compatibility Report
 
 Generate the embedded Tuwunel compatibility baseline:
@@ -37,3 +71,21 @@ ghcr.io/matrix-org/synapse-service:v1.117.0
 ```
 
 Docker Tuwunel is alternate-server coverage. Embedded Tuwunel remains the default local feedback loop.
+
+## Shadow Tier
+
+Shadow tests are optional and Linux-only:
+
+```bash
+cargo test -p test-harness --test shadow --no-default-features --features shadow-tests -- --nocapture
+scripts/compatibility.sh shadow
+```
+
+The Shadow tier includes single-homeserver latency scenarios, encrypted-message latency coverage, and a multi-homeserver scenario. Shadow prerequisites are:
+
+- Linux host.
+- Dynamically linked `x86_64-unknown-linux-gnu` binaries; the harness checks this with `ldd`.
+- `shadow` installed and available on `PATH`.
+- `seccomp=unconfined` when running inside Docker or another restricted container.
+
+Docker and Shadow are sufficient for local compatibility validation. Public federation requires DNS, TLS certificates, and a reverse proxy, and is intentionally outside the local harness.

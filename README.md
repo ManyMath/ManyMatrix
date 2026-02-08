@@ -4,20 +4,20 @@ Rust core library for Matrix clients, with a Dart/Flutter plugin and a CLI.
 
 ## Goals
 
-- **Rust core** - Matrix Client-Server API, E2EE, sync, storage, rooms.
-- **Flutter plugin** - Dart bindings via cbindgen + ffigen + cargokit.
-- **CLI** - terminal client for testing and debugging.
+- **Rust core**, Matrix Client-Server API, E2EE, sync, storage, rooms.
+- **Flutter plugin**, Dart bindings via cbindgen + ffigen + cargokit.
+- **CLI**, terminal client for testing and debugging.
 
 ## Layout
 
 ```
 crates/
-  core/         - matrix client library
-  cli/          - CLI binary
-  ffi/          - C API (cbindgen)
-flutter_plugin/ - Dart/Flutter plugin and reference app
-testing/        - E2E test harness (embedded, Docker, and Shadow tiers)
-docs/           - research and architecture decisions
+  core/, matrix client library
+  cli/, CLI binary
+  ffi/, C API (cbindgen)
+flutter_plugin/, Dart/Flutter plugin and reference app
+testing/, E2E test harness (embedded, Docker, and Shadow tiers)
+docs/, research and architecture decisions
 ```
 
 ## Testing
@@ -26,12 +26,22 @@ docs/           - research and architecture decisions
 - `cargo test -p test-harness --features docker-tests` re-enables the Docker Synapse and Docker Tuwunel tiers.
 - `cargo test -p test-harness --test shadow --features shadow-tests -- --nocapture` runs the Shadow latency scenario.
 
+Deterministic compatibility commands are also available through the local wrapper:
+
+- `scripts/compatibility.sh embedded` runs the default embedded tier.
+- `scripts/compatibility.sh report` writes the embedded compatibility report to `target/compat/compatibility-report.json`.
+- `scripts/compatibility.sh docker` runs the Docker opt-in report tier.
+- `scripts/compatibility.sh shadow` runs optional Shadow latency, encrypted-message, and multi-homeserver scenarios.
+- `scripts/compatibility.sh all-local` runs embedded plus report only; it intentionally excludes Docker and Shadow.
+
 Shadow requirements:
 
 - Linux only.
 - Build and run with dynamically linked `x86_64-unknown-linux-gnu` binaries; the Shadow harness verifies this with `ldd`.
 - If you run Shadow inside Docker or another restricted container, use `seccomp=unconfined`.
 - The system `shadow` binary must be installed and on `PATH`.
+
+Docker and Shadow are sufficient for local compatibility validation. Public federation is a deployment concern and requires DNS, TLS certificates, and a reverse proxy.
 
 ## Flutter Workspace
 
