@@ -81,7 +81,14 @@ cargo test -p test-harness --test shadow --no-default-features --features shadow
 scripts/compatibility.sh shadow
 ```
 
-The Shadow tier includes single-homeserver latency scenarios, encrypted-message latency coverage, and a multi-homeserver scenario. Shadow prerequisites are:
+The standard Shadow tier includes single-homeserver latency scenarios and encrypted-message latency coverage. The multi-homeserver scenario with clients on distinct homeservers is intentionally ignored because upstream two-server Tuwunel federation under Shadow can take tens of minutes; run it explicitly when needed:
+
+```bash
+cargo test -p test-harness --test shadow --no-default-features --features shadow-tests -- multi_homeserver_message_delivery_over_shadow --ignored --nocapture
+scripts/compatibility.sh shadow-multi
+```
+
+Shadow prerequisites are:
 
 - Linux host.
 - Dynamically linked `x86_64-unknown-linux-gnu` binaries; the harness checks this with `ldd`.

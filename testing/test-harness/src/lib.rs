@@ -21,6 +21,7 @@ pub mod compat;
 macro_rules! e2e_test {
     ($name:ident) => {
         paste::paste! {
+            #[cfg(feature = "embedded-tests")]
             #[tokio::test]
             async fn [<$name _embedded>]() -> anyhow::Result<()> {
                 init_tracing();
@@ -44,7 +45,9 @@ macro_rules! e2e_test {
     };
 }
 
+#[cfg(feature = "embedded-tests")]
 const EMBEDDED_SERVER_NAME: &str = "localhost";
+#[cfg(feature = "embedded-tests")]
 const EMBEDDED_REGISTRATION_TOKEN: &str = "manymatrix_embed_test_token";
 
 #[cfg(feature = "docker-tests")]
@@ -69,6 +72,9 @@ pub enum ServerKind {
     /// Docker-backed Tuwunel/Conduwuit server.
     #[cfg(feature = "docker-tests")]
     TuwunelDocker,
+    /// Placeholder used only when compiling harness helpers without homeserver tiers.
+    #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+    Unavailable,
 }
 
 impl ServerKind {
@@ -80,6 +86,8 @@ impl ServerKind {
             Self::Synapse => "synapse",
             #[cfg(feature = "docker-tests")]
             Self::TuwunelDocker => "tuwunel-docker",
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -91,6 +99,8 @@ impl ServerKind {
             Self::Synapse => "synapse",
             #[cfg(feature = "docker-tests")]
             Self::TuwunelDocker => "tuwunel",
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -102,6 +112,8 @@ impl ServerKind {
             Self::Synapse => "/_matrix/client/versions",
             #[cfg(feature = "docker-tests")]
             Self::TuwunelDocker => "/_matrix/client/versions",
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            Self::Unavailable => "/_matrix/client/versions",
         }
     }
 
@@ -113,6 +125,8 @@ impl ServerKind {
             Self::Synapse => "open_registration",
             #[cfg(feature = "docker-tests")]
             Self::TuwunelDocker => "open_registration",
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -145,6 +159,15 @@ impl ServerKind {
                 digest: None,
                 revision: None,
             },
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            Self::Unavailable => compat::ServerSourceMetadata {
+                source_type: "unavailable".to_owned(),
+                label: "no homeserver test tier enabled".to_owned(),
+                image: None,
+                tag: None,
+                digest: None,
+                revision: None,
+            },
         }
     }
 
@@ -167,6 +190,8 @@ impl std::fmt::Display for ServerKind {
             ServerKind::Synapse => write!(f, "Synapse"),
             #[cfg(feature = "docker-tests")]
             ServerKind::TuwunelDocker => write!(f, "Docker Tuwunel"),
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            ServerKind::Unavailable => write!(f, "Unavailable"),
         }
     }
 }
@@ -176,6 +201,9 @@ enum HomeserverBackend {
     Embedded(EmbeddedHomeserver),
     #[cfg(feature = "docker-tests")]
     Docker(ContainerAsync<GenericImage>),
+    #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+    #[allow(dead_code)]
+    Unavailable,
 }
 
 /// A running Matrix homeserver for integration tests.
@@ -205,6 +233,8 @@ impl TestHomeserver {
             ServerKind::Synapse => Self::start_synapse().await,
             #[cfg(feature = "docker-tests")]
             ServerKind::TuwunelDocker => Self::start_tuwunel_docker().await,
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            ServerKind::Unavailable => bail!("no homeserver test tier enabled"),
         }
     }
 
@@ -333,6 +363,8 @@ impl TestHomeserver {
                 .context("failed to stop embedded Tuwunel server")?,
             #[cfg(feature = "docker-tests")]
             HomeserverBackend::Docker(container) => drop(container),
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            HomeserverBackend::Unavailable => {}
         }
 
         Ok(())
@@ -353,6 +385,8 @@ impl TestHomeserver {
                     .context("failed to read container stdout")?;
                 Ok(String::from_utf8_lossy(&bytes).into_owned())
             }
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            HomeserverBackend::Unavailable => Ok("no homeserver backend enabled".to_owned()),
         }
     }
 
@@ -371,6 +405,8 @@ impl TestHomeserver {
                     .context("failed to read container stderr")?;
                 Ok(String::from_utf8_lossy(&bytes).into_owned())
             }
+            #[cfg(not(any(feature = "embedded-tests", feature = "docker-tests")))]
+            HomeserverBackend::Unavailable => Ok("no homeserver backend enabled".to_owned()),
         }
     }
 
@@ -386,6 +422,7 @@ impl TestHomeserver {
     }
 }
 
+#[cfg(any(feature = "embedded-tests", feature = "docker-tests"))]
 fn parse_port(base_url: &str) -> Result<u16> {
     let (_, port) = base_url
         .rsplit_once(':')

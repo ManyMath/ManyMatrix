@@ -13,6 +13,8 @@ Commands:
   report     Generate the embedded compatibility report under target/compat/.
   docker     Run the Docker-inclusive compatibility report tier.
   shadow     Run optional Shadow compatibility scenarios.
+  shadow-multi
+             Run the ignored Shadow multi-homeserver scenario explicitly.
   all-local  Run embedded and report tiers only; excludes Docker and Shadow.
   help       Show this help.
 USAGE
@@ -34,6 +36,10 @@ run_shadow() {
   cargo test -p test-harness --test shadow --no-default-features --features shadow-tests -- --nocapture
 }
 
+run_shadow_multi() {
+  cargo test -p test-harness --test shadow --no-default-features --features shadow-tests -- multi_homeserver_message_delivery_over_shadow --ignored --nocapture
+}
+
 command="${1:-help}"
 
 case "$command" in
@@ -48,6 +54,9 @@ case "$command" in
     ;;
   shadow)
     run_shadow
+    ;;
+  shadow-multi)
+    run_shadow_multi
     ;;
   all-local)
     run_embedded

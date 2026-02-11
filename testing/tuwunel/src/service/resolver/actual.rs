@@ -1,4 +1,5 @@
 use std::{
+	env,
 	fmt::Debug,
 	net::{IpAddr, SocketAddr},
 };
@@ -289,6 +290,12 @@ impl super::Service {
 		self.services.server.check_running()?;
 
 		debug!("querying IP for {untername:?} ({hostname:?}:{port})");
+		if let Some(override_ip) = shadow_host_override(hostname, port) {
+			debug!(%hostname, ?override_ip, "using Shadow host IP override");
+			self.cache.set_override(untername, &override_ip);
+			return Ok(());
+		}
+
 		match self
 			.resolver
 			.resolver
@@ -406,4 +413,30 @@ impl super::Service {
 
 		Ok(())
 	}
+}
+
+fn shadow_host_override(hostname: &str, port: u16) -> Option<CachedOverride> {
+	let mappings = env::var("TUWUNEL_SHADOW_HOSTS").ok()?;
+
+	for entry in mappings.split(',') {
+		let Some((name, ip)) = entry.split_once('=') else {
+			continue;
+		};
+		if name.trim() != hostname {
+			continue;
+		}
+
+		let ip = ip.trim().parse::<IpAddr>().ok()?;
+		let mut ips = tuwunel_core::arrayvec::ArrayVec::new();
+		ips.push(ip);
+
+		return Some(CachedOverride {
+			ips,
+			port,
+			expire: CachedOverride::default_expire(),
+			overriding: None,
+		});
+	}
+
+	None
 }

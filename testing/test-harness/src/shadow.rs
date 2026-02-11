@@ -14,14 +14,24 @@ use anyhow::{bail, Context, Result};
 use serde::Serialize;
 use tempfile::TempDir;
 
-pub use shadow_common::{LATENCY_ENCRYPTED_MESSAGE_TEXT, LATENCY_MESSAGE_TEXT};
+pub use shadow_common::{
+    FEDERATED_MESSAGE_TEXT, LATENCY_ENCRYPTED_MESSAGE_TEXT, LATENCY_MESSAGE_TEXT,
+};
 
 const ALICE_START_TIME: &str = "8s";
 const BOB_START_TIME: &str = "10s";
 const ALICE_E2EE_START_TIME: &str = "6s";
 const BOB_E2EE_START_TIME: &str = "8s";
+const ALICE_FEDERATED_HOST_NAME: &str = "alice-server";
+const BOB_FEDERATED_HOST_NAME: &str = "bob-server";
+const ALICE_FEDERATED_HOST_IP: &str = "11.0.0.2";
+const BOB_FEDERATED_HOST_IP: &str = "11.0.0.4";
+const ALICE_FEDERATED_SERVER_NAME: &str = "alice-server:8448";
+const BOB_FEDERATED_SERVER_NAME: &str = "bob-server:8448";
+const FEDERATED_SHADOW_STOP_TIME: &str = "120s";
 const SHADOW_CLIENT_SUBCOMMAND: &str = "latency-message";
 const SHADOW_CLIENT_E2EE_SUBCOMMAND: &str = "latency-encrypted-message";
+const SHADOW_CLIENT_FEDERATED_SUBCOMMAND: &str = "federated-message";
 const SHADOW_DATA_DIR_NAME: &str = "shadow.data";
 const SHADOW_STOP_TIME: &str = "45s";
 const SHADOW_E2EE_STOP_TIME: &str = "90s";
@@ -98,6 +108,26 @@ impl ShadowResult {
                 eprintln!("{line}");
             }
         }
+
+        if let Ok(hosts) = fs::read_dir(self.hosts_dir()) {
+            for host in hosts.flatten() {
+                let hostname = host.file_name().to_string_lossy().into_owned();
+                for stderr_path in glob_files(&host.path(), "stderr") {
+                    if let Ok(stderr) = fs::read_to_string(&stderr_path) {
+                        if stderr.is_empty() {
+                            continue;
+                        }
+
+                        eprintln!("--- Host stderr: {hostname} ---");
+                        let lines: Vec<&str> = stderr.lines().collect();
+                        let start = lines.len().saturating_sub(50);
+                        for line in &lines[start..] {
+                            eprintln!("{line}");
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -116,6 +146,15 @@ impl TopologyFixture {
             packet_loss: 0.01,
             bandwidth_down: "5 Mbit".to_owned(),
             bandwidth_up: "1 Mbit".to_owned(),
+        }
+    }
+
+    pub fn federated_pair() -> Self {
+        Self {
+            latency_ms: 50,
+            packet_loss: 0.0,
+            bandwidth_down: "10 Mbit".to_owned(),
+            bandwidth_up: "10 Mbit".to_owned(),
         }
     }
 
@@ -147,6 +186,61 @@ impl TopologyFixture {
             graph: NetworkGraph {
                 graph_type: "gml".to_owned(),
                 inline: Some(self.to_gml()),
+            },
+        }
+    }
+
+    fn to_federated_pair_gml(&self) -> String {
+        format!(
+            "graph [\n\
+             \x20 directed 0\n\
+             \x20 node [\n\
+             \x20   id 0\n\
+             \x20   host_bandwidth_down \"{bd}\"\n\
+             \x20   host_bandwidth_up \"{bu}\"\n\
+             \x20 ]\n\
+             \x20 node [\n\
+             \x20   id 1\n\
+             \x20   host_bandwidth_down \"{bd}\"\n\
+             \x20   host_bandwidth_up \"{bu}\"\n\
+             \x20 ]\n\
+             \x20 edge [\n\
+             \x20   source 0\n\
+             \x20   target 0\n\
+             \x20   latency \"1 ms\"\n\
+             \x20   packet_loss 0.0\n\
+             \x20 ]\n\
+             \x20 edge [\n\
+             \x20   source 1\n\
+             \x20   target 1\n\
+             \x20   latency \"1 ms\"\n\
+             \x20   packet_loss 0.0\n\
+             \x20 ]\n\
+             \x20 edge [\n\
+             \x20   source 0\n\
+             \x20   target 1\n\
+             \x20   latency \"{lat} ms\"\n\
+             \x20   packet_loss {loss:.6}\n\
+             \x20 ]\n\
+             \x20 edge [\n\
+             \x20   source 1\n\
+             \x20   target 0\n\
+             \x20   latency \"{lat} ms\"\n\
+             \x20   packet_loss {loss:.6}\n\
+             \x20 ]\n\
+             ]",
+            bd = self.bandwidth_down,
+            bu = self.bandwidth_up,
+            lat = self.latency_ms,
+            loss = self.packet_loss,
+        )
+    }
+
+    fn to_federated_pair_network(&self) -> Network {
+        Network {
+            graph: NetworkGraph {
+                graph_type: "gml".to_owned(),
+                inline: Some(self.to_federated_pair_gml()),
             },
         }
     }
@@ -217,6 +311,8 @@ impl Default for HostOptionDefaults {
 struct Host {
     network_node_id: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    ip_addr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     host_options: Option<HostOptions>,
     processes: Vec<Process>,
 }
@@ -281,6 +377,18 @@ struct TuwunelGlobal {
     allow_encryption: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     allow_federation: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    trusted_servers: Vec<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    allow_invalid_tls_certificates: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tls: Option<TuwunelTls>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct TuwunelTls {
+    certs: String,
+    key: String,
 }
 
 impl TuwunelConfig {
@@ -297,8 +405,26 @@ impl TuwunelConfig {
                 startup_netburst: false,
                 allow_encryption: true,
                 allow_federation: false,
+                trusted_servers: Vec::new(),
+                allow_invalid_tls_certificates: false,
+                tls: None,
             },
         }
+    }
+
+    fn with_federation(mut self, trusted_server: &str) -> Self {
+        self.global.allow_federation = true;
+        self.global.trusted_servers = vec![trusted_server.to_owned()];
+        self.global.allow_invalid_tls_certificates = true;
+        self
+    }
+
+    fn with_tls(mut self, cert_path: &str, key_path: &str) -> Self {
+        self.global.tls = Some(TuwunelTls {
+            certs: cert_path.to_owned(),
+            key: key_path.to_owned(),
+        });
+        self
     }
 
     fn to_toml(&self) -> Result<String> {
@@ -331,6 +457,108 @@ pub fn run_latency_encrypted_message_scenario(seed: u32) -> Result<ShadowRun> {
     )
 }
 
+pub fn run_multi_homeserver_message_scenario(seed: u32) -> Result<ShadowRun> {
+    ensure_shadow_host_requirements()?;
+
+    let workspace_root = workspace_root()?;
+    let artifacts = build_shadow_binaries(&workspace_root, "shadow_features")?;
+    let tempdir = tempfile::tempdir().context("failed to create Shadow tempdir")?;
+
+    let (alice_cert, alice_key) =
+        generate_self_signed_cert(tempdir.path(), ALICE_FEDERATED_HOST_NAME)?;
+    let (bob_cert, bob_key) = generate_self_signed_cert(tempdir.path(), BOB_FEDERATED_HOST_NAME)?;
+
+    let alice_config = TuwunelConfig::new(ALICE_FEDERATED_SERVER_NAME, "alice-data")
+        .with_federation(BOB_FEDERATED_SERVER_NAME)
+        .with_tls(&alice_cert, &alice_key);
+    let alice_config_path = tempdir.path().join("alice-tuwunel.toml");
+    fs::write(&alice_config_path, alice_config.to_toml()?).with_context(|| {
+        format!(
+            "failed to write generated Alice Tuwunel config to {}",
+            alice_config_path.display()
+        )
+    })?;
+
+    let bob_config = TuwunelConfig::new(BOB_FEDERATED_SERVER_NAME, "bob-data")
+        .with_federation(ALICE_FEDERATED_SERVER_NAME)
+        .with_tls(&bob_cert, &bob_key);
+    let bob_config_path = tempdir.path().join("bob-tuwunel.toml");
+    fs::write(&bob_config_path, bob_config.to_toml()?).with_context(|| {
+        format!(
+            "failed to write generated Bob Tuwunel config to {}",
+            bob_config_path.display()
+        )
+    })?;
+
+    let data_dir = tempdir.path().join(SHADOW_DATA_DIR_NAME);
+    let topology = TopologyFixture::federated_pair();
+    let shadow_config = multi_homeserver_config_with_topology(
+        &artifacts.tuwunel_bin,
+        &artifacts.client_bin,
+        &alice_config_path,
+        &bob_config_path,
+        &data_dir,
+        seed,
+        &topology,
+    );
+    let shadow_config_path = tempdir.path().join("shadow-multi-homeserver.yaml");
+    fs::write(&shadow_config_path, shadow_config.to_yaml()?).with_context(|| {
+        format!(
+            "failed to write generated multi-homeserver Shadow config to {}",
+            shadow_config_path.display()
+        )
+    })?;
+
+    let result = run_shadow(&shadow_config_path, seed, &data_dir)?;
+
+    Ok(ShadowRun {
+        _tempdir: tempdir,
+        topology,
+        shadow_config_path,
+        tuwunel_config_path: alice_config_path,
+        result,
+    })
+}
+
+fn generate_self_signed_cert(dir: &Path, hostname: &str) -> Result<(String, String)> {
+    let cert_path = dir.join(format!("{hostname}.crt"));
+    let key_path = dir.join(format!("{hostname}.key"));
+
+    let status = Command::new("openssl")
+        .args([
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key_path.to_str().context("key path was not UTF-8")?,
+            "-out",
+            cert_path.to_str().context("cert path was not UTF-8")?,
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            &format!("/CN={hostname}"),
+        ])
+        .status()
+        .context("failed to run openssl for Shadow TLS certificate generation")?;
+
+    if !status.success() {
+        bail!("openssl failed while generating Shadow TLS certificate for {hostname}");
+    }
+
+    Ok((
+        cert_path
+            .to_str()
+            .context("cert path was not UTF-8")?
+            .to_owned(),
+        key_path
+            .to_str()
+            .context("key path was not UTF-8")?
+            .to_owned(),
+    ))
+}
+
 fn run_shadow_scenario(
     seed: u32,
     subcommand: &str,
@@ -341,7 +569,7 @@ fn run_shadow_scenario(
     ensure_shadow_host_requirements()?;
 
     let workspace_root = workspace_root()?;
-    let artifacts = build_shadow_binaries(&workspace_root)?;
+    let artifacts = build_shadow_binaries(&workspace_root, "shadow")?;
     let tempdir = tempfile::tempdir().context("failed to create Shadow tempdir")?;
 
     let tuwunel_config = TuwunelConfig::new(TUWUNEL_SERVER_NAME, TUWUNEL_DATABASE_PATH);
@@ -432,9 +660,9 @@ fn workspace_root() -> Result<PathBuf> {
         .context("failed to determine workspace root")
 }
 
-fn build_shadow_binaries(workspace_root: &Path) -> Result<ShadowArtifacts> {
+fn build_shadow_binaries(workspace_root: &Path, tuwunel_features: &str) -> Result<ShadowArtifacts> {
     let client_bin = build_shadow_client_binary(workspace_root)?;
-    let tuwunel_bin = build_tuwunel_binary(workspace_root)?;
+    let tuwunel_bin = build_tuwunel_binary(workspace_root, tuwunel_features)?;
 
     ensure_dynamically_linked(&client_bin)?;
     ensure_dynamically_linked(&tuwunel_bin)?;
@@ -468,7 +696,7 @@ fn build_shadow_client_binary(workspace_root: &Path) -> Result<PathBuf> {
     Ok(binary_path)
 }
 
-fn build_tuwunel_binary(workspace_root: &Path) -> Result<PathBuf> {
+fn build_tuwunel_binary(workspace_root: &Path, features: &str) -> Result<PathBuf> {
     let checkout_root = discover_tuwunel_checkout_root(workspace_root)?;
 
     run_command(
@@ -480,7 +708,7 @@ fn build_tuwunel_binary(workspace_root: &Path) -> Result<PathBuf> {
             "tuwunel",
             "--no-default-features",
             "--features",
-            "shadow",
+            features,
         ]),
         "build upstream tuwunel shadow binary",
     )?;
@@ -681,6 +909,7 @@ fn three_host_config_with_topology(
         "tuwunel-server".to_owned(),
         Host {
             network_node_id: 0,
+            ip_addr: None,
             host_options: None,
             processes: vec![Process {
                 path: tuwunel_bin.to_string_lossy().into_owned(),
@@ -697,6 +926,7 @@ fn three_host_config_with_topology(
         "alice-host".to_owned(),
         Host {
             network_node_id: 0,
+            ip_addr: None,
             host_options: None,
             processes: vec![Process {
                 path: client_bin.to_string_lossy().into_owned(),
@@ -715,6 +945,7 @@ fn three_host_config_with_topology(
         "bob-host".to_owned(),
         Host {
             network_node_id: 0,
+            ip_addr: None,
             host_options: None,
             processes: vec![Process {
                 path: client_bin.to_string_lossy().into_owned(),
@@ -740,6 +971,134 @@ fn three_host_config_with_topology(
             log_level: Some("info".to_owned()),
         },
         network: topology.to_network(),
+        experimental: Some(Experimental {
+            scheduler: "thread-per-host".to_owned(),
+            use_cpu_pinning: false,
+            use_worker_spinning: false,
+            native_preemption_enabled: true,
+            native_preemption_native_interval: "10 ms".to_owned(),
+            native_preemption_sim_interval: "10 ms".to_owned(),
+        }),
+        host_option_defaults: Some(HostOptionDefaults::default()),
+        hosts,
+    }
+}
+
+fn tuwunel_host(tuwunel_bin: &Path, config_path: &Path) -> Host {
+    let mut server_env = BTreeMap::new();
+    server_env.insert(
+        "TUWUNEL_CONFIG".to_owned(),
+        config_path.to_string_lossy().into_owned(),
+    );
+    server_env.insert("TUWUNEL_LOG".to_owned(), "info".to_owned());
+    server_env.insert(
+        "TUWUNEL_SHADOW_HOSTS".to_owned(),
+        format!(
+            "{ALICE_FEDERATED_HOST_NAME}={ALICE_FEDERATED_HOST_IP},{BOB_FEDERATED_HOST_NAME}={BOB_FEDERATED_HOST_IP}"
+        ),
+    );
+
+    Host {
+        network_node_id: 0,
+        ip_addr: None,
+        host_options: None,
+        processes: vec![Process {
+            path: tuwunel_bin.to_string_lossy().into_owned(),
+            args: None,
+            start_time: Some("1s".to_owned()),
+            expected_final_state: Some(ProcessFinalState::Running(RunningVal::Running)),
+            environment: Some(server_env),
+            shutdown_time: None,
+            shutdown_signal: Some("SIGTERM".to_owned()),
+        }],
+    }
+}
+
+fn shadow_client_host(
+    client_bin: &Path,
+    subcommand: &str,
+    server_name: &str,
+    role: &str,
+    start_time: &str,
+    network_node_id: u32,
+) -> Host {
+    Host {
+        network_node_id,
+        ip_addr: None,
+        host_options: None,
+        processes: vec![Process {
+            path: client_bin.to_string_lossy().into_owned(),
+            args: Some(format!(
+                "{subcommand} --server-url http://{server_name}:8448 --role {role}"
+            )),
+            start_time: Some(start_time.to_owned()),
+            expected_final_state: Some(ProcessFinalState::Exited { exited: 0 }),
+            environment: None,
+            shutdown_time: None,
+            shutdown_signal: None,
+        }],
+    }
+}
+
+fn multi_homeserver_config_with_topology(
+    tuwunel_bin: &Path,
+    client_bin: &Path,
+    alice_config_path: &Path,
+    bob_config_path: &Path,
+    data_dir: &Path,
+    seed: u32,
+    topology: &TopologyFixture,
+) -> ShadowConfig {
+    let mut hosts = BTreeMap::new();
+    hosts.insert(
+        ALICE_FEDERATED_HOST_NAME.to_owned(),
+        Host {
+            network_node_id: 0,
+            ip_addr: Some(ALICE_FEDERATED_HOST_IP.to_owned()),
+            ..tuwunel_host(tuwunel_bin, alice_config_path)
+        },
+    );
+    hosts.insert(
+        BOB_FEDERATED_HOST_NAME.to_owned(),
+        Host {
+            network_node_id: 1,
+            ip_addr: Some(BOB_FEDERATED_HOST_IP.to_owned()),
+            ..tuwunel_host(tuwunel_bin, bob_config_path)
+        },
+    );
+    hosts.insert(
+        "alice-host".to_owned(),
+        shadow_client_host(
+            client_bin,
+            SHADOW_CLIENT_FEDERATED_SUBCOMMAND,
+            ALICE_FEDERATED_HOST_NAME,
+            "alice",
+            ALICE_START_TIME,
+            0,
+        ),
+    );
+    hosts.insert(
+        "bob-host".to_owned(),
+        shadow_client_host(
+            client_bin,
+            SHADOW_CLIENT_FEDERATED_SUBCOMMAND,
+            BOB_FEDERATED_HOST_NAME,
+            "bob",
+            BOB_START_TIME,
+            1,
+        ),
+    );
+
+    ShadowConfig {
+        general: General {
+            stop_time: FEDERATED_SHADOW_STOP_TIME.to_owned(),
+            seed,
+            model_unblocked_syscall_latency: true,
+            progress: None,
+            data_directory: Some(data_dir.to_string_lossy().into_owned()),
+            log_level: Some("info".to_owned()),
+        },
+        network: topology.to_federated_pair_network(),
         experimental: Some(Experimental {
             scheduler: "thread-per-host".to_owned(),
             use_cpu_pinning: false,

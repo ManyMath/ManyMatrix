@@ -5,11 +5,13 @@ use manymatrix_core::ManyMatrixClient;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
 use matrix_sdk::ruma::api::client::room::Visibility;
 use matrix_sdk::ruma::events::room::message::SyncRoomMessageEvent;
-use shadow_common::{LATENCY_ENCRYPTED_MESSAGE_TEXT, LATENCY_MESSAGE_TEXT};
+use shadow_common::{FEDERATED_MESSAGE_TEXT, LATENCY_ENCRYPTED_MESSAGE_TEXT, LATENCY_MESSAGE_TEXT};
 use tokio::sync::mpsc;
 
 const DEFAULT_PASSWORD: &str = "shadow_test_pass";
 const REGISTRATION_TOKEN: &str = "shadow_test_token";
+const FEDERATED_ROOM_ALIAS_FULL: &str = "#shadow-federated-room:alice-server:8448";
+const FEDERATED_ROOM_ALIAS_LOCALPART: &str = "shadow-federated-room";
 const ROOM_ALIAS_FULL: &str = "#shadow-latency-room:tuwunel-server";
 const ROOM_ALIAS_LOCALPART: &str = "shadow-latency-room";
 const SHADOW_SYNC_TIMEOUT: Duration = Duration::from_secs(1);
@@ -39,6 +41,7 @@ async fn async_main() -> Result<()> {
         "latency-encrypted-message" => {
             run_latency_encrypted_message(&args.server_url, &args.role).await
         }
+        "federated-message" => run_federated_message(&args.server_url, &args.role).await,
         other => bail!("unsupported shadow-client subcommand: {other}"),
     }
 }
@@ -83,6 +86,16 @@ async fn run_latency_encrypted_message(server_url: &str, role: &str) -> Result<(
         "alice" => run_alice_encrypted(server_url).await,
         "bob" => run_bob_encrypted(server_url).await,
         other => bail!("unsupported latency-encrypted-message role: {other}"),
+    }
+}
+
+async fn run_federated_message(server_url: &str, role: &str) -> Result<()> {
+    wait_for_server(server_url, 60, 500).await?;
+
+    match role {
+        "alice" => run_alice_federated(server_url).await,
+        "bob" => run_bob_federated(server_url).await,
+        other => bail!("unsupported federated-message role: {other}"),
     }
 }
 
@@ -173,6 +186,114 @@ async fn run_bob(server_url: &str) -> Result<()> {
     }
 
     bail!("bob did not receive expected message: {LATENCY_MESSAGE_TEXT}")
+}
+
+async fn run_alice_federated(server_url: &str) -> Result<()> {
+    register_user_via_api(
+        server_url,
+        "alice",
+        DEFAULT_PASSWORD,
+        Some(REGISTRATION_TOKEN),
+    )
+    .await?;
+
+    let store = tempfile::tempdir().context("failed to create federated Alice store dir")?;
+    let client = ManyMatrixClient::new(server_url, store.path()).await?;
+    client.login("alice", DEFAULT_PASSWORD).await?;
+
+    let mut request = CreateRoomRequest::new();
+    request.name = Some("Shadow Federated Room".to_owned());
+    request.room_alias_name = Some(FEDERATED_ROOM_ALIAS_LOCALPART.to_owned());
+    request.visibility = Visibility::Public;
+
+    let room_id = client
+        .inner()
+        .create_room(request)
+        .await?
+        .room_id()
+        .to_owned();
+    eprintln!("alice: created federated room {room_id}");
+
+    for attempt in 0..20 {
+        client.sync_once_with_timeout(SHADOW_SYNC_TIMEOUT).await?;
+        eprintln!("alice: waiting before federated send attempt {attempt}");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    client
+        .send_text(room_id.as_str(), FEDERATED_MESSAGE_TEXT)
+        .await?;
+    eprintln!("alice: sent federated message {FEDERATED_MESSAGE_TEXT}");
+
+    Ok(())
+}
+
+async fn run_bob_federated(server_url: &str) -> Result<()> {
+    register_user_via_api(
+        server_url,
+        "bob",
+        DEFAULT_PASSWORD,
+        Some(REGISTRATION_TOKEN),
+    )
+    .await?;
+
+    let store = tempfile::tempdir().context("failed to create federated Bob store dir")?;
+    let client = ManyMatrixClient::new(server_url, store.path()).await?;
+    client.login("bob", DEFAULT_PASSWORD).await?;
+
+    let room_id = join_room_with_retry(
+        &client,
+        FEDERATED_ROOM_ALIAS_FULL,
+        60,
+        Duration::from_secs(1),
+    )
+    .await?;
+    eprintln!("bob: joined federated room {room_id}");
+
+    let (tx, mut rx) = mpsc::channel::<String>(16);
+    let observed_room_id = room_id.clone();
+    client
+        .inner()
+        .add_event_handler(move |event: SyncRoomMessageEvent, room: matrix_sdk::Room| {
+            let tx = tx.clone();
+            let observed_room_id = observed_room_id.clone();
+
+            async move {
+                if room.room_id().as_str() != observed_room_id {
+                    return;
+                }
+
+                if let SyncRoomMessageEvent::Original(message) = event {
+                    let _ = tx.send(message.content.body().to_owned()).await;
+                }
+            }
+        });
+
+    for attempt in 0..40 {
+        client.sync_once_with_timeout(SHADOW_SYNC_TIMEOUT).await?;
+
+        if let Ok(Some(message)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await {
+            if message == FEDERATED_MESSAGE_TEXT {
+                eprintln!("bob: received federated message {message}");
+                return Ok(());
+            }
+        }
+
+        let messages = client.get_messages(room_id.as_str(), None, 20).await?;
+        if messages
+            .messages
+            .iter()
+            .any(|message| message.body == FEDERATED_MESSAGE_TEXT)
+        {
+            eprintln!("bob: received federated message {FEDERATED_MESSAGE_TEXT}");
+            return Ok(());
+        }
+
+        eprintln!("bob: waiting for federated message (attempt {attempt})");
+        tokio::time::sleep(Duration::from_millis(750)).await;
+    }
+
+    bail!("bob did not receive expected federated message: {FEDERATED_MESSAGE_TEXT}")
 }
 
 async fn run_alice_encrypted(server_url: &str) -> Result<()> {
