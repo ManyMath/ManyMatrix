@@ -4,6 +4,7 @@ members = [
     "crates/core",
     "crates/cli",
     "crates/ffi",
+    "crates/web",
     "testing/test-harness",
     "testing/shadow-common",
     "testing/shadow-client",
