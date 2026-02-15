@@ -28,14 +28,6 @@ readme = "README.md"
 name = "manymatrix"
 
 [workspace.dependencies]
-matrix-sdk = { version = "0.16.0", default-features = false, features = [
-    "bundled-sqlite",
-    "markdown",
-    "e2e-encryption",
-    "automatic-room-key-forwarding",
-    "sqlite",
-    "rustls-tls",
-] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

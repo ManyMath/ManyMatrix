@@ -12,7 +12,14 @@ shadow-tests = ["dep:serde_yaml", "dep:toml", "dep:shadow-common"]
 [dependencies]
 manymatrix-core = { path = "../../crates/core" }
 manymatrix-ffi = { path = "../../crates/ffi" }
-matrix-sdk.workspace = true
+matrix-sdk = { version = "0.16.0", default-features = false, features = [
+    "bundled-sqlite",
+    "markdown",
+    "e2e-encryption",
+    "automatic-room-key-forwarding",
+    "sqlite",
+    "rustls-tls",
+] }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

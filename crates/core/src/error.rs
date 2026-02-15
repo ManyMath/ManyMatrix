@@ -9,6 +9,7 @@ pub enum Error {
     #[error("HTTP error: {0}")]
     Http(#[from] matrix_sdk::HttpError),
 
+    #[cfg(not(target_family = "wasm"))]
     #[error("request error: {0}")]
     Reqwest(#[from] reqwest::Error),
 

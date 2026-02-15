@@ -1,3 +1,4 @@
+#[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 
 use matrix_sdk::authentication::matrix::MatrixSession;
@@ -11,6 +12,7 @@ pub struct StoredSession {
     pub session: MatrixSession,
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl StoredSession {
     pub fn save(&self, path: &Path) -> Result<(), crate::Error> {
         let json = serde_json::to_string_pretty(self)?;

@@ -1,39 +1,44 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::Mutex;
 
-use matrix_sdk::attachment::AttachmentConfig;
-use matrix_sdk::config::SyncSettings;
-use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
-use matrix_sdk::room::MessagesOptions;
-use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
-use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
-use matrix_sdk::ruma::api::client::room::Visibility;
-use matrix_sdk::ruma::events::reaction::ReactionEventContent;
-use matrix_sdk::ruma::events::receipt::ReceiptEventContent;
-use matrix_sdk::ruma::events::receipt::ReceiptThread;
-use matrix_sdk::ruma::events::relation::Annotation;
-use matrix_sdk::ruma::events::room::message::{AddMentions, ForwardThread, ReplyWithinThread};
-use matrix_sdk::ruma::events::room::message::{
-    RoomMessageEventContent, RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
-};
-use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::{
-    AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
-    SyncEphemeralRoomEvent,
-};
-use matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
-use matrix_sdk::RoomMemberships;
-use matrix_sdk::{Client, Room};
-use tracing::info;
+use matrix_sdk::Client;
 
-use crate::session::StoredSession;
-use crate::types::{
-    CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent, ReceiptEvent,
-    RoomSummary, RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
+#[cfg(not(target_family = "wasm"))]
+use {
+    std::path::Path,
+    std::time::Duration,
+    matrix_sdk::attachment::AttachmentConfig,
+    matrix_sdk::config::SyncSettings,
+    matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
+    matrix_sdk::room::MessagesOptions,
+    matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType,
+    matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest,
+    matrix_sdk::ruma::api::client::room::Visibility,
+    matrix_sdk::ruma::events::reaction::ReactionEventContent,
+    matrix_sdk::ruma::events::receipt::ReceiptEventContent,
+    matrix_sdk::ruma::events::receipt::ReceiptThread,
+    matrix_sdk::ruma::events::relation::Annotation,
+    matrix_sdk::ruma::events::room::message::{AddMentions, ForwardThread, ReplyWithinThread},
+    matrix_sdk::ruma::events::room::message::{
+        RoomMessageEventContent, RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
+    },
+    matrix_sdk::ruma::events::room::MediaSource,
+    matrix_sdk::ruma::events::{
+        AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
+        SyncEphemeralRoomEvent,
+    },
+    matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId},
+    matrix_sdk::Room,
+    matrix_sdk::RoomMemberships,
+    tracing::info,
+    crate::session::StoredSession,
+    crate::types::{
+        CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent,
+        ReceiptEvent, RoomSummary, RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
+    },
+    crate::Error,
 };
-use crate::Error;
 
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
 pub struct ManyMatrixClient {
@@ -43,6 +48,7 @@ pub struct ManyMatrixClient {
     sync_token: Arc<Mutex<Option<String>>>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl ManyMatrixClient {
     /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
     pub async fn new(homeserver_url: &str, store_path: &Path) -> Result<Self, Error> {
@@ -1052,6 +1058,7 @@ impl ManyMatrixClient {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
     let uri = <&MxcUri>::try_from(mxc_uri)
         .map_err(|e| Error::IdParse(format!("invalid MXC URI: {e}")))?

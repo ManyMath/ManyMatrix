@@ -8,7 +8,14 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 manymatrix-core = { path = "../../crates/core" }
-matrix-sdk.workspace = true
+matrix-sdk = { version = "0.16.0", default-features = false, features = [
+    "bundled-sqlite",
+    "markdown",
+    "e2e-encryption",
+    "automatic-room-key-forwarding",
+    "sqlite",
+    "rustls-tls",
+] }
 reqwest = { workspace = true, features = ["json"] }
 serde_json.workspace = true
 shadow-common = { path = "../shadow-common" }
