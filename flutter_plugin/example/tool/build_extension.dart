@@ -32,31 +32,110 @@ void copyTree(Directory src, Directory dest) {
   }
 }
 
+Future<void> checkWasmPack() async {
+  try {
+    final result = await Process.run('wasm-pack', ['--version']);
+    if (result.exitCode != 0) {
+      stderr.writeln(
+        '[build_extension] step "wasm-pack" failed: wasm-pack returned '
+        'exit ${result.exitCode}. Install: '
+        'curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh',
+      );
+      exit(1);
+    }
+    stdout.writeln('Found ${(result.stdout as String).trim()}');
+  } on ProcessException {
+    stderr.writeln(
+      '[build_extension] step "wasm-pack" failed: wasm-pack not found in PATH. '
+      'Install: '
+      'curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh',
+    );
+    exit(1);
+  }
+}
+
+Future<void> runWasmPack(String repoRoot, String outDir) async {
+  await run(
+    'wasm-pack',
+    [
+      'build',
+      '--target',
+      'web',
+      '--release',
+      '--out-dir',
+      outDir,
+      '$repoRoot/crates/web',
+    ],
+    cwd: repoRoot,
+  );
+}
+
+void verifyArtifacts(Directory dir) {
+  final required = [
+    'pkg/manymatrix_web_bg.wasm',
+    'pkg/manymatrix_web.js',
+    'offscreen.html',
+    'offscreen.js',
+    'sw.js',
+    'manifest.json',
+    'flutter_bootstrap.js',
+    'index.html',
+  ];
+  for (final path in required) {
+    if (!File('${dir.path}/$path').existsSync()) {
+      stderr.writeln(
+        '[build_extension] step "manifest-verify" failed: missing $path',
+      );
+      exit(1);
+    }
+  }
+  stdout.writeln('All required artifacts verified.');
+}
+
 Future<void> main() async {
   final scriptDir = File.fromUri(Platform.script).parent;
   final exampleDir = scriptDir.parent;
+  final repoRoot = exampleDir.parent.parent.path;
   final buildWebDir = Directory('${exampleDir.path}/build/web');
   final extensionSrcDir = Directory('${exampleDir.path}/extension');
   final extensionBuildDir = Directory('${exampleDir.path}/build/extension');
   final zipPath = '${exampleDir.path}/build/extension.zip';
 
-  await run(
-    'flutter',
-    [
-      'build',
-      'web',
-      '--csp',
-      '--no-web-resources-cdn',
-      '--no-wasm-dry-run',
-      '--release',
-    ],
-    cwd: exampleDir.path,
-  );
+  try {
+    await checkWasmPack();
+  } catch (_) {
+    exit(1);
+  }
+
+  try {
+    await run(
+      'flutter',
+      [
+        'build',
+        'web',
+        '--csp',
+        '--no-web-resources-cdn',
+        '--no-wasm-dry-run',
+        '--release',
+      ],
+      cwd: exampleDir.path,
+    );
+  } on ProcessException catch (e) {
+    stderr.writeln('[build_extension] step "flutter-build" failed: ${e.message}');
+    exit(1);
+  }
 
   if (extensionBuildDir.existsSync()) {
     extensionBuildDir.deleteSync(recursive: true);
   }
   extensionBuildDir.createSync(recursive: true);
+
+  try {
+    await runWasmPack(repoRoot, '${extensionBuildDir.path}/pkg');
+  } on ProcessException catch (e) {
+    stderr.writeln('[build_extension] step "wasm-pack" failed: ${e.message}');
+    exit(1);
+  }
 
   copyTree(buildWebDir, extensionBuildDir);
   copyTree(extensionSrcDir, extensionBuildDir);
@@ -84,11 +163,18 @@ Future<void> main() async {
     exit(1);
   }
 
+  verifyArtifacts(extensionBuildDir);
+
   final zipFile = File(zipPath);
   if (zipFile.existsSync()) {
     zipFile.deleteSync();
   }
 
-  await run('zip', ['-qr', zipPath, '.'], cwd: extensionBuildDir.path);
+  try {
+    await run('zip', ['-qr', zipPath, '.'], cwd: extensionBuildDir.path);
+  } on ProcessException catch (e) {
+    stderr.writeln('[build_extension] step "zip" failed: ${e.message}');
+    exit(1);
+  }
   stdout.writeln('Built $zipPath');
 }

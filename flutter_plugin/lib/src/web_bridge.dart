@@ -44,9 +44,7 @@ class ManyMatrixBridge {
     final envelope = {'target': 'offscreen', 'method': method, 'args': args};
     final JSAny? replyJs;
     try {
-      replyJs = await _chrome.runtime
-          .sendMessage(envelope.jsify())
-          .toDart
+      replyJs = await _chrome.runtime.sendMessage(envelope.jsify()).toDart
           .timeout(const Duration(seconds: 30));
     } on TimeoutException {
       throw ManyMatrixStorageException(
