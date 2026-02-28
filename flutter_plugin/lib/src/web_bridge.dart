@@ -1,32 +1,117 @@
+// ignore_for_file: avoid_web_libraries_in_flutter
+import 'dart:async';
+import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'models/models.dart';
+import 'web_bridge_errors.dart';
+
+@JS('chrome')
+external _Chrome get _chrome;
+
+extension type _Chrome(JSObject _) implements JSObject {
+  external _ChromeRuntime get runtime;
+}
+
+extension type _ChromeRuntime(JSObject _) implements JSObject {
+  external JSPromise<JSAny?> sendMessage(JSAny? message);
+}
 
 const _webUnsupportedMessage =
     'ManyMatrix web/extension runtime is unavailable in this checkout.';
 
-/// Build-safe web stub for branches that do not contain the WASM bridge.
-///
-/// This keeps the public package API compileable on web so the example app can
-/// retain its browser and extension build surfaces during the v1.5 reorg.
 class ManyMatrixBridge {
-  ManyMatrixBridge._();
+  // ignore: unused_field
+  final String _homeserverUrl;
+  // ignore: unused_field
+  final String _storePath;
 
-  static Future<void> initialize(String libraryPath) async {
-    if (libraryPath.isNotEmpty) {
-      return;
-    }
-  }
+  ManyMatrixBridge._(this._homeserverUrl, this._storePath);
+
+  static Future<void> initialize(String libraryPath) async {}
 
   static Future<ManyMatrixBridge> create(
     String homeserverUrl,
     String storePath,
   ) async {
-    if (homeserverUrl.isEmpty && storePath.isEmpty) {
-      throw UnsupportedError(_webUnsupportedMessage);
-    }
-    return ManyMatrixBridge._();
+    return ManyMatrixBridge._(homeserverUrl, storePath);
   }
+
+  Future<Map<String, dynamic>> _call(
+    String method,
+    Map<String, dynamic> args,
+  ) async {
+    final envelope = {'target': 'offscreen', 'method': method, 'args': args};
+    final JSAny? replyJs;
+    try {
+      replyJs = await _chrome.runtime
+          .sendMessage(envelope.jsify())
+          .toDart
+          .timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw ManyMatrixStorageException(
+        'no reply from offscreen',
+        details: {},
+      );
+    }
+    if (replyJs == null) {
+      throw ManyMatrixStorageException(
+        'no reply from offscreen',
+        details: {},
+      );
+    }
+    final reply = replyJs.dartify() as Map<String, dynamic>;
+    if (reply.containsKey('ok')) {
+      return reply['ok'] as Map<String, dynamic>;
+    }
+    if (reply.containsKey('err')) {
+      final err = reply['err'] as Map<String, dynamic>;
+      throw _exceptionFor(
+        err['kind'] as String,
+        err['message'] as String? ?? '',
+        err['details'] as Map<String, dynamic>? ?? {},
+      );
+    }
+    throw ManyMatrixSerdeException(
+      'malformed reply: missing ok/err',
+      details: {'raw': reply},
+    );
+  }
+
+  static ManyMatrixException _exceptionFor(
+    String kind,
+    String message,
+    Map<String, dynamic> details,
+  ) {
+    switch (kind) {
+      case 'MatrixSdkError':
+        return ManyMatrixSdkException(message, details: details);
+      case 'SerdeError':
+        return ManyMatrixSerdeException(message, details: details);
+      case 'StorageError':
+        return ManyMatrixStorageException(message, details: details);
+      case 'PanicError':
+        return ManyMatrixPanicException(message, details: details);
+      default:
+        return ManyMatrixException(kind, message, details);
+    }
+  }
+
+  static final _sensitiveKeys =
+      RegExp(r'password|token|recovery_key', caseSensitive: false);
+
+  // ignore: unused_element
+  static Map<String, dynamic> _redactArgs(Map<String, dynamic> args) {
+    return args.map(
+      (key, value) => MapEntry(
+        key,
+        _sensitiveKeys.hasMatch(key) ? '<redacted>' : value,
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> echo(String message) =>
+      _call('dispatcher.echo', {'message': message});
 
   Future<T> _unsupported<T>() {
     return Future<T>.error(UnsupportedError(_webUnsupportedMessage));
