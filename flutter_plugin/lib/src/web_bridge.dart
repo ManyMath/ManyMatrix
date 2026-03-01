@@ -1,8 +1,11 @@
 // ignore_for_file: avoid_web_libraries_in_flutter
+// BridgeStatus stream: subscribe to bridgeStatus.stream for lifecycle events (R013).
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:js_interop';
 import 'dart:typed_data';
 
+import 'bridge_status.dart';
 import 'models/models.dart';
 import 'web_bridge_errors.dart';
 
@@ -15,6 +18,30 @@ extension type _Chrome(JSObject _) implements JSObject {
 
 extension type _ChromeRuntime(JSObject _) implements JSObject {
   external JSPromise<JSAny?> sendMessage(JSAny? message);
+  external JSString? get id;
+}
+
+bool _isContextInvalidated(String msg) =>
+    msg.toLowerCase().contains('context invalidated');
+
+String? _chromeRuntimeId() {
+  try {
+    return _chrome.runtime.id?.toDart;
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<bool> _waitForContextRestore() async {
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  while (DateTime.now().isBefore(deadline)) {
+    await Future.delayed(const Duration(milliseconds: 200));
+    try {
+      final id = _chromeRuntimeId();
+      if (id != null && id.isNotEmpty) return true;
+    } catch (_) {}
+  }
+  return false;
 }
 
 const _webUnsupportedMessage =
@@ -38,6 +65,35 @@ class ManyMatrixBridge {
   }
 
   Future<Map<String, dynamic>> _call(
+    String method,
+    Map<String, dynamic> args,
+  ) async {
+    try {
+      return await _callOnce(method, args);
+    } catch (e) {
+      final msg = e.toString();
+      if (!_isContextInvalidated(msg)) rethrow;
+      bridgeStatus.emit(BridgeStatus.reconnecting);
+      developer.log(
+        'extension context invalidated, waiting for reload',
+        name: 'manymatrix.bridge',
+      );
+      final recovered = await _waitForContextRestore();
+      if (!recovered) {
+        bridgeStatus.emit(BridgeStatus.failed);
+        throw ManyMatrixStorageException(
+          'extension reload did not recover in 5s',
+          details: {'method': method},
+        );
+      }
+      final result = await _callOnce(method, args);
+      bridgeStatus.emit(BridgeStatus.connected);
+      developer.log('bridge recovered', name: 'manymatrix.bridge');
+      return result;
+    }
+  }
+
+  Future<Map<String, dynamic>> _callOnce(
     String method,
     Map<String, dynamic> args,
   ) async {
