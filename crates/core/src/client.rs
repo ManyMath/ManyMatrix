@@ -40,7 +40,16 @@ use {
     crate::Error,
 };
 
+#[cfg(target_family = "wasm")]
+use {
+    matrix_sdk::config::SyncSettings,
+    tracing::info,
+    crate::session::StoredSession,
+    crate::Error,
+};
+
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
+#[derive(Clone)]
 pub struct ManyMatrixClient {
     client: Client,
     homeserver: String,
@@ -1064,4 +1073,85 @@ fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
         .map_err(|e| Error::IdParse(format!("invalid MXC URI: {e}")))?
         .to_owned();
     Ok(MediaSource::Plain(uri))
+}
+
+#[cfg(target_family = "wasm")]
+impl ManyMatrixClient {
+    pub async fn new(homeserver_url: &str, store_name: &str) -> Result<Self, Error> {
+        let client = Client::builder()
+            .homeserver_url(homeserver_url)
+            .indexeddb_store(store_name, None)
+            .handle_refresh_tokens()
+            .build()
+            .await?;
+        info!("WASM client built for {}", homeserver_url);
+        Ok(Self {
+            client,
+            homeserver: homeserver_url.to_owned(),
+            sync_token: Arc::new(Mutex::new(None)),
+            store_path: PathBuf::from(store_name),
+        })
+    }
+
+    pub async fn login(&self, username: &str, password: &str) -> Result<StoredSession, Error> {
+        self.client
+            .matrix_auth()
+            .login_username(username, password)
+            .initial_device_display_name("manymatrix-web")
+            .request_refresh_token()
+            .send()
+            .await?;
+
+        let session = self
+            .client
+            .matrix_auth()
+            .session()
+            .ok_or_else(|| Error::Other("no session after login".into()))?;
+
+        info!("login ok");
+        Ok(StoredSession {
+            homeserver: self.homeserver.clone(),
+            session,
+        })
+    }
+
+    pub async fn restore(&self, session: &StoredSession) -> Result<(), Error> {
+        self.client.restore_session(session.session.clone()).await?;
+        info!("restore ok");
+        Ok(())
+    }
+
+    pub async fn logout(&self) -> Result<(), Error> {
+        self.client.matrix_auth().logout().await?;
+        info!("logout");
+        Ok(())
+    }
+
+    pub async fn sync_once(&self) -> Result<(), Error> {
+        let mut settings = SyncSettings::default();
+        if let Some(ref token) = *self.sync_token.lock().await {
+            settings = settings.token(token.clone());
+        }
+        let response = self.client.sync_once(settings).await?;
+        *self.sync_token.lock().await = Some(response.next_batch);
+        Ok(())
+    }
+
+    pub async fn sync_forever(&self) -> Result<(), Error> {
+        info!("starting sync…");
+        self.client.sync(SyncSettings::default()).await?;
+        Ok(())
+    }
+
+    pub fn inner(&self) -> &Client {
+        &self.client
+    }
+
+    pub fn logged_in(&self) -> bool {
+        self.client.matrix_auth().session().is_some()
+    }
+
+    pub async fn sync_token_clone(&self) -> Option<String> {
+        self.sync_token.lock().await.clone()
+    }
 }
