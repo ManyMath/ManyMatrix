@@ -14,11 +14,22 @@ external _Chrome get _chrome;
 
 extension type _Chrome(JSObject _) implements JSObject {
   external _ChromeRuntime get runtime;
+  external _ChromeStorage get storage;
 }
 
 extension type _ChromeRuntime(JSObject _) implements JSObject {
   external JSPromise<JSAny?> sendMessage(JSAny? message);
   external JSString? get id;
+}
+
+extension type _ChromeStorage(JSObject _) implements JSObject {
+  external _ChromeStorageLocal get local;
+}
+
+extension type _ChromeStorageLocal(JSObject _) implements JSObject {
+  external JSPromise<JSAny?> get(JSAny? keys);
+  external JSPromise<JSAny?> set(JSObject items);
+  external JSPromise<JSAny?> remove(JSAny? keys);
 }
 
 bool _isContextInvalidated(String msg) =>
@@ -48,12 +59,14 @@ const _webUnsupportedMessage =
     'ManyMatrix web/extension runtime is unavailable in this checkout.';
 
 class ManyMatrixBridge {
-  // ignore: unused_field
   final String _homeserverUrl;
   // ignore: unused_field
   final String _storePath;
 
   ManyMatrixBridge._(this._homeserverUrl, this._storePath);
+
+  String get _storeName =>
+      'manymatrix_${_homeserverUrl.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
 
   static Future<void> initialize(String libraryPath) async {}
 
@@ -154,7 +167,6 @@ class ManyMatrixBridge {
   static final _sensitiveKeys =
       RegExp(r'password|token|recovery_key', caseSensitive: false);
 
-  // ignore: unused_element
   static Map<String, dynamic> _redactArgs(Map<String, dynamic> args) {
     return args.map(
       (key, value) => MapEntry(
@@ -167,18 +179,71 @@ class ManyMatrixBridge {
   Future<Map<String, dynamic>> echo(String message) =>
       _call('dispatcher.echo', {'message': message});
 
+  Future<void> _persistSession(String sessionJson) async {
+    final obj = {'manymatrix_session': sessionJson}.jsify() as JSObject;
+    await _chrome.storage.local.set(obj).toDart;
+  }
+
+  static Future<String?> loadPersistedSession() async {
+    final result =
+        await _chrome.storage.local.get('manymatrix_session'.toJS).toDart;
+    if (result == null) return null;
+    final map = (result as JSObject).dartify() as Map<String, dynamic>;
+    return map['manymatrix_session'] as String?;
+  }
+
+  Future<void> _clearSession() async {
+    await _chrome.storage.local.remove('manymatrix_session'.toJS).toDart;
+  }
+
   Future<T> _unsupported<T>() {
     return Future<T>.error(UnsupportedError(_webUnsupportedMessage));
   }
 
-  Future<String> login(String username, String password) => _unsupported();
-  Future<void> restore(String sessionJson) => _unsupported();
-  Future<void> syncOnce() => _unsupported();
-  Future<void> syncForever() => _unsupported();
+  Future<String> login(String username, String password) async {
+    developer.log(
+      'auth.login ${_redactArgs({'username': username, 'password': password})}',
+      name: 'manymatrix.bridge',
+    );
+    final result = await _call('auth.login', {
+      'homeserver_url': _homeserverUrl,
+      'username': username,
+      'password': password,
+      'store_name': _storeName,
+    });
+    final sessionJson = result['session_json'] as String;
+    await _persistSession(sessionJson);
+    return sessionJson;
+  }
+
+  Future<void> restore(String sessionJson) async {
+    developer.log('auth.restore', name: 'manymatrix.bridge');
+    await _call('auth.restore', {
+      'homeserver_url': _homeserverUrl,
+      'session_json': sessionJson,
+      'store_name': _storeName,
+    });
+  }
+
+  Future<void> syncOnce() async {
+    await _call('sync.once', {});
+  }
+
+  Future<void> syncForever() async {
+    await _call('sync.start', {});
+  }
   Future<List<RoomSummary>> joinedRooms() => _unsupported();
   Future<String> serverCapabilities() => _unsupported();
-  Future<void> logout() => _unsupported();
-  Future<String?> syncToken() => _unsupported();
+  Future<void> logout() async {
+    developer.log('auth.logout', name: 'manymatrix.bridge');
+    await _call('auth.logout', {});
+    await _clearSession();
+  }
+
+  Future<String?> syncToken() async {
+    final result = await _call('sync.status', {});
+    return result['sync_token'] as String?;
+  }
   Future<String> createRoom({String? name, String? topic}) => _unsupported();
   Future<String> joinRoom(String roomIdOrAlias) => _unsupported();
   Future<void> invite(String roomId, String userId) => _unsupported();
