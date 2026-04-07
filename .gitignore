@@ -72,3 +72,6 @@ vendor/
 coverage/
 .cache/
 tmp/
+
+# Local homeserver config for manual testing (see testing/tuwunel)
+tuwunel-example.toml
