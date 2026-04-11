@@ -1,17 +1,24 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
-use matrix_sdk::Client;
+use matrix_sdk::config::SyncSettings;
+use matrix_sdk::room::MessagesOptions;
+use matrix_sdk::ruma::events::room::message::{RoomMessageEventContent, SyncRoomMessageEvent};
+use matrix_sdk::ruma::{RoomId, UInt};
+use matrix_sdk::{Client, Room};
+use tracing::info;
+
+use crate::session::StoredSession;
+use crate::types::{LastMessage, RoomSummary};
+use crate::Error;
 
 #[cfg(not(target_family = "wasm"))]
 use {
     std::path::Path,
-    std::time::Duration,
     matrix_sdk::attachment::AttachmentConfig,
-    matrix_sdk::config::SyncSettings,
     matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
-    matrix_sdk::room::MessagesOptions,
     matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType,
     matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest,
     matrix_sdk::ruma::api::client::room::Visibility,
@@ -20,32 +27,18 @@ use {
     matrix_sdk::ruma::events::receipt::ReceiptThread,
     matrix_sdk::ruma::events::relation::Annotation,
     matrix_sdk::ruma::events::room::message::{AddMentions, ForwardThread, ReplyWithinThread},
-    matrix_sdk::ruma::events::room::message::{
-        RoomMessageEventContent, RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
-    },
+    matrix_sdk::ruma::events::room::message::RoomMessageEventContentWithoutRelation,
     matrix_sdk::ruma::events::room::MediaSource,
     matrix_sdk::ruma::events::{
         AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
         SyncEphemeralRoomEvent,
     },
-    matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId},
-    matrix_sdk::Room,
+    matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomOrAliasId, UserId},
     matrix_sdk::RoomMemberships,
-    tracing::info,
-    crate::session::StoredSession,
     crate::types::{
-        CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent,
-        ReceiptEvent, RoomSummary, RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
+        CreateRoomOptions, MessageEvent, PaginatedMessages, ReactionEvent, ReceiptEvent,
+        RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
     },
-    crate::Error,
-};
-
-#[cfg(target_family = "wasm")]
-use {
-    matrix_sdk::config::SyncSettings,
-    tracing::info,
-    crate::session::StoredSession,
-    crate::Error,
 };
 
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
@@ -57,24 +50,7 @@ pub struct ManyMatrixClient {
     sync_token: Arc<Mutex<Option<String>>>,
 }
 
-#[cfg(not(target_family = "wasm"))]
 impl ManyMatrixClient {
-    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
-    pub async fn new(homeserver_url: &str, store_path: &Path) -> Result<Self, Error> {
-        let client = Client::builder()
-            .homeserver_url(homeserver_url)
-            .sqlite_store(store_path, None)
-            .handle_refresh_tokens()
-            .build()
-            .await?;
-        Ok(Self {
-            client,
-            homeserver: homeserver_url.to_owned(),
-            sync_token: Arc::new(Mutex::new(None)),
-            store_path: store_path.to_owned(),
-        })
-    }
-
     /// Login with username and password.
     pub async fn login(&self, username: &str, password: &str) -> Result<StoredSession, Error> {
         self.client
@@ -104,31 +80,18 @@ impl ManyMatrixClient {
         Ok(())
     }
 
-    /// Probe Matrix version and capability support for this homeserver.
-    pub async fn server_capabilities(&self) -> Result<ServerCapabilities, Error> {
-        let versions_response = self.client.fetch_server_versions(None).await?;
-        let versions = versions_response.versions.clone();
-        let unstable_features = versions_response.unstable_features.clone();
-        let raw_versions = serde_json::json!({
-            "versions": versions.clone(),
-            "unstable_features": unstable_features.clone(),
-        });
-        let raw_capabilities = if self.client.session().is_some() {
-            match self.client.get_capabilities().await {
-                Ok(capabilities) => Some(serde_json::to_value(&capabilities)?),
-                Err(_) => None,
-            }
-        } else {
-            None
-        };
+    /// Log out of the homeserver and remove local state.
+    pub async fn logout(&self) -> Result<(), Error> {
+        // 1. Server-side: invalidate token (do this first)
+        let server_result = self.client.matrix_auth().logout().await;
 
-        Ok(ServerCapabilities::from_raw(
-            self.client.homeserver().to_string(),
-            versions,
-            unstable_features,
-            raw_versions,
-            raw_capabilities,
-        ))
+        // 2. Delete entire store directory (crypto keys + state).
+        // On wasm the store is IndexedDB, not a directory, this is a no-op there.
+        let _ = std::fs::remove_dir_all(&self.store_path);
+
+        // If server-side failed, return the error after local cleanup
+        server_result?;
+        Ok(())
     }
 
     /// Run the sync loop, printing incoming messages to the log.
@@ -148,7 +111,7 @@ impl ManyMatrixClient {
                 }
             });
 
-        info!("starting sync…");
+        info!("starting sync...");
         self.client.sync(SyncSettings::default()).await?;
         Ok(())
     }
@@ -176,6 +139,21 @@ impl ManyMatrixClient {
         Ok(())
     }
 
+    /// Escape hatch: access the underlying [`matrix_sdk::Client`].
+    pub fn inner(&self) -> &Client {
+        &self.client
+    }
+
+    /// Whether a session is currently active.
+    pub fn logged_in(&self) -> bool {
+        self.client.matrix_auth().session().is_some()
+    }
+
+    /// Clone the current sync token.
+    pub async fn sync_token_clone(&self) -> Option<String> {
+        self.sync_token.lock().await.clone()
+    }
+
     /// Resolve a room by string ID.
     fn get_room_parsed(&self, room_id: &str) -> Result<Room, Error> {
         let room_id = <&RoomId>::try_from(room_id)
@@ -191,6 +169,107 @@ impl ManyMatrixClient {
         let content = RoomMessageEventContent::text_plain(body);
         let resp = room.send(content).await?;
         Ok(resp.event_id.to_string())
+    }
+
+    /// List joined rooms.
+    pub async fn joined_rooms(&self) -> Vec<RoomSummary> {
+        let mut summaries = Vec::new();
+        for room in self.client.joined_rooms() {
+            let room_id = room.room_id().to_string();
+            let display_name = room
+                .display_name()
+                .await
+                .ok()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| room_id.clone());
+            let avatar_url = room.avatar_url().map(|u| u.to_string());
+            let unread = room.unread_notification_counts();
+
+            // Fetch latest message via backward pagination (limit 1)
+            let last_message = {
+                let mut options = MessagesOptions::backward();
+                options.limit = UInt::from(1u32);
+                match room.messages(options).await {
+                    Ok(response) => {
+                        response.chunk.first().and_then(|timeline_event| {
+                            let event: serde_json::Value =
+                                timeline_event.raw().deserialize_as_unchecked().ok()?;
+                            // Only extract from m.room.message events
+                            let msgtype = event["content"]["msgtype"].as_str()?;
+                            if msgtype.starts_with("m.") {
+                                Some(LastMessage {
+                                    sender: event["sender"].as_str()?.to_owned(),
+                                    body: event["content"]["body"]
+                                        .as_str()
+                                        .unwrap_or_default()
+                                        .to_owned(),
+                                    timestamp: event["origin_server_ts"].as_u64().unwrap_or(0),
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                    Err(_) => None,
+                }
+            };
+
+            summaries.push(RoomSummary {
+                room_id,
+                display_name,
+                avatar_url,
+                last_message,
+                unread_count: unread.notification_count,
+            });
+        }
+        summaries
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl ManyMatrixClient {
+    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
+    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
+        let store_path = store_path.as_ref();
+        let client = Client::builder()
+            .homeserver_url(homeserver_url)
+            .sqlite_store(store_path, None)
+            .handle_refresh_tokens()
+            .build()
+            .await?;
+        Ok(Self {
+            client,
+            homeserver: homeserver_url.to_owned(),
+            sync_token: Arc::new(Mutex::new(None)),
+            store_path: store_path.to_owned(),
+        })
+    }
+
+    /// Probe Matrix version and capability support for this homeserver.
+    pub async fn server_capabilities(&self) -> Result<ServerCapabilities, Error> {
+        let versions_response = self.client.fetch_server_versions(None).await?;
+        let versions = versions_response.versions.clone();
+        let unstable_features = versions_response.unstable_features.clone();
+        let raw_versions = serde_json::json!({
+            "versions": versions.clone(),
+            "unstable_features": unstable_features.clone(),
+        });
+        let raw_capabilities = if self.client.session().is_some() {
+            match self.client.get_capabilities().await {
+                Ok(capabilities) => Some(serde_json::to_value(&capabilities)?),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        Ok(ServerCapabilities::from_raw(
+            self.client.homeserver().to_string(),
+            versions,
+            unstable_features,
+            raw_versions,
+            raw_capabilities,
+        ))
     }
 
     /// Send an HTML message. Returns the event ID.
@@ -331,73 +410,6 @@ impl ManyMatrixClient {
             )) => Ok(original),
             _ => Err(Error::Other("event is not an original room message".into())),
         }
-    }
-
-    /// List joined rooms.
-    pub async fn joined_rooms(&self) -> Vec<RoomSummary> {
-        let mut summaries = Vec::new();
-        for room in self.client.joined_rooms() {
-            let room_id = room.room_id().to_string();
-            let display_name = room
-                .display_name()
-                .await
-                .ok()
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| room_id.clone());
-            let avatar_url = room.avatar_url().map(|u| u.to_string());
-            let unread = room.unread_notification_counts();
-
-            // Fetch latest message via backward pagination (limit 1)
-            let last_message = {
-                let mut options = MessagesOptions::backward();
-                options.limit = UInt::from(1u32);
-                match room.messages(options).await {
-                    Ok(response) => {
-                        response.chunk.first().and_then(|timeline_event| {
-                            let event: serde_json::Value =
-                                timeline_event.raw().deserialize_as_unchecked().ok()?;
-                            // Only extract from m.room.message events
-                            let msgtype = event["content"]["msgtype"].as_str()?;
-                            if msgtype.starts_with("m.") {
-                                Some(LastMessage {
-                                    sender: event["sender"].as_str()?.to_owned(),
-                                    body: event["content"]["body"]
-                                        .as_str()
-                                        .unwrap_or_default()
-                                        .to_owned(),
-                                    timestamp: event["origin_server_ts"].as_u64().unwrap_or(0),
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                    }
-                    Err(_) => None,
-                }
-            };
-
-            summaries.push(RoomSummary {
-                room_id,
-                display_name,
-                avatar_url,
-                last_message,
-                unread_count: unread.notification_count,
-            });
-        }
-        summaries
-    }
-
-    /// Logout and delete local state.
-    pub async fn logout(&self) -> Result<(), Error> {
-        // 1. Server-side: invalidate token (do this first)
-        let server_result = self.client.matrix_auth().logout().await;
-
-        // 2. Delete entire store directory (crypto keys + state)
-        let _ = std::fs::remove_dir_all(&self.store_path);
-
-        // If server-side failed, return the error after local cleanup
-        server_result?;
-        Ok(())
     }
 
     /// Create a new room with the given options.
@@ -1044,11 +1056,6 @@ impl ManyMatrixClient {
         Ok(())
     }
 
-    /// Access the underlying SDK client.
-    pub fn inner(&self) -> &Client {
-        &self.client
-    }
-
     /// Returns the current user's Matrix ID (e.g. `@alice:example.com`), or `None` if not logged in.
     pub fn current_user_id(&self) -> Option<String> {
         self.client.user_id().map(|id| id.to_string())
@@ -1059,11 +1066,6 @@ impl ManyMatrixClient {
         let room = self.get_room_parsed(room_id)?;
         let encrypted = room.latest_encryption_state().await?.is_encrypted();
         Ok(encrypted)
-    }
-
-    /// Clone the current sync token.
-    pub async fn sync_token_clone(&self) -> Option<String> {
-        self.sync_token.lock().await.clone()
     }
 }
 
@@ -1077,6 +1079,8 @@ fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
 
 #[cfg(target_family = "wasm")]
 impl ManyMatrixClient {
+    /// Build a new client pointing at `homeserver_url`, storing state in the
+    /// IndexedDB database named `store_name`.
     pub async fn new(homeserver_url: &str, store_name: &str) -> Result<Self, Error> {
         let client = Client::builder()
             .homeserver_url(homeserver_url)
@@ -1091,67 +1095,5 @@ impl ManyMatrixClient {
             sync_token: Arc::new(Mutex::new(None)),
             store_path: PathBuf::from(store_name),
         })
-    }
-
-    pub async fn login(&self, username: &str, password: &str) -> Result<StoredSession, Error> {
-        self.client
-            .matrix_auth()
-            .login_username(username, password)
-            .initial_device_display_name("manymatrix-web")
-            .request_refresh_token()
-            .send()
-            .await?;
-
-        let session = self
-            .client
-            .matrix_auth()
-            .session()
-            .ok_or_else(|| Error::Other("no session after login".into()))?;
-
-        info!("login ok");
-        Ok(StoredSession {
-            homeserver: self.homeserver.clone(),
-            session,
-        })
-    }
-
-    pub async fn restore(&self, session: &StoredSession) -> Result<(), Error> {
-        self.client.restore_session(session.session.clone()).await?;
-        info!("restore ok");
-        Ok(())
-    }
-
-    pub async fn logout(&self) -> Result<(), Error> {
-        self.client.matrix_auth().logout().await?;
-        info!("logout");
-        Ok(())
-    }
-
-    pub async fn sync_once(&self) -> Result<(), Error> {
-        let mut settings = SyncSettings::default();
-        if let Some(ref token) = *self.sync_token.lock().await {
-            settings = settings.token(token.clone());
-        }
-        let response = self.client.sync_once(settings).await?;
-        *self.sync_token.lock().await = Some(response.next_batch);
-        Ok(())
-    }
-
-    pub async fn sync_forever(&self) -> Result<(), Error> {
-        info!("starting sync…");
-        self.client.sync(SyncSettings::default()).await?;
-        Ok(())
-    }
-
-    pub fn inner(&self) -> &Client {
-        &self.client
-    }
-
-    pub fn logged_in(&self) -> bool {
-        self.client.matrix_auth().session().is_some()
-    }
-
-    pub async fn sync_token_clone(&self) -> Option<String> {
-        self.sync_token.lock().await.clone()
     }
 }
