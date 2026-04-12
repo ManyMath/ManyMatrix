@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter
 // BridgeStatus stream: subscribe to bridgeStatus.stream for lifecycle events (R013).
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:js_interop';
 import 'dart:typed_data';
@@ -232,7 +233,15 @@ class ManyMatrixBridge {
   Future<void> syncForever() async {
     await _call('sync.start', {});
   }
-  Future<List<RoomSummary>> joinedRooms() => _unsupported();
+
+  Future<List<RoomSummary>> joinedRooms() async {
+    final result = await _call('rooms.list', {});
+    final list = jsonDecode(result['rooms_json'] as String) as List<dynamic>;
+    return list
+        .map((e) => RoomSummary.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<String> serverCapabilities() => _unsupported();
   Future<void> logout() async {
     developer.log('auth.logout', name: 'manymatrix.bridge');
@@ -256,7 +265,12 @@ class ManyMatrixBridge {
   Future<String?> roomTopic(String roomId) => _unsupported();
   Future<String?> roomAvatarUrl(String roomId) => _unsupported();
   Future<String?> roomMembers(String roomId) => _unsupported();
-  Future<String> sendText(String roomId, String body) => _unsupported();
+
+  Future<String> sendText(String roomId, String body) async {
+    final result =
+        await _call('messages.send_text', {'room_id': roomId, 'body': body});
+    return result['event_id'] as String;
+  }
   Future<String> sendHtml(String roomId, String body, String html) =>
       _unsupported();
   Future<String> sendNotice(String roomId, String body) => _unsupported();

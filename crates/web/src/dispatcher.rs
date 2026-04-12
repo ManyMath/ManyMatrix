@@ -50,6 +50,12 @@ struct RestoreArgs {
     store_name: String,
 }
 
+#[derive(Deserialize)]
+struct SendTextArgs {
+    room_id: String,
+    body: String,
+}
+
 fn sdk_err(e: manymatrix_core::Error) -> ErrEnvelope {
     ErrEnvelope {
         kind: ErrKind::MatrixSdkError,
@@ -158,6 +164,21 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             client.sync_once().await.map_err(sdk_err)?;
             let token = client.sync_token_clone().await;
             Ok(serde_json::json!({"next_batch": token}))
+        }
+        "rooms.list" => {
+            let client = get_client()?;
+            let rooms = client.joined_rooms().await;
+            let rooms_json = serde_json::to_string(&rooms).map_err(serde_err)?;
+            Ok(serde_json::json!({"rooms_json": rooms_json}))
+        }
+        "messages.send_text" => {
+            let args: SendTextArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .send_text(&args.room_id, &args.body)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
         }
         "sync.status" => {
             let logged_in = CLIENT.with(|cell| cell.borrow().is_some());
