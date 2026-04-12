@@ -11,7 +11,7 @@ use matrix_sdk::{Client, Room};
 use tracing::info;
 
 use crate::session::StoredSession;
-use crate::types::{LastMessage, RoomSummary};
+use crate::types::{LastMessage, MessageEvent, PaginatedMessages, RoomSummary};
 use crate::Error;
 
 #[cfg(not(target_family = "wasm"))]
@@ -36,8 +36,8 @@ use {
     matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomOrAliasId, UserId},
     matrix_sdk::RoomMemberships,
     crate::types::{
-        CreateRoomOptions, MessageEvent, PaginatedMessages, ReactionEvent, ReceiptEvent,
-        RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
+        CreateRoomOptions, ReactionEvent, ReceiptEvent, RoomVisibility, SasEmoji, SasEmojis,
+        ServerCapabilities,
     },
 };
 
@@ -223,6 +223,75 @@ impl ManyMatrixClient {
             });
         }
         summaries
+    }
+
+    /// Paginate messages backward from a room.
+    pub async fn get_messages(
+        &self,
+        room_id: &str,
+        from_token: Option<&str>,
+        limit: u32,
+    ) -> Result<PaginatedMessages, Error> {
+        let room = self.get_room_parsed(room_id)?;
+        let mut options = MessagesOptions::backward();
+        if let Some(token) = from_token {
+            options = options.from(token);
+        }
+        options.limit = UInt::from(limit);
+
+        let response = room.messages(options).await?;
+
+        let messages: Vec<MessageEvent> = response
+            .chunk
+            .iter()
+            .filter_map(|timeline_event| {
+                let event: serde_json::Value =
+                    timeline_event.raw().deserialize_as_unchecked().ok()?;
+                Some(MessageEvent {
+                    event_id: event["event_id"].as_str()?.to_owned(),
+                    room_id: room_id.to_owned(),
+                    sender: event["sender"].as_str()?.to_owned(),
+                    body: event["content"]["body"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                    formatted_body: event["content"]["formatted_body"]
+                        .as_str()
+                        .map(|s| s.to_owned()),
+                    msgtype: event["content"]["msgtype"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                    timestamp: event["origin_server_ts"].as_u64().unwrap_or(0),
+                    in_reply_to: event["content"]["m.relates_to"]["m.in_reply_to"]["event_id"]
+                        .as_str()
+                        .map(|s| s.to_owned()),
+                    thread_root: event["content"]["m.relates_to"]["event_id"]
+                        .as_str()
+                        .map(|s| s.to_owned()),
+                    mxc_uri: event["content"]["url"].as_str().map(|s| s.to_owned()),
+                    filename: event["content"]["filename"]
+                        .as_str()
+                        .or_else(|| event["content"]["body"].as_str())
+                        .map(|s| s.to_owned())
+                        .and_then(|f| {
+                            let msgtype = event["content"]["msgtype"].as_str().unwrap_or_default();
+                            if ["m.image", "m.file", "m.video", "m.audio"].contains(&msgtype) {
+                                Some(f)
+                            } else {
+                                None
+                            }
+                        }),
+                    file_size: event["content"]["info"]["size"].as_u64(),
+                })
+            })
+            .collect();
+
+        let end_token = response.end;
+        Ok(PaginatedMessages {
+            messages,
+            end_token,
+        })
     }
 }
 
@@ -580,75 +649,6 @@ impl ManyMatrixClient {
         let room = self.get_room_parsed(room_id)?;
         room.typing_notice(typing).await?;
         Ok(())
-    }
-
-    /// Paginate messages backward from a room.
-    pub async fn get_messages(
-        &self,
-        room_id: &str,
-        from_token: Option<&str>,
-        limit: u32,
-    ) -> Result<PaginatedMessages, Error> {
-        let room = self.get_room_parsed(room_id)?;
-        let mut options = MessagesOptions::backward();
-        if let Some(token) = from_token {
-            options = options.from(token);
-        }
-        options.limit = UInt::from(limit);
-
-        let response = room.messages(options).await?;
-
-        let messages: Vec<MessageEvent> = response
-            .chunk
-            .iter()
-            .filter_map(|timeline_event| {
-                let event: serde_json::Value =
-                    timeline_event.raw().deserialize_as_unchecked().ok()?;
-                Some(MessageEvent {
-                    event_id: event["event_id"].as_str()?.to_owned(),
-                    room_id: room_id.to_owned(),
-                    sender: event["sender"].as_str()?.to_owned(),
-                    body: event["content"]["body"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_owned(),
-                    formatted_body: event["content"]["formatted_body"]
-                        .as_str()
-                        .map(|s| s.to_owned()),
-                    msgtype: event["content"]["msgtype"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_owned(),
-                    timestamp: event["origin_server_ts"].as_u64().unwrap_or(0),
-                    in_reply_to: event["content"]["m.relates_to"]["m.in_reply_to"]["event_id"]
-                        .as_str()
-                        .map(|s| s.to_owned()),
-                    thread_root: event["content"]["m.relates_to"]["event_id"]
-                        .as_str()
-                        .map(|s| s.to_owned()),
-                    mxc_uri: event["content"]["url"].as_str().map(|s| s.to_owned()),
-                    filename: event["content"]["filename"]
-                        .as_str()
-                        .or_else(|| event["content"]["body"].as_str())
-                        .map(|s| s.to_owned())
-                        .and_then(|f| {
-                            let msgtype = event["content"]["msgtype"].as_str().unwrap_or_default();
-                            if ["m.image", "m.file", "m.video", "m.audio"].contains(&msgtype) {
-                                Some(f)
-                            } else {
-                                None
-                            }
-                        }),
-                    file_size: event["content"]["info"]["size"].as_u64(),
-                })
-            })
-            .collect();
-
-        let end_token = response.end;
-        Ok(PaginatedMessages {
-            messages,
-            end_token,
-        })
     }
 
     /// Register a callback for incoming room messages.

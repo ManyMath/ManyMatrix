@@ -56,6 +56,13 @@ struct SendTextArgs {
     body: String,
 }
 
+#[derive(Deserialize)]
+struct GetMessagesArgs {
+    room_id: String,
+    from_token: Option<String>,
+    limit: u32,
+}
+
 fn sdk_err(e: manymatrix_core::Error) -> ErrEnvelope {
     ErrEnvelope {
         kind: ErrKind::MatrixSdkError,
@@ -170,6 +177,16 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let rooms = client.joined_rooms().await;
             let rooms_json = serde_json::to_string(&rooms).map_err(serde_err)?;
             Ok(serde_json::json!({"rooms_json": rooms_json}))
+        }
+        "messages.get" => {
+            let args: GetMessagesArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let paginated = client
+                .get_messages(&args.room_id, args.from_token.as_deref(), args.limit)
+                .await
+                .map_err(sdk_err)?;
+            let paginated_json = serde_json::to_string(&paginated).map_err(serde_err)?;
+            Ok(serde_json::json!({"paginated_json": paginated_json}))
         }
         "messages.send_text" => {
             let args: SendTextArgs = serde_json::from_str(args_json).map_err(serde_err)?;

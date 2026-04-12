@@ -295,8 +295,17 @@ class ManyMatrixBridge {
     String roomId, {
     String? fromToken,
     int limit = 20,
-  }) =>
-      _unsupported();
+  }) async {
+    final result = await _call('messages.get', {
+      'room_id': roomId,
+      'from_token': fromToken,
+      'limit': limit,
+    });
+    return PaginatedMessages.fromJson(
+      jsonDecode(result['paginated_json'] as String) as Map<String, dynamic>,
+    );
+  }
+
   Future<void> enableEncryption(String roomId) => _unsupported();
   Future<String> startVerification(String userId, String deviceId) =>
       _unsupported();
