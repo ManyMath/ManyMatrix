@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::Deserialize;
 
 use crate::envelope::{ErrEnvelope, ErrKind};
-use manymatrix_core::{ManyMatrixClient, StoredSession};
+use manymatrix_core::{CreateRoomOptions, ManyMatrixClient, RoomVisibility, StoredSession};
 
 thread_local! {
     static CLIENT: RefCell<Option<ManyMatrixClient>> = RefCell::new(None);
@@ -61,6 +61,32 @@ struct GetMessagesArgs {
     room_id: String,
     from_token: Option<String>,
     limit: u32,
+}
+
+#[derive(Deserialize)]
+struct CreateRoomArgs {
+    name: Option<String>,
+    topic: Option<String>,
+    #[serde(default)]
+    invite: Vec<String>,
+    #[serde(default)]
+    public: bool,
+}
+
+#[derive(Deserialize)]
+struct JoinRoomArgs {
+    room_id_or_alias: String,
+}
+
+#[derive(Deserialize)]
+struct RoomUserArgs {
+    room_id: String,
+    user_id: String,
+}
+
+#[derive(Deserialize)]
+struct RoomIdArgs {
+    room_id: String,
 }
 
 fn sdk_err(e: manymatrix_core::Error) -> ErrEnvelope {
@@ -171,6 +197,46 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             client.sync_once().await.map_err(sdk_err)?;
             let token = client.sync_token_clone().await;
             Ok(serde_json::json!({"next_batch": token}))
+        }
+        "rooms.create" => {
+            let args: CreateRoomArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let options = CreateRoomOptions {
+                name: args.name,
+                topic: args.topic,
+                invite: args.invite,
+                visibility: if args.public {
+                    RoomVisibility::Public
+                } else {
+                    RoomVisibility::Private
+                },
+            };
+            let room_id = client.create_room(options).await.map_err(sdk_err)?;
+            Ok(serde_json::json!({"room_id": room_id}))
+        }
+        "rooms.join" => {
+            let args: JoinRoomArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let room_id = client
+                .join_room(&args.room_id_or_alias)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"room_id": room_id}))
+        }
+        "rooms.invite" => {
+            let args: RoomUserArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .invite(&args.room_id, &args.user_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "rooms.leave" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client.leave_room(&args.room_id).await.map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
         }
         "rooms.list" => {
             let client = get_client()?;

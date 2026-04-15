@@ -253,10 +253,24 @@ class ManyMatrixBridge {
     final result = await _call('sync.status', {});
     return result['sync_token'] as String?;
   }
-  Future<String> createRoom({String? name, String? topic}) => _unsupported();
-  Future<String> joinRoom(String roomIdOrAlias) => _unsupported();
-  Future<void> invite(String roomId, String userId) => _unsupported();
-  Future<void> leaveRoom(String roomId) => _unsupported();
+  Future<String> createRoom({String? name, String? topic}) async {
+    final result = await _call('rooms.create', {'name': name, 'topic': topic});
+    return result['room_id'] as String;
+  }
+
+  Future<String> joinRoom(String roomIdOrAlias) async {
+    final result =
+        await _call('rooms.join', {'room_id_or_alias': roomIdOrAlias});
+    return result['room_id'] as String;
+  }
+
+  Future<void> invite(String roomId, String userId) async {
+    await _call('rooms.invite', {'room_id': roomId, 'user_id': userId});
+  }
+
+  Future<void> leaveRoom(String roomId) async {
+    await _call('rooms.leave', {'room_id': roomId});
+  }
   Future<void> kick(String roomId, String userId, {String? reason}) =>
       _unsupported();
   Future<void> ban(String roomId, String userId, {String? reason}) =>

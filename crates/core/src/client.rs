@@ -5,13 +5,17 @@ use tokio::sync::Mutex;
 
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::room::MessagesOptions;
+use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
+use matrix_sdk::ruma::api::client::room::Visibility;
 use matrix_sdk::ruma::events::room::message::{RoomMessageEventContent, SyncRoomMessageEvent};
-use matrix_sdk::ruma::{RoomId, UInt};
+use matrix_sdk::ruma::{RoomId, RoomOrAliasId, UInt, UserId};
 use matrix_sdk::{Client, Room};
 use tracing::info;
 
 use crate::session::StoredSession;
-use crate::types::{LastMessage, MessageEvent, PaginatedMessages, RoomSummary};
+use crate::types::{
+    CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, RoomSummary, RoomVisibility,
+};
 use crate::Error;
 
 #[cfg(not(target_family = "wasm"))]
@@ -20,8 +24,6 @@ use {
     matrix_sdk::attachment::AttachmentConfig,
     matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
     matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType,
-    matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest,
-    matrix_sdk::ruma::api::client::room::Visibility,
     matrix_sdk::ruma::events::reaction::ReactionEventContent,
     matrix_sdk::ruma::events::receipt::ReceiptEventContent,
     matrix_sdk::ruma::events::receipt::ReceiptThread,
@@ -33,12 +35,9 @@ use {
         AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
         SyncEphemeralRoomEvent,
     },
-    matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomOrAliasId, UserId},
+    matrix_sdk::ruma::{DeviceId, EventId, MxcUri},
     matrix_sdk::RoomMemberships,
-    crate::types::{
-        CreateRoomOptions, ReactionEvent, ReceiptEvent, RoomVisibility, SasEmoji, SasEmojis,
-        ServerCapabilities,
-    },
+    crate::types::{ReactionEvent, ReceiptEvent, SasEmoji, SasEmojis, ServerCapabilities},
 };
 
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
@@ -293,6 +292,72 @@ impl ManyMatrixClient {
             end_token,
         })
     }
+
+    /// Create a new room with the given options.
+    pub async fn create_room(&self, options: CreateRoomOptions) -> Result<String, Error> {
+        let mut request = CreateRoomRequest::new();
+        request.name = options.name;
+        request.topic = options.topic;
+
+        // Parse invite user IDs from strings
+        request.invite = options
+            .invite
+            .iter()
+            .map(|id| {
+                <&UserId>::try_from(id.as_str())
+                    .map(|u| u.to_owned())
+                    .map_err(|e| Error::Other(format!("invalid user ID '{}': {}", id, e)))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        request.visibility = match options.visibility {
+            RoomVisibility::Public => Visibility::Public,
+            RoomVisibility::Private => Visibility::Private,
+        };
+
+        let room = self.client.create_room(request).await?;
+        Ok(room.room_id().to_string())
+    }
+
+    /// Join a room by ID or alias.
+    pub async fn join_room(&self, room_id_or_alias: &str) -> Result<String, Error> {
+        let room = if room_id_or_alias.starts_with('!') {
+            let room_id = <&RoomId>::try_from(room_id_or_alias)
+                .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
+            self.client.join_room_by_id(room_id).await?
+        } else {
+            let alias = <&RoomOrAliasId>::try_from(room_id_or_alias)
+                .map_err(|e| Error::Other(format!("invalid room alias: {e}")))?;
+            self.client.join_room_by_id_or_alias(alias, &[]).await?
+        };
+        Ok(room.room_id().to_string())
+    }
+
+    /// Invite a user to a room.
+    pub async fn invite(&self, room_id: &str, user_id: &str) -> Result<(), Error> {
+        let room_id = <&RoomId>::try_from(room_id)
+            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
+        let user_id = <&UserId>::try_from(user_id)
+            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
+        let room = self
+            .client
+            .get_room(room_id)
+            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
+        room.invite_user_by_id(user_id).await?;
+        Ok(())
+    }
+
+    /// Leave a room.
+    pub async fn leave_room(&self, room_id: &str) -> Result<(), Error> {
+        let room_id = <&RoomId>::try_from(room_id)
+            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
+        let room = self
+            .client
+            .get_room(room_id)
+            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
+        room.leave().await?;
+        Ok(())
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -479,72 +544,6 @@ impl ManyMatrixClient {
             )) => Ok(original),
             _ => Err(Error::Other("event is not an original room message".into())),
         }
-    }
-
-    /// Create a new room with the given options.
-    pub async fn create_room(&self, options: CreateRoomOptions) -> Result<String, Error> {
-        let mut request = CreateRoomRequest::new();
-        request.name = options.name;
-        request.topic = options.topic;
-
-        // Parse invite user IDs from strings
-        request.invite = options
-            .invite
-            .iter()
-            .map(|id| {
-                <&UserId>::try_from(id.as_str())
-                    .map(|u| u.to_owned())
-                    .map_err(|e| Error::Other(format!("invalid user ID '{}': {}", id, e)))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        request.visibility = match options.visibility {
-            RoomVisibility::Public => Visibility::Public,
-            RoomVisibility::Private => Visibility::Private,
-        };
-
-        let room = self.client.create_room(request).await?;
-        Ok(room.room_id().to_string())
-    }
-
-    /// Join a room by ID or alias.
-    pub async fn join_room(&self, room_id_or_alias: &str) -> Result<String, Error> {
-        let room = if room_id_or_alias.starts_with('!') {
-            let room_id = <&RoomId>::try_from(room_id_or_alias)
-                .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-            self.client.join_room_by_id(room_id).await?
-        } else {
-            let alias = <&RoomOrAliasId>::try_from(room_id_or_alias)
-                .map_err(|e| Error::Other(format!("invalid room alias: {e}")))?;
-            self.client.join_room_by_id_or_alias(alias, &[]).await?
-        };
-        Ok(room.room_id().to_string())
-    }
-
-    /// Invite a user to a room.
-    pub async fn invite(&self, room_id: &str, user_id: &str) -> Result<(), Error> {
-        let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-        let user_id = <&UserId>::try_from(user_id)
-            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
-        let room = self
-            .client
-            .get_room(room_id)
-            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
-        room.invite_user_by_id(user_id).await?;
-        Ok(())
-    }
-
-    /// Leave a room.
-    pub async fn leave_room(&self, room_id: &str) -> Result<(), Error> {
-        let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-        let room = self
-            .client
-            .get_room(room_id)
-            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
-        room.leave().await?;
-        Ok(())
     }
 
     /// Kick a user from a room.
