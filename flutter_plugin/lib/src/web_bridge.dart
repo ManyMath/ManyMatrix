@@ -275,14 +275,41 @@ class ManyMatrixBridge {
     await _call('rooms.leave', {'room_id': roomId});
   }
 
-  Future<void> kick(String roomId, String userId, {String? reason}) =>
-      _unsupported();
-  Future<void> ban(String roomId, String userId, {String? reason}) =>
-      _unsupported();
-  Future<String?> roomName(String roomId) => _unsupported();
-  Future<String?> roomTopic(String roomId) => _unsupported();
-  Future<String?> roomAvatarUrl(String roomId) => _unsupported();
-  Future<String?> roomMembers(String roomId) => _unsupported();
+  Future<void> kick(String roomId, String userId, {String? reason}) async {
+    await _call('rooms.kick', {
+      'room_id': roomId,
+      'user_id': userId,
+      'reason': reason,
+    });
+  }
+
+  Future<void> ban(String roomId, String userId, {String? reason}) async {
+    await _call('rooms.ban', {
+      'room_id': roomId,
+      'user_id': userId,
+      'reason': reason,
+    });
+  }
+
+  Future<String?> roomName(String roomId) async {
+    final result = await _call('rooms.name', {'room_id': roomId});
+    return result['name'] as String?;
+  }
+
+  Future<String?> roomTopic(String roomId) async {
+    final result = await _call('rooms.topic', {'room_id': roomId});
+    return result['topic'] as String?;
+  }
+
+  Future<String?> roomAvatarUrl(String roomId) async {
+    final result = await _call('rooms.avatar_url', {'room_id': roomId});
+    return result['avatar_url'] as String?;
+  }
+
+  Future<String?> roomMembers(String roomId) async {
+    final result = await _call('rooms.members', {'room_id': roomId});
+    return result['members_json'] as String?;
+  }
 
   Future<String> sendText(String roomId, String body) async {
     final result =

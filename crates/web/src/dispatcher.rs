@@ -131,6 +131,13 @@ struct RoomIdArgs {
     room_id: String,
 }
 
+#[derive(Deserialize)]
+struct RoomUserReasonArgs {
+    room_id: String,
+    user_id: String,
+    reason: Option<String>,
+}
+
 fn sdk_err(e: manymatrix_core::Error) -> ErrEnvelope {
     ErrEnvelope {
         kind: ErrKind::MatrixSdkError,
@@ -279,6 +286,49 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let client = get_client()?;
             client.leave_room(&args.room_id).await.map_err(sdk_err)?;
             Ok(serde_json::json!({}))
+        }
+        "rooms.kick" => {
+            let args: RoomUserReasonArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .kick(&args.room_id, &args.user_id, args.reason.as_deref())
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "rooms.ban" => {
+            let args: RoomUserReasonArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .ban(&args.room_id, &args.user_id, args.reason.as_deref())
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "rooms.name" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let name = client.room_name(&args.room_id).map_err(sdk_err)?;
+            Ok(serde_json::json!({"name": name}))
+        }
+        "rooms.topic" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let topic = client.room_topic(&args.room_id).map_err(sdk_err)?;
+            Ok(serde_json::json!({"topic": topic}))
+        }
+        "rooms.avatar_url" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let avatar_url = client.room_avatar_url(&args.room_id).map_err(sdk_err)?;
+            Ok(serde_json::json!({"avatar_url": avatar_url}))
+        }
+        "rooms.members" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let members = client.room_members(&args.room_id).await.map_err(sdk_err)?;
+            let members_json = serde_json::to_string(&members).map_err(serde_err)?;
+            Ok(serde_json::json!({"members_json": members_json}))
         }
         "rooms.list" => {
             let client = get_client()?;

@@ -15,7 +15,7 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::events::{AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent};
 use matrix_sdk::ruma::{EventId, RoomId, RoomOrAliasId, UInt, UserId};
-use matrix_sdk::{Client, Room};
+use matrix_sdk::{Client, Room, RoomMemberships};
 use tracing::info;
 
 use crate::session::StoredSession;
@@ -35,7 +35,6 @@ use {
     matrix_sdk::ruma::events::room::MediaSource,
     matrix_sdk::ruma::events::{OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent},
     matrix_sdk::ruma::{DeviceId, MxcUri},
-    matrix_sdk::RoomMemberships,
     crate::types::{ReactionEvent, ReceiptEvent, SasEmoji, SasEmojis, ServerCapabilities},
 };
 
@@ -497,6 +496,59 @@ impl ManyMatrixClient {
             _ => Err(Error::Other("event is not an original room message".into())),
         }
     }
+
+    /// Kick a user from a room.
+    pub async fn kick(
+        &self,
+        room_id: &str,
+        user_id: &str,
+        reason: Option<&str>,
+    ) -> Result<(), Error> {
+        let user_id = <&UserId>::try_from(user_id)
+            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
+        let room = self.get_room_parsed(room_id)?;
+        room.kick_user(user_id, reason).await?;
+        Ok(())
+    }
+
+    /// Ban a user from a room.
+    pub async fn ban(
+        &self,
+        room_id: &str,
+        user_id: &str,
+        reason: Option<&str>,
+    ) -> Result<(), Error> {
+        let user_id = <&UserId>::try_from(user_id)
+            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
+        let room = self.get_room_parsed(room_id)?;
+        room.ban_user(user_id, reason).await?;
+        Ok(())
+    }
+
+    /// Get the room's name (from room state), or None if not set.
+    pub fn room_name(&self, room_id: &str) -> Result<Option<String>, Error> {
+        let room = self.get_room_parsed(room_id)?;
+        Ok(room.name())
+    }
+
+    /// Get the room's topic, or None if not set.
+    pub fn room_topic(&self, room_id: &str) -> Result<Option<String>, Error> {
+        let room = self.get_room_parsed(room_id)?;
+        Ok(room.topic())
+    }
+
+    /// Get the room's avatar URL (mxc:// URI), or None if not set.
+    pub fn room_avatar_url(&self, room_id: &str) -> Result<Option<String>, Error> {
+        let room = self.get_room_parsed(room_id)?;
+        Ok(room.avatar_url().map(|u| u.to_string()))
+    }
+
+    /// Get the list of joined member user IDs for a room.
+    pub async fn room_members(&self, room_id: &str) -> Result<Vec<String>, Error> {
+        let room = self.get_room_parsed(room_id)?;
+        let members = room.members(RoomMemberships::JOIN).await?;
+        Ok(members.iter().map(|m| m.user_id().to_string()).collect())
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -543,89 +595,6 @@ impl ManyMatrixClient {
             raw_versions,
             raw_capabilities,
         ))
-    }
-
-    /// Kick a user from a room.
-    pub async fn kick(
-        &self,
-        room_id: &str,
-        user_id: &str,
-        reason: Option<&str>,
-    ) -> Result<(), Error> {
-        let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-        let user_id = <&UserId>::try_from(user_id)
-            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
-        let room = self
-            .client
-            .get_room(room_id)
-            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
-        room.kick_user(user_id, reason).await?;
-        Ok(())
-    }
-
-    /// Ban a user from a room.
-    pub async fn ban(
-        &self,
-        room_id: &str,
-        user_id: &str,
-        reason: Option<&str>,
-    ) -> Result<(), Error> {
-        let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-        let user_id = <&UserId>::try_from(user_id)
-            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
-        let room = self
-            .client
-            .get_room(room_id)
-            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
-        room.ban_user(user_id, reason).await?;
-        Ok(())
-    }
-
-    /// Get the room's name (from room state), or None if not set.
-    pub fn room_name(&self, room_id: &str) -> Result<Option<String>, Error> {
-        let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-        let room = self
-            .client
-            .get_room(room_id)
-            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
-        Ok(room.name())
-    }
-
-    /// Get the room's topic, or None if not set.
-    pub fn room_topic(&self, room_id: &str) -> Result<Option<String>, Error> {
-        let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-        let room = self
-            .client
-            .get_room(room_id)
-            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
-        Ok(room.topic())
-    }
-
-    /// Get the room's avatar URL (mxc:// URI), or None if not set.
-    pub fn room_avatar_url(&self, room_id: &str) -> Result<Option<String>, Error> {
-        let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-        let room = self
-            .client
-            .get_room(room_id)
-            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
-        Ok(room.avatar_url().map(|u| u.to_string()))
-    }
-
-    /// Get the list of joined member user IDs for a room.
-    pub async fn room_members(&self, room_id: &str) -> Result<Vec<String>, Error> {
-        let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
-        let room = self
-            .client
-            .get_room(room_id)
-            .ok_or_else(|| Error::Other(format!("room {} not found", room_id)))?;
-        let members = room.members(RoomMemberships::JOIN).await?;
-        Ok(members.iter().map(|m| m.user_id().to_string()).collect())
     }
 
     /// Send a read receipt for the given event in the given room.
