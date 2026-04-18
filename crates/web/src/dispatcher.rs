@@ -57,6 +57,48 @@ struct SendTextArgs {
 }
 
 #[derive(Deserialize)]
+struct SendHtmlArgs {
+    room_id: String,
+    body: String,
+    html: String,
+}
+
+#[derive(Deserialize)]
+struct EditMessageArgs {
+    room_id: String,
+    event_id: String,
+    new_body: String,
+}
+
+#[derive(Deserialize)]
+struct ReplyArgs {
+    room_id: String,
+    event_id: String,
+    body: String,
+}
+
+#[derive(Deserialize)]
+struct ReactionArgs {
+    room_id: String,
+    event_id: String,
+    key: String,
+}
+
+#[derive(Deserialize)]
+struct RedactArgs {
+    room_id: String,
+    event_id: String,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ThreadReplyArgs {
+    room_id: String,
+    thread_root_event_id: String,
+    body: String,
+}
+
+#[derive(Deserialize)]
 struct GetMessagesArgs {
     room_id: String,
     from_token: Option<String>,
@@ -259,6 +301,78 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let client = get_client()?;
             let event_id = client
                 .send_text(&args.room_id, &args.body)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
+        }
+        "messages.send_html" => {
+            let args: SendHtmlArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .send_html(&args.room_id, &args.body, &args.html)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
+        }
+        "messages.send_notice" => {
+            let args: SendTextArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .send_notice(&args.room_id, &args.body)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
+        }
+        "messages.send_emote" => {
+            let args: SendTextArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .send_emote(&args.room_id, &args.body)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
+        }
+        "messages.edit" => {
+            let args: EditMessageArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .edit_message(&args.room_id, &args.event_id, &args.new_body)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "messages.reply" => {
+            let args: ReplyArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .reply_to(&args.room_id, &args.event_id, &args.body)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
+        }
+        "messages.react" => {
+            let args: ReactionArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .send_reaction(&args.room_id, &args.event_id, &args.key)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
+        }
+        "messages.redact" => {
+            let args: RedactArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .redact(&args.room_id, &args.event_id, args.reason.as_deref())
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "messages.thread_reply" => {
+            let args: ThreadReplyArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .send_thread_reply(&args.room_id, &args.thread_root_event_id, &args.body)
                 .await
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({"event_id": event_id}))

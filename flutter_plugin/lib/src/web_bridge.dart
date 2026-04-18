@@ -114,7 +114,9 @@ class ManyMatrixBridge {
     final envelope = {'target': 'offscreen', 'method': method, 'args': args};
     final JSAny? replyJs;
     try {
-      replyJs = await _chrome.runtime.sendMessage(envelope.jsify()).toDart
+      replyJs = await _chrome.runtime
+          .sendMessage(envelope.jsify())
+          .toDart
           .timeout(const Duration(seconds: 30));
     } on TimeoutException {
       throw ManyMatrixStorageException(
@@ -253,6 +255,7 @@ class ManyMatrixBridge {
     final result = await _call('sync.status', {});
     return result['sync_token'] as String?;
   }
+
   Future<String> createRoom({String? name, String? topic}) async {
     final result = await _call('rooms.create', {'name': name, 'topic': topic});
     return result['room_id'] as String;
@@ -271,6 +274,7 @@ class ManyMatrixBridge {
   Future<void> leaveRoom(String roomId) async {
     await _call('rooms.leave', {'room_id': roomId});
   }
+
   Future<void> kick(String roomId, String userId, {String? reason}) =>
       _unsupported();
   Future<void> ban(String roomId, String userId, {String? reason}) =>
@@ -285,24 +289,80 @@ class ManyMatrixBridge {
         await _call('messages.send_text', {'room_id': roomId, 'body': body});
     return result['event_id'] as String;
   }
-  Future<String> sendHtml(String roomId, String body, String html) =>
-      _unsupported();
-  Future<String> sendNotice(String roomId, String body) => _unsupported();
-  Future<String> sendEmote(String roomId, String body) => _unsupported();
-  Future<void> editMessage(String roomId, String eventId, String newBody) =>
-      _unsupported();
-  Future<String> replyTo(String roomId, String eventId, String body) =>
-      _unsupported();
-  Future<String> sendReaction(String roomId, String eventId, String key) =>
-      _unsupported();
-  Future<void> redact(String roomId, String eventId, {String? reason}) =>
-      _unsupported();
+
+  Future<String> sendHtml(String roomId, String body, String html) async {
+    final result = await _call('messages.send_html', {
+      'room_id': roomId,
+      'body': body,
+      'html': html,
+    });
+    return result['event_id'] as String;
+  }
+
+  Future<String> sendNotice(String roomId, String body) async {
+    final result = await _call(
+      'messages.send_notice',
+      {'room_id': roomId, 'body': body},
+    );
+    return result['event_id'] as String;
+  }
+
+  Future<String> sendEmote(String roomId, String body) async {
+    final result = await _call(
+      'messages.send_emote',
+      {'room_id': roomId, 'body': body},
+    );
+    return result['event_id'] as String;
+  }
+
+  Future<void> editMessage(
+      String roomId, String eventId, String newBody) async {
+    await _call('messages.edit', {
+      'room_id': roomId,
+      'event_id': eventId,
+      'new_body': newBody,
+    });
+  }
+
+  Future<String> replyTo(String roomId, String eventId, String body) async {
+    final result = await _call('messages.reply', {
+      'room_id': roomId,
+      'event_id': eventId,
+      'body': body,
+    });
+    return result['event_id'] as String;
+  }
+
+  Future<String> sendReaction(String roomId, String eventId, String key) async {
+    final result = await _call('messages.react', {
+      'room_id': roomId,
+      'event_id': eventId,
+      'key': key,
+    });
+    return result['event_id'] as String;
+  }
+
+  Future<void> redact(String roomId, String eventId, {String? reason}) async {
+    await _call('messages.redact', {
+      'room_id': roomId,
+      'event_id': eventId,
+      'reason': reason,
+    });
+  }
+
   Future<String> sendThreadReply(
     String roomId,
     String threadRootId,
     String body,
-  ) =>
-      _unsupported();
+  ) async {
+    final result = await _call('messages.thread_reply', {
+      'room_id': roomId,
+      'thread_root_event_id': threadRootId,
+      'body': body,
+    });
+    return result['event_id'] as String;
+  }
+
   Future<void> sendReadReceipt(String roomId, String eventId) => _unsupported();
   Future<void> sendTyping(String roomId, bool typing) => _unsupported();
   Future<PaginatedMessages> getMessages(

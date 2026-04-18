@@ -7,8 +7,14 @@ use matrix_sdk::config::SyncSettings;
 use matrix_sdk::room::MessagesOptions;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
 use matrix_sdk::ruma::api::client::room::Visibility;
-use matrix_sdk::ruma::events::room::message::{RoomMessageEventContent, SyncRoomMessageEvent};
-use matrix_sdk::ruma::{RoomId, RoomOrAliasId, UInt, UserId};
+use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+use matrix_sdk::ruma::events::relation::Annotation;
+use matrix_sdk::ruma::events::room::message::{
+    AddMentions, ForwardThread, ReplyWithinThread, RoomMessageEventContent,
+    RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
+};
+use matrix_sdk::ruma::events::{AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent};
+use matrix_sdk::ruma::{EventId, RoomId, RoomOrAliasId, UInt, UserId};
 use matrix_sdk::{Client, Room};
 use tracing::info;
 
@@ -24,18 +30,11 @@ use {
     matrix_sdk::attachment::AttachmentConfig,
     matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
     matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType,
-    matrix_sdk::ruma::events::reaction::ReactionEventContent,
     matrix_sdk::ruma::events::receipt::ReceiptEventContent,
     matrix_sdk::ruma::events::receipt::ReceiptThread,
-    matrix_sdk::ruma::events::relation::Annotation,
-    matrix_sdk::ruma::events::room::message::{AddMentions, ForwardThread, ReplyWithinThread},
-    matrix_sdk::ruma::events::room::message::RoomMessageEventContentWithoutRelation,
     matrix_sdk::ruma::events::room::MediaSource,
-    matrix_sdk::ruma::events::{
-        AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
-        SyncEphemeralRoomEvent,
-    },
-    matrix_sdk::ruma::{DeviceId, EventId, MxcUri},
+    matrix_sdk::ruma::events::{OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent},
+    matrix_sdk::ruma::{DeviceId, MxcUri},
     matrix_sdk::RoomMemberships,
     crate::types::{ReactionEvent, ReceiptEvent, SasEmoji, SasEmojis, ServerCapabilities},
 };
@@ -358,53 +357,6 @@ impl ManyMatrixClient {
         room.leave().await?;
         Ok(())
     }
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl ManyMatrixClient {
-    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
-    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
-        let store_path = store_path.as_ref();
-        let client = Client::builder()
-            .homeserver_url(homeserver_url)
-            .sqlite_store(store_path, None)
-            .handle_refresh_tokens()
-            .build()
-            .await?;
-        Ok(Self {
-            client,
-            homeserver: homeserver_url.to_owned(),
-            sync_token: Arc::new(Mutex::new(None)),
-            store_path: store_path.to_owned(),
-        })
-    }
-
-    /// Probe Matrix version and capability support for this homeserver.
-    pub async fn server_capabilities(&self) -> Result<ServerCapabilities, Error> {
-        let versions_response = self.client.fetch_server_versions(None).await?;
-        let versions = versions_response.versions.clone();
-        let unstable_features = versions_response.unstable_features.clone();
-        let raw_versions = serde_json::json!({
-            "versions": versions.clone(),
-            "unstable_features": unstable_features.clone(),
-        });
-        let raw_capabilities = if self.client.session().is_some() {
-            match self.client.get_capabilities().await {
-                Ok(capabilities) => Some(serde_json::to_value(&capabilities)?),
-                Err(_) => None,
-            }
-        } else {
-            None
-        };
-
-        Ok(ServerCapabilities::from_raw(
-            self.client.homeserver().to_string(),
-            versions,
-            unstable_features,
-            raw_versions,
-            raw_capabilities,
-        ))
-    }
 
     /// Send an HTML message. Returns the event ID.
     pub async fn send_html(
@@ -544,6 +496,53 @@ impl ManyMatrixClient {
             )) => Ok(original),
             _ => Err(Error::Other("event is not an original room message".into())),
         }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl ManyMatrixClient {
+    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
+    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
+        let store_path = store_path.as_ref();
+        let client = Client::builder()
+            .homeserver_url(homeserver_url)
+            .sqlite_store(store_path, None)
+            .handle_refresh_tokens()
+            .build()
+            .await?;
+        Ok(Self {
+            client,
+            homeserver: homeserver_url.to_owned(),
+            sync_token: Arc::new(Mutex::new(None)),
+            store_path: store_path.to_owned(),
+        })
+    }
+
+    /// Probe Matrix version and capability support for this homeserver.
+    pub async fn server_capabilities(&self) -> Result<ServerCapabilities, Error> {
+        let versions_response = self.client.fetch_server_versions(None).await?;
+        let versions = versions_response.versions.clone();
+        let unstable_features = versions_response.unstable_features.clone();
+        let raw_versions = serde_json::json!({
+            "versions": versions.clone(),
+            "unstable_features": unstable_features.clone(),
+        });
+        let raw_capabilities = if self.client.session().is_some() {
+            match self.client.get_capabilities().await {
+                Ok(capabilities) => Some(serde_json::to_value(&capabilities)?),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        Ok(ServerCapabilities::from_raw(
+            self.client.homeserver().to_string(),
+            versions,
+            unstable_features,
+            raw_versions,
+            raw_capabilities,
+        ))
     }
 
     /// Kick a user from a room.
