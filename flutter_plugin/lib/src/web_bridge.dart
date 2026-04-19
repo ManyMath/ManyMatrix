@@ -244,7 +244,11 @@ class ManyMatrixBridge {
         .toList();
   }
 
-  Future<String> serverCapabilities() => _unsupported();
+  Future<String> serverCapabilities() async {
+    final result = await _call('server.capabilities', {});
+    return result['capabilities_json'] as String;
+  }
+
   Future<void> logout() async {
     developer.log('auth.logout', name: 'manymatrix.bridge');
     await _call('auth.logout', {});
@@ -390,8 +394,17 @@ class ManyMatrixBridge {
     return result['event_id'] as String;
   }
 
-  Future<void> sendReadReceipt(String roomId, String eventId) => _unsupported();
-  Future<void> sendTyping(String roomId, bool typing) => _unsupported();
+  Future<void> sendReadReceipt(String roomId, String eventId) async {
+    await _call('rooms.read_receipt', {
+      'room_id': roomId,
+      'event_id': eventId,
+    });
+  }
+
+  Future<void> sendTyping(String roomId, bool typing) async {
+    await _call('rooms.typing', {'room_id': roomId, 'typing': typing});
+  }
+
   Future<PaginatedMessages> getMessages(
     String roomId, {
     String? fromToken,

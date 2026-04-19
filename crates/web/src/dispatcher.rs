@@ -138,6 +138,18 @@ struct RoomUserReasonArgs {
     reason: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct RoomEventArgs {
+    room_id: String,
+    event_id: String,
+}
+
+#[derive(Deserialize)]
+struct TypingArgs {
+    room_id: String,
+    typing: bool,
+}
+
 fn sdk_err(e: manymatrix_core::Error) -> ErrEnvelope {
     ErrEnvelope {
         kind: ErrKind::MatrixSdkError,
@@ -329,6 +341,30 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let members = client.room_members(&args.room_id).await.map_err(sdk_err)?;
             let members_json = serde_json::to_string(&members).map_err(serde_err)?;
             Ok(serde_json::json!({"members_json": members_json}))
+        }
+        "rooms.read_receipt" => {
+            let args: RoomEventArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .send_read_receipt(&args.room_id, &args.event_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "rooms.typing" => {
+            let args: TypingArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .send_typing(&args.room_id, args.typing)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "server.capabilities" => {
+            let client = get_client()?;
+            let capabilities = client.server_capabilities().await.map_err(sdk_err)?;
+            let capabilities_json = serde_json::to_string(&capabilities).map_err(serde_err)?;
+            Ok(serde_json::json!({"capabilities_json": capabilities_json}))
         }
         "rooms.list" => {
             let client = get_client()?;

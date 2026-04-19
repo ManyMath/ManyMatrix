@@ -5,9 +5,11 @@ use tokio::sync::Mutex;
 
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::room::MessagesOptions;
+use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
 use matrix_sdk::ruma::api::client::room::Visibility;
 use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+use matrix_sdk::ruma::events::receipt::ReceiptThread;
 use matrix_sdk::ruma::events::relation::Annotation;
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, ForwardThread, ReplyWithinThread, RoomMessageEventContent,
@@ -21,6 +23,7 @@ use tracing::info;
 use crate::session::StoredSession;
 use crate::types::{
     CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, RoomSummary, RoomVisibility,
+    ServerCapabilities,
 };
 use crate::Error;
 
@@ -29,13 +32,11 @@ use {
     std::path::Path,
     matrix_sdk::attachment::AttachmentConfig,
     matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
-    matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType,
     matrix_sdk::ruma::events::receipt::ReceiptEventContent,
-    matrix_sdk::ruma::events::receipt::ReceiptThread,
     matrix_sdk::ruma::events::room::MediaSource,
     matrix_sdk::ruma::events::{OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent},
     matrix_sdk::ruma::{DeviceId, MxcUri},
-    crate::types::{ReactionEvent, ReceiptEvent, SasEmoji, SasEmojis, ServerCapabilities},
+    crate::types::{ReactionEvent, ReceiptEvent, SasEmoji, SasEmojis},
 };
 
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
@@ -549,26 +550,6 @@ impl ManyMatrixClient {
         let members = room.members(RoomMemberships::JOIN).await?;
         Ok(members.iter().map(|m| m.user_id().to_string()).collect())
     }
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl ManyMatrixClient {
-    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
-    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
-        let store_path = store_path.as_ref();
-        let client = Client::builder()
-            .homeserver_url(homeserver_url)
-            .sqlite_store(store_path, None)
-            .handle_refresh_tokens()
-            .build()
-            .await?;
-        Ok(Self {
-            client,
-            homeserver: homeserver_url.to_owned(),
-            sync_token: Arc::new(Mutex::new(None)),
-            store_path: store_path.to_owned(),
-        })
-    }
 
     /// Probe Matrix version and capability support for this homeserver.
     pub async fn server_capabilities(&self) -> Result<ServerCapabilities, Error> {
@@ -616,6 +597,26 @@ impl ManyMatrixClient {
         let room = self.get_room_parsed(room_id)?;
         room.typing_notice(typing).await?;
         Ok(())
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl ManyMatrixClient {
+    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
+    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
+        let store_path = store_path.as_ref();
+        let client = Client::builder()
+            .homeserver_url(homeserver_url)
+            .sqlite_store(store_path, None)
+            .handle_refresh_tokens()
+            .build()
+            .await?;
+        Ok(Self {
+            client,
+            homeserver: homeserver_url.to_owned(),
+            sync_token: Arc::new(Mutex::new(None)),
+            store_path: store_path.to_owned(),
+        })
     }
 
     /// Register a callback for incoming room messages.
