@@ -437,15 +437,35 @@ class ManyMatrixBridge {
     String filename,
     String mimeType,
     Uint8List data,
-  ) =>
-      _unsupported();
-  Future<Uint8List?> downloadMedia(String mxcUri) => _unsupported();
+  ) async {
+    final result = await _call('media.upload', {
+      'room_id': roomId,
+      'filename': filename,
+      'mime_type': mimeType,
+      'data_base64': base64Encode(data),
+    });
+    return result['event_id'] as String;
+  }
+
+  Future<Uint8List?> downloadMedia(String mxcUri) async {
+    final result = await _call('media.download', {'mxc_uri': mxcUri});
+    final encoded = result['data_base64'] as String?;
+    return encoded == null ? null : base64Decode(encoded);
+  }
+
   Future<Uint8List?> getThumbnail(
     String mxcUri, {
     int width = 128,
     int height = 128,
-  }) =>
-      _unsupported();
+  }) async {
+    final result = await _call('media.thumbnail', {
+      'mxc_uri': mxcUri,
+      'width': width,
+      'height': height,
+    });
+    final encoded = result['data_base64'] as String?;
+    return encoded == null ? null : base64Decode(encoded);
+  }
   Future<void> registerPusher({
     required String appId,
     required String pushKey,

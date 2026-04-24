@@ -150,6 +150,26 @@ struct TypingArgs {
     typing: bool,
 }
 
+#[derive(Deserialize)]
+struct UploadMediaArgs {
+    room_id: String,
+    filename: String,
+    mime_type: String,
+    data_base64: String,
+}
+
+#[derive(Deserialize)]
+struct DownloadMediaArgs {
+    mxc_uri: String,
+}
+
+#[derive(Deserialize)]
+struct ThumbnailArgs {
+    mxc_uri: String,
+    width: u32,
+    height: u32,
+}
+
 fn sdk_err(e: manymatrix_core::Error) -> ErrEnvelope {
     ErrEnvelope {
         kind: ErrKind::MatrixSdkError,
@@ -162,6 +182,14 @@ fn serde_err(e: serde_json::Error) -> ErrEnvelope {
     ErrEnvelope {
         kind: ErrKind::SerdeError,
         message: e.to_string(),
+        details: serde_json::json!({}),
+    }
+}
+
+fn base64_err(e: base64::DecodeError) -> ErrEnvelope {
+    ErrEnvelope {
+        kind: ErrKind::SerdeError,
+        message: format!("invalid base64 data: {e}"),
         details: serde_json::json!({}),
     }
 }
@@ -462,6 +490,38 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .await
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({"event_id": event_id}))
+        }
+        "media.upload" => {
+            use base64::Engine as _;
+            let args: UploadMediaArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let data = base64::engine::general_purpose::STANDARD
+                .decode(&args.data_base64)
+                .map_err(base64_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .upload_media(&args.room_id, &args.filename, &args.mime_type, data)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
+        }
+        "media.download" => {
+            use base64::Engine as _;
+            let args: DownloadMediaArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let data = client.download_media(&args.mxc_uri).await.map_err(sdk_err)?;
+            let data_base64 = base64::engine::general_purpose::STANDARD.encode(data);
+            Ok(serde_json::json!({"data_base64": data_base64}))
+        }
+        "media.thumbnail" => {
+            use base64::Engine as _;
+            let args: ThumbnailArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let data = client
+                .get_thumbnail(&args.mxc_uri, args.width, args.height)
+                .await
+                .map_err(sdk_err)?;
+            let data_base64 = base64::engine::general_purpose::STANDARD.encode(data);
+            Ok(serde_json::json!({"data_base64": data_base64}))
         }
         "sync.status" => {
             let logged_in = CLIENT.with(|cell| cell.borrow().is_some());

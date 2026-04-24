@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
+use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
 use matrix_sdk::room::MessagesOptions;
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
@@ -15,8 +17,9 @@ use matrix_sdk::ruma::events::room::message::{
     AddMentions, ForwardThread, ReplyWithinThread, RoomMessageEventContent,
     RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
 };
+use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::{AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent};
-use matrix_sdk::ruma::{EventId, RoomId, RoomOrAliasId, UInt, UserId};
+use matrix_sdk::ruma::{EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
 use matrix_sdk::{Client, Room, RoomMemberships};
 use tracing::info;
 
@@ -30,12 +33,9 @@ use crate::Error;
 #[cfg(not(target_family = "wasm"))]
 use {
     std::path::Path,
-    matrix_sdk::attachment::AttachmentConfig,
-    matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
     matrix_sdk::ruma::events::receipt::ReceiptEventContent,
-    matrix_sdk::ruma::events::room::MediaSource,
     matrix_sdk::ruma::events::{OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent},
-    matrix_sdk::ruma::{DeviceId, MxcUri},
+    matrix_sdk::ruma::DeviceId,
     crate::types::{ReactionEvent, ReceiptEvent, SasEmoji, SasEmojis},
 };
 
@@ -598,6 +598,62 @@ impl ManyMatrixClient {
         room.typing_notice(typing).await?;
         Ok(())
     }
+
+    /// Upload a file attachment to a room. Returns the event ID.
+    pub async fn upload_media(
+        &self,
+        room_id: &str,
+        filename: &str,
+        mime_type: &str,
+        data: Vec<u8>,
+    ) -> Result<String, Error> {
+        let mime: mime::Mime = mime_type
+            .parse()
+            .map_err(|e| Error::Other(format!("invalid MIME type: {e}")))?;
+        let room = self.get_room_parsed(room_id)?;
+        let resp = room
+            .send_attachment(filename, &mime, data, AttachmentConfig::new())
+            .await?;
+        Ok(resp.event_id.to_string())
+    }
+
+    /// Download media content by mxc:// URI.
+    pub async fn download_media(&self, mxc_uri: &str) -> Result<Vec<u8>, Error> {
+        self.client
+            .media()
+            .get_media_content(
+                &MediaRequestParameters {
+                    source: plain_media_source_from_mxc(mxc_uri)?,
+                    format: MediaFormat::File,
+                },
+                true,
+            )
+            .await
+            .map_err(Error::from)
+    }
+
+    /// Fetch a thumbnail by mxc:// URI at the requested dimensions.
+    pub async fn get_thumbnail(
+        &self,
+        mxc_uri: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, Error> {
+        self.client
+            .media()
+            .get_media_content(
+                &MediaRequestParameters {
+                    source: plain_media_source_from_mxc(mxc_uri)?,
+                    format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(
+                        UInt::from(width),
+                        UInt::from(height),
+                    )),
+                },
+                true,
+            )
+            .await
+            .map_err(Error::from)
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -943,62 +999,6 @@ impl ManyMatrixClient {
         Ok(())
     }
 
-    /// Upload a file attachment to a room. Returns the event ID.
-    pub async fn upload_media(
-        &self,
-        room_id: &str,
-        filename: &str,
-        mime_type: &str,
-        data: Vec<u8>,
-    ) -> Result<String, Error> {
-        let mime: mime::Mime = mime_type
-            .parse()
-            .map_err(|e| Error::Other(format!("invalid MIME type: {e}")))?;
-        let room = self.get_room_parsed(room_id)?;
-        let resp = room
-            .send_attachment(filename, &mime, data, AttachmentConfig::new())
-            .await?;
-        Ok(resp.event_id.to_string())
-    }
-
-    /// Download media content by mxc:// URI.
-    pub async fn download_media(&self, mxc_uri: &str) -> Result<Vec<u8>, Error> {
-        self.client
-            .media()
-            .get_media_content(
-                &MediaRequestParameters {
-                    source: plain_media_source_from_mxc(mxc_uri)?,
-                    format: MediaFormat::File,
-                },
-                true,
-            )
-            .await
-            .map_err(Error::from)
-    }
-
-    /// Fetch a thumbnail by mxc:// URI at the requested dimensions.
-    pub async fn get_thumbnail(
-        &self,
-        mxc_uri: &str,
-        width: u32,
-        height: u32,
-    ) -> Result<Vec<u8>, Error> {
-        self.client
-            .media()
-            .get_media_content(
-                &MediaRequestParameters {
-                    source: plain_media_source_from_mxc(mxc_uri)?,
-                    format: MediaFormat::Thumbnail(MediaThumbnailSettings::new(
-                        UInt::from(width),
-                        UInt::from(height),
-                    )),
-                },
-                true,
-            )
-            .await
-            .map_err(Error::from)
-    }
-
     /// Register an HTTP pusher for push notifications.
     pub async fn register_pusher(
         &self,
@@ -1037,7 +1037,6 @@ impl ManyMatrixClient {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
     let uri = <&MxcUri>::try_from(mxc_uri)
         .map_err(|e| Error::IdParse(format!("invalid MXC URI: {e}")))?
