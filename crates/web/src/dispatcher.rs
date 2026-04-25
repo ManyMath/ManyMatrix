@@ -164,6 +164,16 @@ struct DownloadMediaArgs {
 }
 
 #[derive(Deserialize)]
+struct RegisterPusherArgs {
+    app_id: String,
+    push_key: String,
+    app_display_name: String,
+    device_display_name: String,
+    push_url: String,
+    lang: String,
+}
+
+#[derive(Deserialize)]
 struct ThumbnailArgs {
     mxc_uri: String,
     width: u32,
@@ -522,6 +532,22 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .map_err(sdk_err)?;
             let data_base64 = base64::engine::general_purpose::STANDARD.encode(data);
             Ok(serde_json::json!({"data_base64": data_base64}))
+        }
+        "pushers.register" => {
+            let args: RegisterPusherArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .register_pusher(
+                    &args.app_id,
+                    &args.push_key,
+                    &args.app_display_name,
+                    &args.device_display_name,
+                    &args.push_url,
+                    &args.lang,
+                )
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
         }
         "sync.status" => {
             let logged_in = CLIENT.with(|cell| cell.borrow().is_some());

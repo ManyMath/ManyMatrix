@@ -654,6 +654,31 @@ impl ManyMatrixClient {
             .await
             .map_err(Error::from)
     }
+
+    /// Register an HTTP pusher for push notifications.
+    pub async fn register_pusher(
+        &self,
+        app_id: &str,
+        push_key: &str,
+        app_display_name: &str,
+        device_display_name: &str,
+        push_url: &str,
+        lang: &str,
+    ) -> Result<(), Error> {
+        use matrix_sdk::ruma::api::client::push::{PusherIds, PusherInit, PusherKind};
+        use matrix_sdk::ruma::push::HttpPusherData;
+
+        let pusher_init = PusherInit {
+            ids: PusherIds::new(push_key.to_owned(), app_id.to_owned()),
+            kind: PusherKind::Http(HttpPusherData::new(push_url.to_owned())),
+            app_display_name: app_display_name.to_owned(),
+            device_display_name: device_display_name.to_owned(),
+            profile_tag: None,
+            lang: lang.to_owned(),
+        };
+        self.client.pusher().set(pusher_init.into()).await?;
+        Ok(())
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -996,31 +1021,6 @@ impl ManyMatrixClient {
             .recover(recovery_key)
             .await
             .map_err(|e| Error::Other(format!("restore key backup failed: {e}")))?;
-        Ok(())
-    }
-
-    /// Register an HTTP pusher for push notifications.
-    pub async fn register_pusher(
-        &self,
-        app_id: &str,
-        push_key: &str,
-        app_display_name: &str,
-        device_display_name: &str,
-        push_url: &str,
-        lang: &str,
-    ) -> Result<(), Error> {
-        use matrix_sdk::ruma::api::client::push::{PusherIds, PusherInit, PusherKind};
-        use matrix_sdk::ruma::push::HttpPusherData;
-
-        let pusher_init = PusherInit {
-            ids: PusherIds::new(push_key.to_owned(), app_id.to_owned()),
-            kind: PusherKind::Http(HttpPusherData::new(push_url.to_owned())),
-            app_display_name: app_display_name.to_owned(),
-            device_display_name: device_display_name.to_owned(),
-            profile_tag: None,
-            lang: lang.to_owned(),
-        };
-        self.client.pusher().set(pusher_init.into()).await?;
         Ok(())
     }
 

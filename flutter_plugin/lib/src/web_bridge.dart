@@ -473,8 +473,16 @@ class ManyMatrixBridge {
     required String deviceDisplayName,
     required String pushUrl,
     required String lang,
-  }) =>
-      _unsupported();
+  }) async {
+    await _call('pushers.register', {
+      'app_id': appId,
+      'push_key': pushKey,
+      'app_display_name': appDisplayName,
+      'device_display_name': deviceDisplayName,
+      'push_url': pushUrl,
+      'lang': lang,
+    });
+  }
 
   void onMessage(void Function(String json) callback) {}
   void onReaction(void Function(String json) callback) {}
