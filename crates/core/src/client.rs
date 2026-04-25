@@ -19,14 +19,14 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::{AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent};
-use matrix_sdk::ruma::{EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
+use matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
 use matrix_sdk::{Client, Room, RoomMemberships};
 use tracing::info;
 
 use crate::session::StoredSession;
 use crate::types::{
     CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, RoomSummary, RoomVisibility,
-    ServerCapabilities,
+    SasEmoji, SasEmojis, ServerCapabilities,
 };
 use crate::Error;
 
@@ -35,8 +35,7 @@ use {
     std::path::Path,
     matrix_sdk::ruma::events::receipt::ReceiptEventContent,
     matrix_sdk::ruma::events::{OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent},
-    matrix_sdk::ruma::DeviceId,
-    crate::types::{ReactionEvent, ReceiptEvent, SasEmoji, SasEmojis},
+    crate::types::{ReactionEvent, ReceiptEvent},
 };
 
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
@@ -679,173 +678,6 @@ impl ManyMatrixClient {
         self.client.pusher().set(pusher_init.into()).await?;
         Ok(())
     }
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl ManyMatrixClient {
-    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
-    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
-        let store_path = store_path.as_ref();
-        let client = Client::builder()
-            .homeserver_url(homeserver_url)
-            .sqlite_store(store_path, None)
-            .handle_refresh_tokens()
-            .build()
-            .await?;
-        Ok(Self {
-            client,
-            homeserver: homeserver_url.to_owned(),
-            sync_token: Arc::new(Mutex::new(None)),
-            store_path: store_path.to_owned(),
-        })
-    }
-
-    /// Register a callback for incoming room messages.
-    pub fn on_message<F>(&self, callback: F)
-    where
-        F: Fn(MessageEvent) + Send + Sync + 'static,
-    {
-        let callback = Arc::new(callback);
-        self.client
-            .add_event_handler(move |ev: SyncRoomMessageEvent, room: Room| {
-                let callback = callback.clone();
-                async move {
-                    if let SyncRoomMessageEvent::Original(msg) = ev {
-                        let msgtype = msg.content.msgtype().to_owned();
-                        let body = msg.content.body().to_owned();
-                        let formatted_body = match &msg.content.msgtype {
-                            matrix_sdk::ruma::events::room::message::MessageType::Text(t) => {
-                                t.formatted.as_ref().map(|f| f.body.clone())
-                            }
-                            matrix_sdk::ruma::events::room::message::MessageType::Notice(n) => {
-                                n.formatted.as_ref().map(|f| f.body.clone())
-                            }
-                            matrix_sdk::ruma::events::room::message::MessageType::Emote(e) => {
-                                e.formatted.as_ref().map(|f| f.body.clone())
-                            }
-                            _ => None,
-                        };
-                        let in_reply_to = msg.content.relates_to.as_ref().and_then(|rel| {
-                            if let matrix_sdk::ruma::events::room::message::Relation::Reply {
-                                in_reply_to,
-                            } = rel
-                            {
-                                Some(in_reply_to.event_id.to_string())
-                            } else {
-                                None
-                            }
-                        });
-                        let (mxc_uri, filename, file_size) = match &msg.content.msgtype {
-                            matrix_sdk::ruma::events::room::message::MessageType::Image(img) => {
-                                let uri = match &img.source {
-                                    MediaSource::Plain(url) => Some(url.to_string()),
-                                    MediaSource::Encrypted(_) => None,
-                                };
-                                let size = img.info.as_ref().and_then(|i| i.size).map(u64::from);
-                                (uri, Some(img.body.clone()), size)
-                            }
-                            matrix_sdk::ruma::events::room::message::MessageType::File(f) => {
-                                let uri = match &f.source {
-                                    MediaSource::Plain(url) => Some(url.to_string()),
-                                    MediaSource::Encrypted(_) => None,
-                                };
-                                let size = f.info.as_ref().and_then(|i| i.size).map(u64::from);
-                                (
-                                    uri,
-                                    f.filename.clone().or_else(|| Some(f.body.clone())),
-                                    size,
-                                )
-                            }
-                            matrix_sdk::ruma::events::room::message::MessageType::Video(v) => {
-                                let uri = match &v.source {
-                                    MediaSource::Plain(url) => Some(url.to_string()),
-                                    MediaSource::Encrypted(_) => None,
-                                };
-                                let size = v.info.as_ref().and_then(|i| i.size).map(u64::from);
-                                (uri, Some(v.body.clone()), size)
-                            }
-                            matrix_sdk::ruma::events::room::message::MessageType::Audio(a) => {
-                                let uri = match &a.source {
-                                    MediaSource::Plain(url) => Some(url.to_string()),
-                                    MediaSource::Encrypted(_) => None,
-                                };
-                                (uri, Some(a.body.clone()), None)
-                            }
-                            _ => (None, None, None),
-                        };
-                        let message = MessageEvent {
-                            event_id: msg.event_id.to_string(),
-                            room_id: room.room_id().to_string(),
-                            sender: msg.sender.to_string(),
-                            body,
-                            formatted_body,
-                            msgtype,
-                            timestamp: msg.origin_server_ts.get().into(),
-                            in_reply_to,
-                            thread_root: None,
-                            mxc_uri,
-                            filename,
-                            file_size,
-                        };
-                        callback(message);
-                    }
-                }
-            });
-    }
-
-    /// Register a callback for incoming reactions.
-    pub fn on_reaction<F>(&self, callback: F)
-    where
-        F: Fn(ReactionEvent) + Send + Sync + 'static,
-    {
-        let callback = Arc::new(callback);
-        self.client.add_event_handler(
-            move |ev: OriginalSyncMessageLikeEvent<ReactionEventContent>, room: Room| {
-                let callback = callback.clone();
-                async move {
-                    let reaction = ReactionEvent {
-                        event_id: ev.event_id.to_string(),
-                        room_id: room.room_id().to_string(),
-                        sender: ev.sender.to_string(),
-                        relates_to_event_id: ev.content.relates_to.event_id.to_string(),
-                        key: ev.content.relates_to.key,
-                        timestamp: ev.origin_server_ts.get().into(),
-                    };
-                    callback(reaction);
-                }
-            },
-        );
-    }
-
-    /// Register a callback for read receipts.
-    pub fn on_receipt<F>(&self, callback: F)
-    where
-        F: Fn(ReceiptEvent) + Send + Sync + 'static,
-    {
-        let callback = Arc::new(callback);
-        self.client.add_event_handler(
-            move |ev: SyncEphemeralRoomEvent<ReceiptEventContent>, room: Room| {
-                let callback = callback.clone();
-                async move {
-                    let room_id = room.room_id().to_string();
-                    for (event_id, receipts) in ev.content.iter() {
-                        for (receipt_type, user_receipts) in receipts.iter() {
-                            for (user_id, receipt) in user_receipts.iter() {
-                                let receipt_event = ReceiptEvent {
-                                    room_id: room_id.clone(),
-                                    user_id: user_id.to_string(),
-                                    event_id: event_id.to_string(),
-                                    receipt_type: receipt_type.to_string(),
-                                    timestamp: receipt.ts.map(|ts| ts.get().into()),
-                                };
-                                callback(receipt_event);
-                            }
-                        }
-                    }
-                }
-            },
-        );
-    }
 
     /// Enable E2EE on a room.
     pub async fn enable_encryption(&self, room_id: &str) -> Result<(), Error> {
@@ -1034,6 +866,173 @@ impl ManyMatrixClient {
         let room = self.get_room_parsed(room_id)?;
         let encrypted = room.latest_encryption_state().await?.is_encrypted();
         Ok(encrypted)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl ManyMatrixClient {
+    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
+    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
+        let store_path = store_path.as_ref();
+        let client = Client::builder()
+            .homeserver_url(homeserver_url)
+            .sqlite_store(store_path, None)
+            .handle_refresh_tokens()
+            .build()
+            .await?;
+        Ok(Self {
+            client,
+            homeserver: homeserver_url.to_owned(),
+            sync_token: Arc::new(Mutex::new(None)),
+            store_path: store_path.to_owned(),
+        })
+    }
+
+    /// Register a callback for incoming room messages.
+    pub fn on_message<F>(&self, callback: F)
+    where
+        F: Fn(MessageEvent) + Send + Sync + 'static,
+    {
+        let callback = Arc::new(callback);
+        self.client
+            .add_event_handler(move |ev: SyncRoomMessageEvent, room: Room| {
+                let callback = callback.clone();
+                async move {
+                    if let SyncRoomMessageEvent::Original(msg) = ev {
+                        let msgtype = msg.content.msgtype().to_owned();
+                        let body = msg.content.body().to_owned();
+                        let formatted_body = match &msg.content.msgtype {
+                            matrix_sdk::ruma::events::room::message::MessageType::Text(t) => {
+                                t.formatted.as_ref().map(|f| f.body.clone())
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::Notice(n) => {
+                                n.formatted.as_ref().map(|f| f.body.clone())
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::Emote(e) => {
+                                e.formatted.as_ref().map(|f| f.body.clone())
+                            }
+                            _ => None,
+                        };
+                        let in_reply_to = msg.content.relates_to.as_ref().and_then(|rel| {
+                            if let matrix_sdk::ruma::events::room::message::Relation::Reply {
+                                in_reply_to,
+                            } = rel
+                            {
+                                Some(in_reply_to.event_id.to_string())
+                            } else {
+                                None
+                            }
+                        });
+                        let (mxc_uri, filename, file_size) = match &msg.content.msgtype {
+                            matrix_sdk::ruma::events::room::message::MessageType::Image(img) => {
+                                let uri = match &img.source {
+                                    MediaSource::Plain(url) => Some(url.to_string()),
+                                    MediaSource::Encrypted(_) => None,
+                                };
+                                let size = img.info.as_ref().and_then(|i| i.size).map(u64::from);
+                                (uri, Some(img.body.clone()), size)
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::File(f) => {
+                                let uri = match &f.source {
+                                    MediaSource::Plain(url) => Some(url.to_string()),
+                                    MediaSource::Encrypted(_) => None,
+                                };
+                                let size = f.info.as_ref().and_then(|i| i.size).map(u64::from);
+                                (
+                                    uri,
+                                    f.filename.clone().or_else(|| Some(f.body.clone())),
+                                    size,
+                                )
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::Video(v) => {
+                                let uri = match &v.source {
+                                    MediaSource::Plain(url) => Some(url.to_string()),
+                                    MediaSource::Encrypted(_) => None,
+                                };
+                                let size = v.info.as_ref().and_then(|i| i.size).map(u64::from);
+                                (uri, Some(v.body.clone()), size)
+                            }
+                            matrix_sdk::ruma::events::room::message::MessageType::Audio(a) => {
+                                let uri = match &a.source {
+                                    MediaSource::Plain(url) => Some(url.to_string()),
+                                    MediaSource::Encrypted(_) => None,
+                                };
+                                (uri, Some(a.body.clone()), None)
+                            }
+                            _ => (None, None, None),
+                        };
+                        let message = MessageEvent {
+                            event_id: msg.event_id.to_string(),
+                            room_id: room.room_id().to_string(),
+                            sender: msg.sender.to_string(),
+                            body,
+                            formatted_body,
+                            msgtype,
+                            timestamp: msg.origin_server_ts.get().into(),
+                            in_reply_to,
+                            thread_root: None,
+                            mxc_uri,
+                            filename,
+                            file_size,
+                        };
+                        callback(message);
+                    }
+                }
+            });
+    }
+
+    /// Register a callback for incoming reactions.
+    pub fn on_reaction<F>(&self, callback: F)
+    where
+        F: Fn(ReactionEvent) + Send + Sync + 'static,
+    {
+        let callback = Arc::new(callback);
+        self.client.add_event_handler(
+            move |ev: OriginalSyncMessageLikeEvent<ReactionEventContent>, room: Room| {
+                let callback = callback.clone();
+                async move {
+                    let reaction = ReactionEvent {
+                        event_id: ev.event_id.to_string(),
+                        room_id: room.room_id().to_string(),
+                        sender: ev.sender.to_string(),
+                        relates_to_event_id: ev.content.relates_to.event_id.to_string(),
+                        key: ev.content.relates_to.key,
+                        timestamp: ev.origin_server_ts.get().into(),
+                    };
+                    callback(reaction);
+                }
+            },
+        );
+    }
+
+    /// Register a callback for read receipts.
+    pub fn on_receipt<F>(&self, callback: F)
+    where
+        F: Fn(ReceiptEvent) + Send + Sync + 'static,
+    {
+        let callback = Arc::new(callback);
+        self.client.add_event_handler(
+            move |ev: SyncEphemeralRoomEvent<ReceiptEventContent>, room: Room| {
+                let callback = callback.clone();
+                async move {
+                    let room_id = room.room_id().to_string();
+                    for (event_id, receipts) in ev.content.iter() {
+                        for (receipt_type, user_receipts) in receipts.iter() {
+                            for (user_id, receipt) in user_receipts.iter() {
+                                let receipt_event = ReceiptEvent {
+                                    room_id: room_id.clone(),
+                                    user_id: user_id.to_string(),
+                                    event_id: event_id.to_string(),
+                                    receipt_type: receipt_type.to_string(),
+                                    timestamp: receipt.ts.map(|ts| ts.get().into()),
+                                };
+                                callback(receipt_event);
+                            }
+                        }
+                    }
+                }
+            },
+        );
     }
 }
 

@@ -56,9 +56,6 @@ Future<bool> _waitForContextRestore() async {
   return false;
 }
 
-const _webUnsupportedMessage =
-    'ManyMatrix web/extension runtime is unavailable in this checkout.';
-
 class ManyMatrixBridge {
   final String _homeserverUrl;
   // ignore: unused_field
@@ -197,10 +194,6 @@ class ManyMatrixBridge {
 
   Future<void> _clearSession() async {
     await _chrome.storage.local.remove('manymatrix_session'.toJS).toDart;
-  }
-
-  Future<T> _unsupported<T>() {
-    return Future<T>.error(UnsupportedError(_webUnsupportedMessage));
   }
 
   Future<String> login(String username, String password) async {
@@ -420,18 +413,56 @@ class ManyMatrixBridge {
     );
   }
 
-  Future<void> enableEncryption(String roomId) => _unsupported();
-  Future<String> startVerification(String userId, String deviceId) =>
-      _unsupported();
-  Future<void> acceptVerification(String userId, String flowId) =>
-      _unsupported();
-  Future<String> getSasEmojis(String userId, String flowId) => _unsupported();
-  Future<void> confirmSas(String userId, String flowId) => _unsupported();
-  Future<void> cancelVerification(String userId, String flowId) =>
-      _unsupported();
-  Future<void> bootstrapCrossSigning() => _unsupported();
-  Future<void> setupKeyBackup() => _unsupported();
-  Future<void> restoreKeyBackup(String recoveryKey) => _unsupported();
+  Future<void> enableEncryption(String roomId) async {
+    await _call('e2ee.enable', {'room_id': roomId});
+  }
+
+  Future<String> startVerification(String userId, String deviceId) async {
+    final result = await _call('e2ee.start_verification', {
+      'user_id': userId,
+      'device_id': deviceId,
+    });
+    return result['flow_id'] as String;
+  }
+
+  Future<void> acceptVerification(String userId, String flowId) async {
+    await _call('e2ee.accept_verification', {
+      'user_id': userId,
+      'flow_id': flowId,
+    });
+  }
+
+  Future<String> getSasEmojis(String userId, String flowId) async {
+    final result = await _call('e2ee.sas_emojis', {
+      'user_id': userId,
+      'flow_id': flowId,
+    });
+    return result['emojis_json'] as String;
+  }
+
+  Future<void> confirmSas(String userId, String flowId) async {
+    await _call('e2ee.confirm_sas', {'user_id': userId, 'flow_id': flowId});
+  }
+
+  Future<void> cancelVerification(String userId, String flowId) async {
+    await _call('e2ee.cancel_verification', {
+      'user_id': userId,
+      'flow_id': flowId,
+    });
+  }
+
+  Future<void> bootstrapCrossSigning() async {
+    await _call('e2ee.bootstrap_cross_signing', {});
+  }
+
+  Future<void> setupKeyBackup() async {
+    await _call('e2ee.setup_key_backup', {});
+  }
+
+  Future<void> restoreKeyBackup(String recoveryKey) async {
+    await _call('e2ee.restore_key_backup', {'recovery_key': recoveryKey});
+  }
+
   Future<String> uploadMedia(
     String roomId,
     String filename,

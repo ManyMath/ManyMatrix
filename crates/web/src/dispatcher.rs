@@ -174,6 +174,23 @@ struct RegisterPusherArgs {
 }
 
 #[derive(Deserialize)]
+struct StartVerificationArgs {
+    user_id: String,
+    device_id: String,
+}
+
+#[derive(Deserialize)]
+struct VerificationFlowArgs {
+    user_id: String,
+    flow_id: String,
+}
+
+#[derive(Deserialize)]
+struct RestoreKeyBackupArgs {
+    recovery_key: String,
+}
+
+#[derive(Deserialize)]
 struct ThumbnailArgs {
     mxc_uri: String,
     width: u32,
@@ -545,6 +562,80 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                     &args.push_url,
                     &args.lang,
                 )
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "e2ee.enable" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .enable_encryption(&args.room_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "e2ee.start_verification" => {
+            let args: StartVerificationArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let flow_id = client
+                .start_verification(&args.user_id, &args.device_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"flow_id": flow_id}))
+        }
+        "e2ee.accept_verification" => {
+            let args: VerificationFlowArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .accept_verification(&args.user_id, &args.flow_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "e2ee.sas_emojis" => {
+            let args: VerificationFlowArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let emojis = client
+                .get_sas_emojis(&args.user_id, &args.flow_id)
+                .await
+                .map_err(sdk_err)?;
+            let emojis_json = serde_json::to_string(&emojis).map_err(serde_err)?;
+            Ok(serde_json::json!({"emojis_json": emojis_json}))
+        }
+        "e2ee.confirm_sas" => {
+            let args: VerificationFlowArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .confirm_sas(&args.user_id, &args.flow_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "e2ee.cancel_verification" => {
+            let args: VerificationFlowArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .cancel_verification(&args.user_id, &args.flow_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "e2ee.bootstrap_cross_signing" => {
+            let client = get_client()?;
+            client.bootstrap_cross_signing().await.map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "e2ee.setup_key_backup" => {
+            let client = get_client()?;
+            client.setup_key_backup().await.map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "e2ee.restore_key_backup" => {
+            let args: RestoreKeyBackupArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .restore_key_backup(&args.recovery_key)
                 .await
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({}))
