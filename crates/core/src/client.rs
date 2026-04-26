@@ -11,32 +11,30 @@ use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
 use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
 use matrix_sdk::ruma::api::client::room::Visibility;
 use matrix_sdk::ruma::events::reaction::ReactionEventContent;
-use matrix_sdk::ruma::events::receipt::ReceiptThread;
+use matrix_sdk::ruma::events::receipt::{ReceiptEventContent, ReceiptThread};
 use matrix_sdk::ruma::events::relation::Annotation;
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, ForwardThread, ReplyWithinThread, RoomMessageEventContent,
     RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
 };
 use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::{AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent};
+use matrix_sdk::ruma::events::{
+    AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
+    SyncEphemeralRoomEvent,
+};
 use matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
-use matrix_sdk::{Client, Room, RoomMemberships};
+use matrix_sdk::{Client, Room, RoomMemberships, SendOutsideWasm, SyncOutsideWasm};
 use tracing::info;
 
 use crate::session::StoredSession;
 use crate::types::{
-    CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, RoomSummary, RoomVisibility,
-    SasEmoji, SasEmojis, ServerCapabilities,
+    CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent, ReceiptEvent,
+    RoomSummary, RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
 };
 use crate::Error;
 
 #[cfg(not(target_family = "wasm"))]
-use {
-    std::path::Path,
-    matrix_sdk::ruma::events::receipt::ReceiptEventContent,
-    matrix_sdk::ruma::events::{OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent},
-    crate::types::{ReactionEvent, ReceiptEvent},
-};
+use std::path::Path;
 
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
 #[derive(Clone)]
@@ -867,31 +865,11 @@ impl ManyMatrixClient {
         let encrypted = room.latest_encryption_state().await?.is_encrypted();
         Ok(encrypted)
     }
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl ManyMatrixClient {
-    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
-    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
-        let store_path = store_path.as_ref();
-        let client = Client::builder()
-            .homeserver_url(homeserver_url)
-            .sqlite_store(store_path, None)
-            .handle_refresh_tokens()
-            .build()
-            .await?;
-        Ok(Self {
-            client,
-            homeserver: homeserver_url.to_owned(),
-            sync_token: Arc::new(Mutex::new(None)),
-            store_path: store_path.to_owned(),
-        })
-    }
 
     /// Register a callback for incoming room messages.
     pub fn on_message<F>(&self, callback: F)
     where
-        F: Fn(MessageEvent) + Send + Sync + 'static,
+        F: Fn(MessageEvent) + SendOutsideWasm + SyncOutsideWasm + 'static,
     {
         let callback = Arc::new(callback);
         self.client
@@ -984,7 +962,7 @@ impl ManyMatrixClient {
     /// Register a callback for incoming reactions.
     pub fn on_reaction<F>(&self, callback: F)
     where
-        F: Fn(ReactionEvent) + Send + Sync + 'static,
+        F: Fn(ReactionEvent) + SendOutsideWasm + SyncOutsideWasm + 'static,
     {
         let callback = Arc::new(callback);
         self.client.add_event_handler(
@@ -1008,7 +986,7 @@ impl ManyMatrixClient {
     /// Register a callback for read receipts.
     pub fn on_receipt<F>(&self, callback: F)
     where
-        F: Fn(ReceiptEvent) + Send + Sync + 'static,
+        F: Fn(ReceiptEvent) + SendOutsideWasm + SyncOutsideWasm + 'static,
     {
         let callback = Arc::new(callback);
         self.client.add_event_handler(
@@ -1033,6 +1011,26 @@ impl ManyMatrixClient {
                 }
             },
         );
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl ManyMatrixClient {
+    /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
+    pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
+        let store_path = store_path.as_ref();
+        let client = Client::builder()
+            .homeserver_url(homeserver_url)
+            .sqlite_store(store_path, None)
+            .handle_refresh_tokens()
+            .build()
+            .await?;
+        Ok(Self {
+            client,
+            homeserver: homeserver_url.to_owned(),
+            sync_token: Arc::new(Mutex::new(None)),
+            store_path: store_path.to_owned(),
+        })
     }
 }
 
