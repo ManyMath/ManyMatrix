@@ -36,22 +36,22 @@ async fn alice_sends_bob_receives(kind: ServerKind) -> Result<()> {
 
     let run_result = async {
         // --- Register users directly via CS API ---
-        let _alice_reg = server.register_user("alice", "password1").await?;
-        let _bob_reg = server.register_user("bob", "password2").await?;
+        let alice_reg = server.register_user("alice", "password1").await?;
+        let bob_reg = server.register_user("bob", "password2").await?;
 
         // --- Login through our core library ---
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _alice_session = alice.login("alice", "password1").await?;
+        let _alice_session = alice.login(&alice_reg.localpart, "password1").await?;
 
         let bob_store = tempfile::tempdir()?;
         let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-        let _bob_session = bob.login("bob", "password2").await?;
+        let _bob_session = bob.login(&bob_reg.localpart, "password2").await?;
 
         // --- Alice creates a room and invites Bob ---
         let mut req = CreateRoomRequest::new();
         req.name = Some("test-room".to_owned());
-        req.invite = vec![<&matrix_sdk::ruma::UserId>::try_from("@bob:localhost")
+        req.invite = vec![<&matrix_sdk::ruma::UserId>::try_from(bob_reg.user_id.as_str())
             .unwrap()
             .to_owned()];
         let create_resp = alice.inner().create_room(req).await?;
@@ -108,13 +108,18 @@ async fn login_and_sync(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
 
     let run_result = async {
-        let _user = server.register_user("testuser", "testpass").await?;
+        let user = server.register_user("testuser", "testpass").await?;
 
         let store = tempfile::tempdir()?;
         let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
-        let session = client.login("testuser", "testpass").await?;
+        let session = client.login(&user.localpart, "testpass").await?;
 
-        assert!(session.session.meta.user_id.as_str().contains("testuser"));
+        assert!(session
+            .session
+            .meta
+            .user_id
+            .as_str()
+            .contains(user.localpart.as_str()));
 
         client.sync_once().await?;
 
@@ -139,13 +144,13 @@ async fn server_capability_data_is_serializable(kind: ServerKind) -> Result<()> 
     let server = TestHomeserver::start(kind).await?;
 
     let run_result = async {
-        let _user = server
+        let user = server
             .register_user("capability_user", "capability_pass")
             .await?;
 
         let store = tempfile::tempdir()?;
         let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
-        client.login("capability_user", "capability_pass").await?;
+        client.login(&user.localpart, "capability_pass").await?;
 
         let capabilities = client.server_capabilities().await?;
         let json = serde_json::to_value(&capabilities)?;
@@ -178,6 +183,7 @@ async fn server_capability_data_is_serializable(kind: ServerKind) -> Result<()> 
 
 test_harness::e2e_test!(server_capability_data_is_serializable);
 
+#[cfg(feature = "embedded-tests")]
 #[tokio::test]
 async fn embedded_servers_bind_distinct_ports() -> Result<()> {
     init_tracing();
@@ -211,7 +217,7 @@ async fn embedded_servers_bind_distinct_ports() -> Result<()> {
 /// Verify session persists: login, save session, create new client, restore, sync.
 async fn session_persist_across_restart(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _user = server.register_user("persist_user", "password1").await?;
+    let user = server.register_user("persist_user", "password1").await?;
 
     let store_dir = tempfile::tempdir()?;
     let session_file = store_dir.path().join("session.json");
@@ -219,7 +225,7 @@ async fn session_persist_across_restart(kind: ServerKind) -> Result<()> {
     // Login and save session
     {
         let client = ManyMatrixClient::new(server.base_url(), store_dir.path()).await?;
-        let session = client.login("persist_user", "password1").await?;
+        let session = client.login(&user.localpart, "password1").await?;
         let capabilities = client.server_capabilities().await?;
         assert!(
             !capabilities.versions.is_empty(),
@@ -252,11 +258,11 @@ test_harness::e2e_test!(session_persist_across_restart);
 /// Verify logout invalidates session and cleans up local state.
 async fn logout_clears_state(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _user = server.register_user("logout_user", "password1").await?;
+    let user = server.register_user("logout_user", "password1").await?;
 
     let store_dir = tempfile::tempdir()?;
     let client = ManyMatrixClient::new(server.base_url(), store_dir.path()).await?;
-    let _session = client.login("logout_user", "password1").await?;
+    let _session = client.login(&user.localpart, "password1").await?;
     client.sync_once().await?;
 
     // Store directory should exist before logout
@@ -276,11 +282,11 @@ test_harness::e2e_test!(logout_clears_state);
 /// Verify sync populates room list with RoomSummary data.
 async fn sync_populates_room_list(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _alice_reg = server.register_user("alice_sync", "password1").await?;
+    let alice_reg = server.register_user("alice_sync", "password1").await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    let _session = alice.login("alice_sync", "password1").await?;
+    let _session = alice.login(&alice_reg.localpart, "password1").await?;
 
     // Alice creates a room
     let room_id = alice
@@ -328,18 +334,18 @@ test_harness::e2e_test!(sync_populates_room_list);
 /// the SDK accepts both URL and server-name-style input.
 async fn well_known_resolution(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _user = server.register_user("wellknown_user", "password1").await?;
+    let user = server.register_user("wellknown_user", "password1").await?;
 
     // Test: Direct URL (current pattern) should work
     let store1 = tempfile::tempdir()?;
     let client = ManyMatrixClient::new(server.base_url(), store1.path()).await?;
-    let session = client.login("wellknown_user", "password1").await?;
+    let session = client.login(&user.localpart, "password1").await?;
     assert!(session
         .session
         .meta
         .user_id
         .as_str()
-        .contains("wellknown_user"));
+        .contains(user.localpart.as_str()));
 
     Ok(())
 }
@@ -349,23 +355,23 @@ test_harness::e2e_test!(well_known_resolution);
 /// Create room with options, invite+join another user, read room state.
 async fn create_join_and_read_state(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _alice_reg = server.register_user("alice_room", "password1").await?;
-    let _bob_reg = server.register_user("bob_room", "password2").await?;
+    let alice_reg = server.register_user("alice_room", "password1").await?;
+    let bob_reg = server.register_user("bob_room", "password2").await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    let _session = alice.login("alice_room", "password1").await?;
+    let _session = alice.login(&alice_reg.localpart, "password1").await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    let _session = bob.login("bob_room", "password2").await?;
+    let _session = bob.login(&bob_reg.localpart, "password2").await?;
 
     // Alice creates room with options
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("State Test Room".into()),
             topic: Some("Testing room state queries".into()),
-            invite: vec!["@bob_room:localhost".into()],
+            invite: vec![bob_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;
@@ -386,12 +392,12 @@ async fn create_join_and_read_state(kind: ServerKind) -> Result<()> {
 
     let members = alice.room_members(&room_id).await?;
     assert!(
-        members.contains(&"@alice_room:localhost".to_string()),
+        members.contains(&alice_reg.user_id),
         "alice should be in members: {:?}",
         members
     );
     assert!(
-        members.contains(&"@bob_room:localhost".to_string()),
+        members.contains(&bob_reg.user_id),
         "bob should be in members: {:?}",
         members
     );
@@ -408,22 +414,22 @@ test_harness::e2e_test!(create_join_and_read_state);
 /// User can leave a room.
 async fn leave_room_test(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _alice_reg = server.register_user("alice_leave", "password1").await?;
-    let _bob_reg = server.register_user("bob_leave", "password2").await?;
+    let alice_reg = server.register_user("alice_leave", "password1").await?;
+    let bob_reg = server.register_user("bob_leave", "password2").await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    let _session = alice.login("alice_leave", "password1").await?;
+    let _session = alice.login(&alice_reg.localpart, "password1").await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    let _session = bob.login("bob_leave", "password2").await?;
+    let _session = bob.login(&bob_reg.localpart, "password2").await?;
 
     // Alice creates room, Bob joins
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("Leave Test".into()),
-            invite: vec!["@bob_leave:localhost".into()],
+            invite: vec![bob_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;
@@ -437,7 +443,7 @@ async fn leave_room_test(kind: ServerKind) -> Result<()> {
     alice.sync_once().await?;
     let members = alice.room_members(&room_id).await?;
     assert!(
-        !members.contains(&"@bob_leave:localhost".to_string()),
+        !members.contains(&bob_reg.user_id),
         "bob should not be in members after leaving: {:?}",
         members
     );
@@ -450,27 +456,27 @@ test_harness::e2e_test!(leave_room_test);
 /// User can kick and ban members with optional reasons.
 async fn kick_and_ban(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _alice_reg = server.register_user("alice_mod", "password1").await?;
-    let _bob_reg = server.register_user("bob_mod", "password2").await?;
-    let _carol_reg = server.register_user("carol_mod", "password3").await?;
+    let alice_reg = server.register_user("alice_mod", "password1").await?;
+    let bob_reg = server.register_user("bob_mod", "password2").await?;
+    let carol_reg = server.register_user("carol_mod", "password3").await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    let _session = alice.login("alice_mod", "password1").await?;
+    let _session = alice.login(&alice_reg.localpart, "password1").await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    let _session = bob.login("bob_mod", "password2").await?;
+    let _session = bob.login(&bob_reg.localpart, "password2").await?;
 
     let carol_store = tempfile::tempdir()?;
     let carol = ManyMatrixClient::new(server.base_url(), carol_store.path()).await?;
-    let _session = carol.login("carol_mod", "password3").await?;
+    let _session = carol.login(&carol_reg.localpart, "password3").await?;
 
     // Alice creates room, invites Bob and Carol
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("Mod Test".into()),
-            invite: vec!["@bob_mod:localhost".into(), "@carol_mod:localhost".into()],
+            invite: vec![bob_reg.user_id.clone(), carol_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;
@@ -485,26 +491,26 @@ async fn kick_and_ban(kind: ServerKind) -> Result<()> {
 
     // Alice kicks Bob with reason
     alice
-        .kick(&room_id, "@bob_mod:localhost", Some("test kick"))
+        .kick(&room_id, &bob_reg.user_id, Some("test kick"))
         .await?;
 
     alice.sync_once().await?;
     let members = alice.room_members(&room_id).await?;
     assert!(
-        !members.contains(&"@bob_mod:localhost".to_string()),
+        !members.contains(&bob_reg.user_id),
         "bob should not be in members after kick: {:?}",
         members
     );
 
     // Alice bans Carol with reason
     alice
-        .ban(&room_id, "@carol_mod:localhost", Some("test ban"))
+        .ban(&room_id, &carol_reg.user_id, Some("test ban"))
         .await?;
 
     alice.sync_once().await?;
     let members = alice.room_members(&room_id).await?;
     assert!(
-        !members.contains(&"@carol_mod:localhost".to_string()),
+        !members.contains(&carol_reg.user_id),
         "carol should not be in members after ban: {:?}",
         members
     );

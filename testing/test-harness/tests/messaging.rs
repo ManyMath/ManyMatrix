@@ -62,23 +62,23 @@ async fn encrypted_messaging(kind: ServerKind) -> Result<()> {
 
     let run_result = async {
         // Register users
-        let _alice_reg = server.register_user("alice_e2ee", "password1").await?;
-        let _bob_reg = server.register_user("bob_e2ee", "password2").await?;
+        let alice_reg = server.register_user("alice_e2ee", "password1").await?;
+        let bob_reg = server.register_user("bob_e2ee", "password2").await?;
 
         // Create clients with separate stores
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _alice_session = alice.login("alice_e2ee", "password1").await?;
+        let _alice_session = alice.login(&alice_reg.localpart, "password1").await?;
 
         let bob_store = tempfile::tempdir()?;
         let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-        let _bob_session = bob.login("bob_e2ee", "password2").await?;
+        let _bob_session = bob.login(&bob_reg.localpart, "password2").await?;
 
         // Alice creates a room and invites Bob
         let room_id = alice
             .create_room(CreateRoomOptions {
                 name: Some("E2EE Test Room".into()),
-                invite: vec!["@bob_e2ee:localhost".into()],
+                invite: vec![bob_reg.user_id.clone()],
                 ..Default::default()
             })
             .await?;
@@ -92,7 +92,7 @@ async fn encrypted_messaging(kind: ServerKind) -> Result<()> {
         alice.enable_encryption(&room_id).await?;
         sync_once_retry(&alice).await?;
 
-        // Multiple syncs for device key exchange — Alice must discover Bob's
+        // Multiple syncs for device key exchange, Alice must discover Bob's
         // device keys so the Megolm session key will be shared with him.
         for _ in 0..6 {
             sync_pair_retry(&alice, &bob).await?;
@@ -143,21 +143,21 @@ async fn message_types(kind: ServerKind) -> Result<()> {
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_msg", "password1").await?;
-        let _bob_reg = server.register_user("bob_msg", "password2").await?;
+        let alice_reg = server.register_user("alice_msg", "password1").await?;
+        let bob_reg = server.register_user("bob_msg", "password2").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _session = alice.login("alice_msg", "password1").await?;
+        let _session = alice.login(&alice_reg.localpart, "password1").await?;
 
         let bob_store = tempfile::tempdir()?;
         let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-        let _session = bob.login("bob_msg", "password2").await?;
+        let _session = bob.login(&bob_reg.localpart, "password2").await?;
 
         let room_id = alice
             .create_room(CreateRoomOptions {
                 name: Some("Msg Types Test".into()),
-                invite: vec!["@bob_msg:localhost".into()],
+                invite: vec![bob_reg.user_id.clone()],
                 ..Default::default()
             })
             .await?;
@@ -213,27 +213,27 @@ async fn message_types(kind: ServerKind) -> Result<()> {
 }
 
 /// Two-client edit, reply, redact test (MSG-04, MSG-05, MSG-07).
-/// Alice sends, edits, replies, redacts — Bob verifies each operation via pagination.
+/// Alice sends, edits, replies, redacts, Bob verifies each operation via pagination.
 async fn edit_reply_redact(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_edit", "password1").await?;
-        let _bob_reg = server.register_user("bob_edit", "password2").await?;
+        let alice_reg = server.register_user("alice_edit", "password1").await?;
+        let bob_reg = server.register_user("bob_edit", "password2").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _session = alice.login("alice_edit", "password1").await?;
+        let _session = alice.login(&alice_reg.localpart, "password1").await?;
 
         let bob_store = tempfile::tempdir()?;
         let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-        let _session = bob.login("bob_edit", "password2").await?;
+        let _session = bob.login(&bob_reg.localpart, "password2").await?;
 
         let room_id = alice
             .create_room(CreateRoomOptions {
                 name: Some("Edit Test Room".into()),
-                invite: vec!["@bob_edit:localhost".into()],
+                invite: vec![bob_reg.user_id.clone()],
                 ..Default::default()
             })
             .await?;
@@ -300,7 +300,7 @@ async fn whoami(kind: ServerKind) -> Result<()> {
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_whoami", "password1").await?;
+        let alice_reg = server.register_user("alice_whoami", "password1").await?;
 
         let store = tempfile::tempdir()?;
         let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
@@ -312,15 +312,16 @@ async fn whoami(kind: ServerKind) -> Result<()> {
         );
 
         // Login
-        let _session = client.login("alice_whoami", "password1").await?;
+        let _session = client.login(&alice_reg.localpart, "password1").await?;
 
         // After login: should return the full Matrix user ID
         let user_id = client.current_user_id();
         assert!(user_id.is_some(), "should have user ID after login");
         let user_id = user_id.unwrap();
         assert!(
-            user_id.starts_with("@alice_whoami:"),
-            "user ID should start with @alice_whoami: but got: {}",
+            user_id.starts_with(&format!("@{}:", alice_reg.localpart)),
+            "user ID should start with @{}: but got: {}",
+            alice_reg.localpart,
             user_id
         );
         eprintln!("current_user_id() returned: {}", user_id);
@@ -338,11 +339,11 @@ async fn is_room_encrypted(kind: ServerKind) -> Result<()> {
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_enc", "password1").await?;
+        let alice_reg = server.register_user("alice_enc", "password1").await?;
 
         let store = tempfile::tempdir()?;
         let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
-        let _session = client.login("alice_enc", "password1").await?;
+        let _session = client.login(&alice_reg.localpart, "password1").await?;
 
         // Create a room (not encrypted by default)
         let room_id = client
@@ -385,21 +386,21 @@ async fn media_upload_download(kind: ServerKind) -> Result<()> {
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_media", "password1").await?;
-        let _bob_reg = server.register_user("bob_media", "password2").await?;
+        let alice_reg = server.register_user("alice_media", "password1").await?;
+        let bob_reg = server.register_user("bob_media", "password2").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _session = alice.login("alice_media", "password1").await?;
+        let _session = alice.login(&alice_reg.localpart, "password1").await?;
 
         let bob_store = tempfile::tempdir()?;
         let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-        let _session = bob.login("bob_media", "password2").await?;
+        let _session = bob.login(&bob_reg.localpart, "password2").await?;
 
         let room_id = alice
             .create_room(CreateRoomOptions {
                 name: Some("Media Test Room".into()),
-                invite: vec!["@bob_media:localhost".into()],
+                invite: vec![bob_reg.user_id.clone()],
                 ..Default::default()
             })
             .await?;
@@ -450,21 +451,21 @@ async fn mxc_uri_on_message_event(kind: ServerKind) -> Result<()> {
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_mxc", "password1").await?;
-        let _bob_reg = server.register_user("bob_mxc", "password2").await?;
+        let alice_reg = server.register_user("alice_mxc", "password1").await?;
+        let bob_reg = server.register_user("bob_mxc", "password2").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _session = alice.login("alice_mxc", "password1").await?;
+        let _session = alice.login(&alice_reg.localpart, "password1").await?;
 
         let bob_store = tempfile::tempdir()?;
         let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-        let _session = bob.login("bob_mxc", "password2").await?;
+        let _session = bob.login(&bob_reg.localpart, "password2").await?;
 
         let room_id = alice
             .create_room(CreateRoomOptions {
                 name: Some("MXC URI Test".into()),
-                invite: vec!["@bob_mxc:localhost".into()],
+                invite: vec![bob_reg.user_id.clone()],
                 ..Default::default()
             })
             .await?;
@@ -530,7 +531,7 @@ async fn mxc_uri_on_message_event(kind: ServerKind) -> Result<()> {
         eprintln!("filename: {}", fname);
 
         // Assert file_size is populated (text/plain upload should have size info)
-        // Note: file_size may be None if the homeserver doesn't include info.size —
+        // Note: file_size may be None if the homeserver doesn't include info.size;
         // assert it's present but log if absent for debugging
         if let Some(size) = media_msg.file_size {
             assert!(size > 0, "file_size should be > 0 if present");
@@ -543,7 +544,7 @@ async fn mxc_uri_on_message_event(kind: ServerKind) -> Result<()> {
         // Note: tuwunel embedded requires authenticated media downloads; the matrix-sdk
         // client uses the authenticated endpoint but tuwunel may reject it depending on
         // server configuration. Skip the download assertion on TuwunelEmbedded.
-        if !matches!(kind, ServerKind::TuwunelEmbedded) {
+        if kind.slug() != "tuwunel-embedded" {
             let downloaded = bob.download_media(mxc).await?;
             assert_eq!(
                 downloaded, test_data,

@@ -46,11 +46,11 @@ async fn key_backup_enable_and_restore(kind: ServerKind) -> Result<()> {
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_backup", "password1").await?;
+        let alice_reg = server.register_user("alice_backup", "password1").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _session = alice.login("alice_backup", "password1").await?;
+        let _session = alice.login(&alice_reg.localpart, "password1").await?;
         alice.sync_once().await?;
 
         // Create an encrypted room
@@ -83,7 +83,7 @@ async fn key_backup_enable_and_restore(kind: ServerKind) -> Result<()> {
         // Create a FRESH client for the same user with a new store
         let alice2_store = tempfile::tempdir()?;
         let alice2 = ManyMatrixClient::new(server.base_url(), alice2_store.path()).await?;
-        let _session2 = alice2.login("alice_backup", "password1").await?;
+        let _session2 = alice2.login(&alice_reg.localpart, "password1").await?;
         alice2.sync_once().await?;
 
         // Restore key backup on the fresh client
@@ -102,17 +102,17 @@ async fn key_backup_enable_and_restore(kind: ServerKind) -> Result<()> {
 
 test_harness::e2e_test!(key_backup_enable_and_restore);
 
-/// Upload media and download via mxc_uri — exact byte round-trip.
+/// Upload media and download via mxc_uri, exact byte round-trip.
 async fn media_download_round_trip(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_dl", "password1").await?;
+        let alice_reg = server.register_user("alice_dl", "password1").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _session = alice.login("alice_dl", "password1").await?;
+        let _session = alice.login(&alice_reg.localpart, "password1").await?;
         alice.sync_once().await?;
 
         let room_id = alice
@@ -187,11 +187,11 @@ async fn thumbnail_fetch_for_image(kind: ServerKind) -> Result<()> {
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_thumb", "password1").await?;
+        let alice_reg = server.register_user("alice_thumb", "password1").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _session = alice.login("alice_thumb", "password1").await?;
+        let _session = alice.login(&alice_reg.localpart, "password1").await?;
         alice.sync_once().await?;
 
         let room_id = alice
@@ -238,7 +238,7 @@ async fn thumbnail_fetch_for_image(kind: ServerKind) -> Result<()> {
         let mxc = img_msg.mxc_uri.as_ref().unwrap();
         eprintln!("Image mxc_uri: {}", mxc);
 
-        // Fetch thumbnail — Synapse generates thumbnails for image content types
+        // Fetch thumbnail, Synapse generates thumbnails for image content types
         let thumb = alice.get_thumbnail(mxc, 64, 64).await?;
         assert!(!thumb.is_empty(), "thumbnail should not be empty");
         eprintln!("Thumbnail fetched: {} bytes", thumb.len());
@@ -252,28 +252,28 @@ async fn thumbnail_fetch_for_image(kind: ServerKind) -> Result<()> {
 
 test_harness::e2e_test!(thumbnail_fetch_for_image);
 
-/// Upload media in an E2EE room — mxc_uri is None (encrypted source).
+/// Upload media in an E2EE room, mxc_uri is None (encrypted source).
 async fn encrypted_media_upload(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_emedia", "password1").await?;
-        let _bob_reg = server.register_user("bob_emedia", "password2").await?;
+        let alice_reg = server.register_user("alice_emedia", "password1").await?;
+        let bob_reg = server.register_user("bob_emedia", "password2").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _alice_session = alice.login("alice_emedia", "password1").await?;
+        let _alice_session = alice.login(&alice_reg.localpart, "password1").await?;
 
         let bob_store = tempfile::tempdir()?;
         let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-        let _bob_session = bob.login("bob_emedia", "password2").await?;
+        let _bob_session = bob.login(&bob_reg.localpart, "password2").await?;
 
         // Alice creates room with Bob invited
         let room_id = alice
             .create_room(CreateRoomOptions {
                 name: Some("Encrypted Media Test".into()),
-                invite: vec!["@bob_emedia:localhost".into()],
+                invite: vec![bob_reg.user_id.clone()],
                 ..Default::default()
             })
             .await?;

@@ -67,6 +67,10 @@ fn compiled_server_kinds() -> Vec<ServerKind> {
     kinds.push(ServerKind::Synapse);
     #[cfg(feature = "docker-tests")]
     kinds.push(ServerKind::TuwunelDocker);
+    #[cfg(feature = "hosted-tests")]
+    kinds.push(ServerKind::HostedSynapse);
+    #[cfg(feature = "hosted-tests")]
+    kinds.push(ServerKind::HostedTuwunel);
 
     kinds
 }
@@ -96,12 +100,12 @@ where
 }
 
 async fn capabilities_behavior(server: &TestHomeserver) -> Result<String> {
-    let _user = server
+    let user = server
         .register_user("compat_caps", "compat_caps_pass")
         .await?;
     let store = tempfile::tempdir()?;
     let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
-    client.login("compat_caps", "compat_caps_pass").await?;
+    client.login(&user.localpart, "compat_caps_pass").await?;
 
     let capabilities = client.server_capabilities().await?;
     if capabilities.versions.is_empty() {
@@ -118,12 +122,12 @@ async fn capabilities_behavior(server: &TestHomeserver) -> Result<String> {
 }
 
 async fn auth_behavior(server: &TestHomeserver) -> Result<String> {
-    let _user = server
+    let user = server
         .register_user("compat_auth", "compat_auth_pass")
         .await?;
     let store = tempfile::tempdir()?;
     let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
-    let session = client.login("compat_auth", "compat_auth_pass").await?;
+    let session = client.login(&user.localpart, "compat_auth_pass").await?;
     let refresh_token_status = if session.session.tokens.refresh_token.is_some() {
         "refresh-token returned"
     } else {
@@ -135,7 +139,7 @@ async fn auth_behavior(server: &TestHomeserver) -> Result<String> {
         .meta
         .user_id
         .as_str()
-        .contains("compat_auth")
+        .contains(user.localpart.as_str())
     {
         bail!("login returned unexpected user ID");
     }
@@ -146,12 +150,12 @@ async fn auth_behavior(server: &TestHomeserver) -> Result<String> {
 }
 
 async fn sync_behavior(server: &TestHomeserver) -> Result<String> {
-    let _user = server
+    let user = server
         .register_user("compat_sync", "compat_sync_pass")
         .await?;
     let store = tempfile::tempdir()?;
     let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
-    client.login("compat_sync", "compat_sync_pass").await?;
+    client.login(&user.localpart, "compat_sync_pass").await?;
     client.sync_once_with_timeout(SYNC_TIMEOUT).await?;
     let _rooms = client.joined_rooms().await;
 
@@ -159,27 +163,27 @@ async fn sync_behavior(server: &TestHomeserver) -> Result<String> {
 }
 
 async fn rooms_behavior(server: &TestHomeserver) -> Result<String> {
-    let _alice = server
+    let alice_reg = server
         .register_user("compat_rooms_alice", "compat_rooms_pass")
         .await?;
-    let _bob = server
+    let bob_reg = server
         .register_user("compat_rooms_bob", "compat_rooms_pass")
         .await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
     alice
-        .login("compat_rooms_alice", "compat_rooms_pass")
+        .login(&alice_reg.localpart, "compat_rooms_pass")
         .await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    bob.login("compat_rooms_bob", "compat_rooms_pass").await?;
+    bob.login(&bob_reg.localpart, "compat_rooms_pass").await?;
 
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("Compatibility Rooms".to_owned()),
-            invite: vec!["@compat_rooms_bob:localhost".to_owned()],
+            invite: vec![bob_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;
@@ -191,7 +195,7 @@ async fn rooms_behavior(server: &TestHomeserver) -> Result<String> {
 
     if !members
         .iter()
-        .any(|member| member.contains("compat_rooms_bob"))
+        .any(|member| member.contains(bob_reg.localpart.as_str()))
     {
         bail!("joined room members did not include compat_rooms_bob: {members:?}");
     }
@@ -200,25 +204,25 @@ async fn rooms_behavior(server: &TestHomeserver) -> Result<String> {
 }
 
 async fn messaging_behavior(server: &TestHomeserver) -> Result<String> {
-    let _alice = server
+    let alice_reg = server
         .register_user("compat_msg_alice", "compat_msg_pass")
         .await?;
-    let _bob = server
+    let bob_reg = server
         .register_user("compat_msg_bob", "compat_msg_pass")
         .await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    alice.login("compat_msg_alice", "compat_msg_pass").await?;
+    alice.login(&alice_reg.localpart, "compat_msg_pass").await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    bob.login("compat_msg_bob", "compat_msg_pass").await?;
+    bob.login(&bob_reg.localpart, "compat_msg_pass").await?;
 
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("Compatibility Messaging".to_owned()),
-            invite: vec!["@compat_msg_bob:localhost".to_owned()],
+            invite: vec![bob_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;
@@ -245,12 +249,12 @@ async fn messaging_behavior(server: &TestHomeserver) -> Result<String> {
 }
 
 async fn media_behavior(server: &TestHomeserver) -> Result<String> {
-    let _user = server
+    let user = server
         .register_user("compat_media", "compat_media_pass")
         .await?;
     let store = tempfile::tempdir()?;
     let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
-    client.login("compat_media", "compat_media_pass").await?;
+    client.login(&user.localpart, "compat_media_pass").await?;
     let capabilities = client.server_capabilities().await?;
 
     let room_id = client
@@ -292,25 +296,25 @@ async fn media_behavior(server: &TestHomeserver) -> Result<String> {
 }
 
 async fn e2ee_behavior(server: &TestHomeserver) -> Result<String> {
-    let _alice = server
+    let alice_reg = server
         .register_user("compat_e2ee_alice", "compat_e2ee_pass")
         .await?;
-    let _bob = server
+    let bob_reg = server
         .register_user("compat_e2ee_bob", "compat_e2ee_pass")
         .await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    alice.login("compat_e2ee_alice", "compat_e2ee_pass").await?;
+    alice.login(&alice_reg.localpart, "compat_e2ee_pass").await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    bob.login("compat_e2ee_bob", "compat_e2ee_pass").await?;
+    bob.login(&bob_reg.localpart, "compat_e2ee_pass").await?;
 
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("Compatibility E2EE".to_owned()),
-            invite: vec!["@compat_e2ee_bob:localhost".to_owned()],
+            invite: vec![bob_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;
@@ -347,9 +351,10 @@ async fn e2ee_behavior(server: &TestHomeserver) -> Result<String> {
 }
 
 async fn ffi_smoke_behavior(server: &TestHomeserver) -> Result<String> {
-    let _user = server
+    let user = server
         .register_user("compat_ffi", "compat_ffi_pass")
         .await?;
+    let localpart = user.localpart;
     let base_url = server.base_url().to_owned();
     let store = tempfile::tempdir()?;
     let store_path = store
@@ -366,12 +371,12 @@ async fn ffi_smoke_behavior(server: &TestHomeserver) -> Result<String> {
         assert_ffi_ok(&new_result)?;
         let handle = new_result.data as *mut manymatrix_ffi::ManyMatrixClient;
 
-        let username = cstr("compat_ffi");
+        let username = cstr(&localpart);
         let password = cstr("compat_ffi_pass");
         let login_result =
             manymatrix_ffi::manymatrix_login(handle, username.as_ptr(), password.as_ptr());
         let session = read_ffi_string(&login_result)?;
-        if !session.contains("compat_ffi") {
+        if !session.contains(localpart.as_str()) {
             bail!("FFI login session did not contain compat_ffi");
         }
 
@@ -380,7 +385,7 @@ async fn ffi_smoke_behavior(server: &TestHomeserver) -> Result<String> {
 
         let whoami_result = manymatrix_ffi::manymatrix_whoami(handle);
         let user_id = read_ffi_string(&whoami_result)?;
-        if !user_id.starts_with("@compat_ffi:") {
+        if !user_id.starts_with(&format!("@{localpart}:")) {
             bail!("FFI whoami returned unexpected user ID: {user_id}");
         }
 

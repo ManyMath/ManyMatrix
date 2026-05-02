@@ -19,22 +19,22 @@ async fn reaction_round_trip(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
-    let _alice_reg = server.register_user("alice_react", "password1").await?;
-    let _bob_reg = server.register_user("bob_react", "password2").await?;
+    let alice_reg = server.register_user("alice_react", "password1").await?;
+    let bob_reg = server.register_user("bob_react", "password2").await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    let _alice_session = alice.login("alice_react", "password1").await?;
+    let _alice_session = alice.login(&alice_reg.localpart, "password1").await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    let _bob_session = bob.login("bob_react", "password2").await?;
+    let _bob_session = bob.login(&bob_reg.localpart, "password2").await?;
 
     // Alice creates a room and invites Bob
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("Reaction Test Room".into()),
-            invite: vec!["@bob_react:localhost".into()],
+            invite: vec![bob_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;
@@ -96,22 +96,22 @@ async fn read_receipt_round_trip(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
-    let _alice_reg = server.register_user("alice_rcpt", "password1").await?;
-    let _bob_reg = server.register_user("bob_rcpt", "password2").await?;
+    let alice_reg = server.register_user("alice_rcpt", "password1").await?;
+    let bob_reg = server.register_user("bob_rcpt", "password2").await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    let _alice_session = alice.login("alice_rcpt", "password1").await?;
+    let _alice_session = alice.login(&alice_reg.localpart, "password1").await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    let _bob_session = bob.login("bob_rcpt", "password2").await?;
+    let _bob_session = bob.login(&bob_reg.localpart, "password2").await?;
 
     // Alice creates a room and invites Bob
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("Receipt Test Room".into()),
-            invite: vec!["@bob_rcpt:localhost".into()],
+            invite: vec![bob_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;
@@ -162,7 +162,7 @@ async fn read_receipt_round_trip(kind: ServerKind) -> Result<()> {
     } else {
         tokio::time::timeout(Duration::from_secs(5), rx.recv())
             .await
-            .expect("read receipt receive timed out — on_receipt may not fire for ephemeral events via sync_once")
+            .expect("read receipt receive timed out, on_receipt may not fire for ephemeral events via sync_once")
             .expect("receipt channel closed unexpectedly")
     };
 
@@ -176,7 +176,7 @@ async fn read_receipt_round_trip(kind: ServerKind) -> Result<()> {
         "receipt should be for the original message"
     );
     assert!(
-        receipt.user_id.contains("bob_rcpt"),
+        receipt.user_id.contains(bob_reg.localpart.as_str()),
         "receipt should be from bob_rcpt, got: {}",
         receipt.user_id
     );
@@ -189,22 +189,22 @@ async fn threaded_message_round_trip(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
-    let _alice_reg = server.register_user("alice_thread", "password1").await?;
-    let _bob_reg = server.register_user("bob_thread", "password2").await?;
+    let alice_reg = server.register_user("alice_thread", "password1").await?;
+    let bob_reg = server.register_user("bob_thread", "password2").await?;
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    let _alice_session = alice.login("alice_thread", "password1").await?;
+    let _alice_session = alice.login(&alice_reg.localpart, "password1").await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-    let _bob_session = bob.login("bob_thread", "password2").await?;
+    let _bob_session = bob.login(&bob_reg.localpart, "password2").await?;
 
     // Alice creates a room and invites Bob
     let room_id = alice
         .create_room(CreateRoomOptions {
             name: Some("Thread Test Room".into()),
-            invite: vec!["@bob_thread:localhost".into()],
+            invite: vec![bob_reg.user_id.clone()],
             ..Default::default()
         })
         .await?;

@@ -54,21 +54,21 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
 
     let run_result = async {
-        let _alice_reg = server.register_user("alice_sas", "password1").await?;
-        let _bob_reg = server.register_user("bob_sas", "password2").await?;
+        let alice_reg = server.register_user("alice_sas", "password1").await?;
+        let bob_reg = server.register_user("bob_sas", "password2").await?;
 
         let alice_store = tempfile::tempdir()?;
         let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-        let _alice_session = alice.login("alice_sas", "password1").await?;
+        let _alice_session = alice.login(&alice_reg.localpart, "password1").await?;
 
         let bob_store = tempfile::tempdir()?;
         let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
-        let _bob_session = bob.login("bob_sas", "password2").await?;
+        let _bob_session = bob.login(&bob_reg.localpart, "password2").await?;
 
         let room_id = alice
             .create_room(CreateRoomOptions {
                 name: Some("SAS Verification Room".into()),
-                invite: vec!["@bob_sas:localhost".into()],
+                invite: vec![bob_reg.user_id.clone()],
                 ..Default::default()
             })
             .await?;
@@ -85,7 +85,9 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
         let bob_devices = alice
             .inner()
             .encryption()
-            .get_user_devices(<&matrix_sdk::ruma::UserId>::try_from("@bob_sas:localhost")?)
+            .get_user_devices(<&matrix_sdk::ruma::UserId>::try_from(
+                bob_reg.user_id.as_str(),
+            )?)
             .await?;
         let bob_device = bob_devices
             .devices()
@@ -95,7 +97,7 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
         eprintln!("Found Bob's device: {}", bob_device_id);
 
         let flow_id = alice
-            .start_verification("@bob_sas:localhost", &bob_device_id)
+            .start_verification(&bob_reg.user_id, &bob_device_id)
             .await?;
         eprintln!("Verification started, flow_id: {}", flow_id);
 
@@ -103,7 +105,7 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
         for attempt in 0..20 {
             sync_pair(&alice, &bob, 1, 200).await?;
             match bob
-                .accept_verification("@alice_sas:localhost", &flow_id)
+                .accept_verification(&alice_reg.user_id, &flow_id)
                 .await
             {
                 Ok(()) => {
@@ -122,7 +124,7 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
         let mut sas_started = false;
         for attempt in 0..20 {
             sync_pair(&alice, &bob, 1, 200).await?;
-            match alice.start_sas("@bob_sas:localhost", &flow_id).await {
+            match alice.start_sas(&bob_reg.user_id, &flow_id).await {
                 Ok(()) => {
                     sas_started = true;
                     eprintln!("Alice started SAS on attempt {}", attempt + 1);
@@ -136,7 +138,7 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
         let mut sas_accepted = false;
         for attempt in 0..20 {
             sync_pair(&alice, &bob, 1, 200).await?;
-            match bob.accept_sas("@alice_sas:localhost", &flow_id).await {
+            match bob.accept_sas(&alice_reg.user_id, &flow_id).await {
                 Ok(()) => {
                     sas_accepted = true;
                     eprintln!("Bob accepted SAS on attempt {}", attempt + 1);
@@ -153,7 +155,7 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
             sync_pair(&alice, &bob, 1, 200).await?;
 
             if alice_emojis.is_none() {
-                match alice.get_sas_emojis("@bob_sas:localhost", &flow_id).await {
+                match alice.get_sas_emojis(&bob_reg.user_id, &flow_id).await {
                     Ok(payload) => {
                         eprintln!("Alice SAS emojis ready on attempt {}", attempt + 1);
                         alice_emojis = Some(payload.emojis);
@@ -165,7 +167,7 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
             }
 
             if bob_emojis.is_none() {
-                match bob.get_sas_emojis("@alice_sas:localhost", &flow_id).await {
+                match bob.get_sas_emojis(&alice_reg.user_id, &flow_id).await {
                     Ok(payload) => {
                         eprintln!("Bob SAS emojis ready on attempt {}", attempt + 1);
                         bob_emojis = Some(payload.emojis);
@@ -191,8 +193,8 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
         eprintln!("Emojis match!");
 
         let (alice_confirm, bob_confirm, sync_result) = tokio::join!(
-            alice.confirm_sas("@bob_sas:localhost", &flow_id),
-            bob.confirm_sas("@alice_sas:localhost", &flow_id),
+            alice.confirm_sas(&bob_reg.user_id, &flow_id),
+            bob.confirm_sas(&alice_reg.user_id, &flow_id),
             sync_pair(&alice, &bob, 10, 200),
         );
         alice_confirm?;
@@ -229,11 +231,11 @@ async fn cross_signing_bootstrap(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
 
     let run_result = async {
-        let _user = server.register_user("cross_sign_user", "password1").await?;
+        let user = server.register_user("cross_sign_user", "password1").await?;
 
         let store = tempfile::tempdir()?;
         let client = ManyMatrixClient::new(server.base_url(), store.path()).await?;
-        let _session = client.login("cross_sign_user", "password1").await?;
+        let _session = client.login(&user.localpart, "password1").await?;
         client.sync_once().await?;
 
         client.bootstrap_cross_signing().await?;

@@ -9,6 +9,7 @@ default = ["embedded-tests"]
 embedded-tests = ["dep:tuwunel-embed"]
 docker-tests = ["dep:testcontainers"]
 shadow-tests = ["dep:serde_yaml", "dep:toml", "dep:shadow-common"]
+hosted-tests = []
 [dependencies]
 manymatrix-core = { path = "../../crates/core" }
 manymatrix-ffi = { path = "../../crates/ffi" }

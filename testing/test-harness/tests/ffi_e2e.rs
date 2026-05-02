@@ -50,7 +50,7 @@ where
 async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     eprintln!("{:?} ready at {}", server.server_kind(), server.base_url());
-    let _alice = server.register_user("alice_ffi", "password1").await?;
+    let alice_reg = server.register_user("alice_ffi", "password1").await?;
     let store = tempfile::tempdir()?;
     let base_url = server.base_url().to_owned();
     let store_path = store.path().to_str().unwrap().to_owned();
@@ -63,11 +63,11 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
         assert_ok(&r);
         let h = r.data as *mut manymatrix_ffi::ManyMatrixClient;
 
-        let u = cstr("alice_ffi");
+        let u = cstr(&alice_reg.localpart);
         let p = cstr("password1");
         let r = manymatrix_ffi::manymatrix_login(h, u.as_ptr(), p.as_ptr());
         let session = read_string(&r);
-        assert!(session.contains("alice_ffi"));
+        assert!(session.contains(alice_reg.localpart.as_str()));
         eprintln!("Logged in via FFI");
 
         let r = manymatrix_ffi::manymatrix_sync_once(h);
@@ -114,7 +114,7 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
 
         let r = manymatrix_ffi::manymatrix_room_members(h, rid.as_ptr());
         let members = read_string(&r);
-        assert!(members.contains("alice_ffi"));
+        assert!(members.contains(alice_reg.localpart.as_str()));
 
         let r = manymatrix_ffi::manymatrix_logout(h);
         assert_ok(&r);
@@ -130,8 +130,8 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
 /// Alice creates room, invites Bob, sends messages; Bob joins and reads via FFI pagination.
 async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _alice = server.register_user("alice_ffi2", "pass1").await?;
-    let _bob = server.register_user("bob_ffi2", "pass2").await?;
+    let alice_reg = server.register_user("alice_ffi2", "pass1").await?;
+    let bob_reg = server.register_user("bob_ffi2", "pass2").await?;
     let base_url = server.base_url().to_owned();
 
     let alice_store = tempfile::tempdir()?;
@@ -149,7 +149,7 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
         let alice = r.data as *mut manymatrix_ffi::ManyMatrixClient;
         let r = manymatrix_ffi::manymatrix_login(
             alice,
-            cstr("alice_ffi2").as_ptr(),
+            cstr(&alice_reg.localpart).as_ptr(),
             cstr("pass1").as_ptr(),
         );
         assert!(r.ok);
@@ -161,7 +161,7 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
         let bob = r.data as *mut manymatrix_ffi::ManyMatrixClient;
         let r = manymatrix_ffi::manymatrix_login(
             bob,
-            cstr("bob_ffi2").as_ptr(),
+            cstr(&bob_reg.localpart).as_ptr(),
             cstr("pass2").as_ptr(),
         );
         assert!(r.ok);
@@ -180,7 +180,7 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
         let r = manymatrix_ffi::manymatrix_invite(
             alice,
             rid.as_ptr(),
-            cstr("@bob_ffi2:localhost").as_ptr(),
+            cstr(&bob_reg.user_id).as_ptr(),
         );
         assert_ok(&r);
 
@@ -224,8 +224,8 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
 
         let r = manymatrix_ffi::manymatrix_room_members(bob, rid.as_ptr());
         let members = read_string(&r);
-        assert!(members.contains("alice_ffi2"));
-        assert!(members.contains("bob_ffi2"));
+        assert!(members.contains(alice_reg.localpart.as_str()));
+        assert!(members.contains(bob_reg.localpart.as_str()));
 
         let r = manymatrix_ffi::manymatrix_get_messages(bob, rid.as_ptr(), std::ptr::null(), 10);
         let paginated = read_string(&r);
@@ -243,7 +243,7 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
 /// Verifies whoami returns the correct Matrix ID over FFI.
 async fn ffi_whoami(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
-    let _alice = server
+    let alice_reg = server
         .register_user("alice_ffi_whoami", "password1")
         .await?;
     let store = tempfile::tempdir()?;
@@ -258,7 +258,7 @@ async fn ffi_whoami(kind: ServerKind) -> Result<()> {
         assert_ok(&r);
         let handle = r.data as *mut manymatrix_ffi::ManyMatrixClient;
 
-        let user = cstr("alice_ffi_whoami");
+        let user = cstr(&alice_reg.localpart);
         let pass = cstr("password1");
         let r = manymatrix_ffi::manymatrix_login(handle, user.as_ptr(), pass.as_ptr());
         assert_ok(&r);
@@ -266,8 +266,9 @@ async fn ffi_whoami(kind: ServerKind) -> Result<()> {
         let r = manymatrix_ffi::manymatrix_whoami(handle);
         let user_id = read_string(&r);
         assert!(
-            user_id.starts_with("@alice_ffi_whoami:"),
-            "whoami should return @alice_ffi_whoami:... but got: {}",
+            user_id.starts_with(&format!("@{}:", alice_reg.localpart)),
+            "whoami should return @{}:... but got: {}",
+            alice_reg.localpart,
             user_id
         );
         eprintln!("FFI whoami returned: {}", user_id);
