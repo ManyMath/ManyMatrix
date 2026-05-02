@@ -18,6 +18,16 @@ pub fn init() {
     );
 }
 
+/// Register a JS function to receive pushed events from the sync loop.
+///
+/// The sink is called with `(kind, payload_json)` where `kind` is one of
+/// `"message"`, `"reaction"`, or `"receipt"` and `payload_json` is the
+/// JSON-serialized event. Events flow only after an `events.subscribe` call.
+#[wasm_bindgen]
+pub fn set_event_sink(sink: js_sys::Function) {
+    dispatcher::set_event_sink(sink);
+}
+
 #[wasm_bindgen]
 pub async fn call(method: String, args_json: String) -> String {
     let result = AssertUnwindSafe(dispatcher::dispatch(&method, &args_json))

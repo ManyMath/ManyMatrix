@@ -8,12 +8,42 @@ use manymatrix_core::{CreateRoomOptions, ManyMatrixClient, RoomVisibility, Store
 
 thread_local! {
     static CLIENT: RefCell<Option<ManyMatrixClient>> = RefCell::new(None);
+    static EVENT_SINK: RefCell<Option<js_sys::Function>> = RefCell::new(None);
 }
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
+// Event handlers attach to a specific client instance, so a new client
+// (login/restore) needs a fresh events.subscribe call.
+static EVENTS_SUBSCRIBED: AtomicBool = AtomicBool::new(false);
 
 pub fn set_client(client: ManyMatrixClient) {
     CLIENT.with(|cell| *cell.borrow_mut() = Some(client));
+    EVENTS_SUBSCRIBED.store(false, Ordering::Relaxed);
+}
+
+pub fn set_event_sink(sink: js_sys::Function) {
+    EVENT_SINK.with(|cell| *cell.borrow_mut() = Some(sink));
+}
+
+fn emit_event(kind: &str, payload: &impl serde::Serialize) {
+    let payload_json = match serde_json::to_string(payload) {
+        Ok(json) => json,
+        Err(e) => {
+            tracing::error!("failed to serialize {} event: {}", kind, e);
+            return;
+        }
+    };
+    EVENT_SINK.with(|cell| {
+        if let Some(sink) = cell.borrow().as_ref() {
+            if let Err(e) = sink.call2(
+                &wasm_bindgen::JsValue::NULL,
+                &wasm_bindgen::JsValue::from_str(kind),
+                &wasm_bindgen::JsValue::from_str(&payload_json),
+            ) {
+                tracing::warn!("event sink call failed for {}: {:?}", kind, e);
+            }
+        }
+    });
 }
 
 pub fn get_client() -> Result<ManyMatrixClient, ErrEnvelope> {
@@ -28,6 +58,7 @@ pub fn get_client() -> Result<ManyMatrixClient, ErrEnvelope> {
 
 pub fn clear_client() {
     CLIENT.with(|cell| *cell.borrow_mut() = None);
+    EVENTS_SUBSCRIBED.store(false, Ordering::Relaxed);
 }
 
 #[derive(Deserialize)]
@@ -638,6 +669,17 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .restore_key_backup(&args.recovery_key)
                 .await
                 .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "events.subscribe" => {
+            let client = get_client()?;
+            if EVENTS_SUBSCRIBED.swap(true, Ordering::Relaxed) {
+                return Ok(serde_json::json!({"already_subscribed": true}));
+            }
+            client.on_message(|msg| emit_event("message", &msg));
+            client.on_reaction(|reaction| emit_event("reaction", &reaction));
+            client.on_receipt(|receipt| emit_event("receipt", &receipt));
+            tracing::info!("events.subscribe ok");
             Ok(serde_json::json!({}))
         }
         "sync.status" => {
