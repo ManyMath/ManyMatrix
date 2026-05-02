@@ -15,7 +15,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
 
-  if (message?.type === 'offscreen-ready' || message?.type === 'offscreen-ready-failed') {
+  if (message?.type === 'offscreen-ready' || message?.type === 'offscreen-ready-failed' ||
+      message?.type === 'manymatrix-event') {
     return;
   }
 

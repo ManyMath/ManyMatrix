@@ -21,6 +21,12 @@ extension type _Chrome(JSObject _) implements JSObject {
 extension type _ChromeRuntime(JSObject _) implements JSObject {
   external JSPromise<JSAny?> sendMessage(JSAny? message);
   external JSString? get id;
+  external _ChromeEvent get onMessage;
+}
+
+extension type _ChromeEvent(JSObject _) implements JSObject {
+  external void addListener(JSFunction callback);
+  external void removeListener(JSFunction callback);
 }
 
 extension type _ChromeStorage(JSObject _) implements JSObject {
@@ -209,6 +215,7 @@ class ManyMatrixBridge {
     });
     final sessionJson = result['session_json'] as String;
     await _persistSession(sessionJson);
+    _resubscribeEvents();
     return sessionJson;
   }
 
@@ -219,6 +226,7 @@ class ManyMatrixBridge {
       'session_json': sessionJson,
       'store_name': _storeName,
     });
+    _resubscribeEvents();
   }
 
   Future<void> syncOnce() async {
@@ -515,8 +523,100 @@ class ManyMatrixBridge {
     });
   }
 
-  void onMessage(void Function(String json) callback) {}
-  void onReaction(void Function(String json) callback) {}
-  void onReceipt(void Function(String json) callback) {}
-  void dispose() {}
+  // === Event push channel ===
+  //
+  // The wasm dispatcher forwards sync events through offscreen.js, which
+  // broadcasts them as {type: 'manymatrix-event', kind, payload} runtime
+  // messages. A single chrome.runtime.onMessage listener dispatches to the
+  // registered callbacks by kind.
+
+  void Function(String json)? _onMessageCallback;
+  void Function(String json)? _onReactionCallback;
+  void Function(String json)? _onReceiptCallback;
+  JSFunction? _eventListener;
+  bool _eventsSubscribed = false;
+
+  bool get _hasEventCallbacks =>
+      _onMessageCallback != null ||
+      _onReactionCallback != null ||
+      _onReceiptCallback != null;
+
+  void _handleRuntimeMessage(JSAny? message, JSAny? sender, JSAny? reply) {
+    final data = message.dartify();
+    if (data is! Map || data['type'] != 'manymatrix-event') return;
+    final kind = data['kind'] as String?;
+    final payload = data['payload'] as String?;
+    if (kind == null || payload == null) return;
+    switch (kind) {
+      case 'message':
+        _onMessageCallback?.call(payload);
+      case 'reaction':
+        _onReactionCallback?.call(payload);
+      case 'receipt':
+        _onReceiptCallback?.call(payload);
+    }
+  }
+
+  void _ensureEventChannel() {
+    if (_eventListener == null) {
+      final listener = _handleRuntimeMessage.toJS;
+      _chrome.runtime.onMessage.addListener(listener);
+      _eventListener = listener;
+    }
+    if (_eventsSubscribed) return;
+    _eventsSubscribed = true;
+    unawaited(
+      _call('events.subscribe', {}).catchError((Object e) {
+        _eventsSubscribed = false;
+        developer.log(
+          'events.subscribe failed: $e',
+          name: 'manymatrix.bridge',
+        );
+        return <String, dynamic>{};
+      }),
+    );
+  }
+
+  // Handlers attach to the wasm-side client instance, which login/restore
+  // replace, so an active subscription must be re-established.
+  void _resubscribeEvents() {
+    _eventsSubscribed = false;
+    if (_hasEventCallbacks) _ensureEventChannel();
+  }
+
+  /// Register a callback for incoming message events.
+  ///
+  /// The callback receives a JSON-serialized MessageEvent string.
+  void onMessage(void Function(String json) callback) {
+    _onMessageCallback = callback;
+    _ensureEventChannel();
+  }
+
+  /// Register a callback for incoming reaction events.
+  ///
+  /// The callback receives a JSON-serialized ReactionEvent string.
+  void onReaction(void Function(String json) callback) {
+    _onReactionCallback = callback;
+    _ensureEventChannel();
+  }
+
+  /// Register a callback for incoming read receipt events.
+  ///
+  /// The callback receives a JSON-serialized ReceiptEvent string.
+  void onReceipt(void Function(String json) callback) {
+    _onReceiptCallback = callback;
+    _ensureEventChannel();
+  }
+
+  void dispose() {
+    final listener = _eventListener;
+    if (listener != null) {
+      _chrome.runtime.onMessage.removeListener(listener);
+      _eventListener = null;
+    }
+    _onMessageCallback = null;
+    _onReactionCallback = null;
+    _onReceiptCallback = null;
+    _eventsSubscribed = false;
+  }
 }

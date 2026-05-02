@@ -1,8 +1,14 @@
-import init, { call } from './pkg/manymatrix_web.js';
+import init, { call, set_event_sink } from './pkg/manymatrix_web.js';
 
 async function main() {
   try {
     await init();
+    set_event_sink((kind, payload) => {
+      // Broadcast to all extension contexts (side panel, tab). Rejects when
+      // no page is listening; those events are intentionally dropped.
+      chrome.runtime.sendMessage({type: 'manymatrix-event', kind, payload})
+        .catch(() => {});
+    });
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message?.target === 'offscreen-call') {
         const { method, args } = message.envelope;
