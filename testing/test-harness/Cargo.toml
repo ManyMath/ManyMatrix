@@ -10,6 +10,12 @@ embedded-tests = ["dep:tuwunel-embed"]
 docker-tests = ["dep:testcontainers"]
 shadow-tests = ["dep:serde_yaml", "dep:toml", "dep:shadow-common"]
 hosted-tests = []
+
+[[bin]]
+name = "web_e2e_actor"
+path = "src/bin/web_e2e_actor.rs"
+required-features = ["hosted-tests"]
+
 [dependencies]
 manymatrix-core = { path = "../../crates/core" }
 manymatrix-ffi = { path = "../../crates/ffi" }
