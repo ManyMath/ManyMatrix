@@ -1,0 +1,9 @@
+{
+  "name": "manymatrix-web-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser-automation E2E harness for the manymatrix Chrome extension against hosted homeservers",
+  "dependencies": {
+    "puppeteer": "^24.0.0"
+  }
+}
