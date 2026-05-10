@@ -1,0 +1,58 @@
+name: Hosted E2E
+
+# Runs on the manytier-ci act_runner on the same Hetzner box as the hosted
+# homeservers (near-zero latency). The four MANYMATRIX_HOSTED_* values are
+# Gitea Actions repo secrets, see ~/dev/hetzner README section 8 for where the
+# underlying secrets live and how to rotate them.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  MANYMATRIX_HOSTED_SYNAPSE_URL: ${{ secrets.MANYMATRIX_HOSTED_SYNAPSE_URL }}
+  MANYMATRIX_HOSTED_SYNAPSE_REGISTRATION_SECRET: ${{ secrets.MANYMATRIX_HOSTED_SYNAPSE_REGISTRATION_SECRET }}
+  MANYMATRIX_HOSTED_TUWUNEL_URL: ${{ secrets.MANYMATRIX_HOSTED_TUWUNEL_URL }}
+  MANYMATRIX_HOSTED_TUWUNEL_REGISTRATION_TOKEN: ${{ secrets.MANYMATRIX_HOSTED_TUWUNEL_REGISTRATION_TOKEN }}
+
+jobs:
+  hosted-tier:
+    name: Hosted homeserver tier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Run hosted E2E suite (Synapse + Tuwunel)
+        run: bash scripts/compatibility.sh hosted
+
+  web-e2e:
+    name: Web/extension E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build wasm
+        run: wasm-pack build --target web --release crates/web
+      - name: Assemble minimal extension
+        run: bash scripts/assemble_web_e2e_extension.sh "$RUNNER_TEMP/min-extension"
+      - name: Build web_e2e_actor
+        run: cargo build -p test-harness --bin web_e2e_actor --no-default-features --features hosted-tests
+      - name: Install harness deps and Chrome
+        run: |
+          cd testing/web-e2e
+          npm install --no-audit --no-fund
+          npx puppeteer browsers install chrome --install-deps
+      - name: Web E2E against hosted Synapse
+        run: EXTENSION_DIR="$RUNNER_TEMP/min-extension" node testing/web-e2e/run.mjs hosted-synapse
+      - name: Web E2E against hosted Tuwunel
+        run: EXTENSION_DIR="$RUNNER_TEMP/min-extension" node testing/web-e2e/run.mjs hosted-tuwunel
