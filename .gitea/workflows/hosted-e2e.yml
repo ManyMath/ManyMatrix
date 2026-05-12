@@ -49,6 +49,9 @@ jobs:
         run: cargo build -p test-harness --bin web_e2e_actor --no-default-features --features hosted-tests
       - name: Install harness deps and Chrome
         run: |
+          # The runner image ships with stale apt lists; --install-deps runs
+          # apt-get satisfy and needs them fresh.
+          apt-get update
           cd testing/web-e2e
           npm install --no-audit --no-fund
           npx puppeteer browsers install chrome --install-deps
