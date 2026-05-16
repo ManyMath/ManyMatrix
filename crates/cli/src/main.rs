@@ -104,7 +104,7 @@ fn store_path() -> PathBuf {
 
 async fn load_client() -> Result<ManyMatrixClient> {
     let stored = StoredSession::load(&session_path())
-        .context("no saved session — run `manymatrix-cli login` first")?;
+        .context("no saved session, run `manymatrix-cli login` first")?;
     let client = ManyMatrixClient::new(&stored.homeserver, &store_path()).await?;
     client.restore(&stored).await?;
     Ok(client)
@@ -133,7 +133,7 @@ async fn main() -> Result<()> {
         }
         Command::Sync => {
             let client = load_client().await?;
-            println!("Syncing… (Ctrl+C to stop)");
+            println!("Syncing... (Ctrl+C to stop)");
             client.sync_forever().await?;
         }
         Command::Rooms => {
@@ -150,7 +150,7 @@ async fn main() -> Result<()> {
                         .map(|m| format!("{}: {}", m.sender, m.body))
                         .unwrap_or_default();
                     println!(
-                        "  {} — {} [{}] {}",
+                        "  {} - {} [{}] {}",
                         room.room_id, room.display_name, room.unread_count, preview
                     );
                 }

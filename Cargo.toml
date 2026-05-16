@@ -16,12 +16,12 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.80.0"
 version = "0.1.0"
-authors = []
-homepage = "https://example.com"
-repository = "https://example.com"
-description = "description"
-keywords = []
-categories = []
+authors = ["sneurlax"]
+homepage = "https://github.com/sneurlax/manymatrix"
+repository = "https://github.com/sneurlax/manymatrix"
+description = "Rust core library for Matrix clients, tested end-to-end against real homeservers, wrapped in a Dart/Flutter plugin"
+keywords = ["matrix", "chat", "e2ee", "flutter", "ffi"]
+categories = ["api-bindings", "asynchronous"]
 readme = "README.md"
 
 [workspace.package.metadata.crane]
