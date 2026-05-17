@@ -1,0 +1,52 @@
+# Changelog
+
+All notable changes to this project are documented here. Format loosely
+follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
+is workspace-wide (all publishable crates share one version, see
+`scripts/release.sh`).
+
+## [Unreleased]
+
+- Package/release metadata: real `[workspace.package]` fields, dual
+  MIT/Apache-2.0 `LICENSE-*` files, this changelog, `scripts/release.sh`.
+
+## [0.1.0] - pre-release history
+
+Everything up to and including v1.3 shipped under the `0.1.0` workspace
+version while the project was still finding its shape:
+
+### v1.3: Hosted Homeservers & Web/Extension E2E (2026-07-02)
+
+- Permanently hosted Synapse and Tuwunel instances (`synapse.manymatrix.com`,
+  `tuwunel.manymatrix.com`) with a `hosted-tests` test-harness tier.
+- Puppeteer-based web/extension E2E harness covering the push channel
+  (`onMessage`/`onReaction`/`onReceipt`) end to end against real homeservers.
+- Gitea Actions CI wiring both lanes on push to `dev`.
+
+### Web Bridge Parity (2026-07-02)
+
+- Full native bridge API surfaced on web/WASM, including the event push
+  channel (`events.subscribe` -> offscreen document -> `chrome.runtime`
+  broadcast -> Dart).
+
+### v1.2: Server Compatibility and Spec Parity (2026-04-15)
+
+- Compatibility baseline/report against Synapse; `matrix-sdk` upgraded to
+  0.16.0; capability, authenticated-media, and refresh-token parity;
+  deterministic self-hosted CI commands and explicit Shadow multi-homeserver
+  coverage.
+
+### v1.1: Embedded Tuwunel Tests (2026-04-08)
+
+- In-process `tuwunel-embed` replacing Docker-based Tuwunel E2E tests as the
+  default tier; Docker/Synapse tests gated behind a feature flag; Shadow
+  network simulation tests.
+
+### v1.0: MVP (2026-03-29)
+
+- Rust core (`manymatrix-core`) wrapping `matrix-sdk`: auth, sync, rooms,
+  all message types, E2EE (SAS, cross-signing, key backup), media, push.
+- `manymatrix-cli` terminal client.
+- `manymatrix-ffi` C ABI via cbindgen, Flutter plugin via ffigen + cargokit,
+  reference Flutter chat app.
+- Docker E2E tests against Synapse and Tuwunel.
