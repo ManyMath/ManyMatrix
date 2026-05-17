@@ -1,5 +1,13 @@
 name: manymatrix
-description: "ManyMatrix Flutter plugin powered by Rust core via FFI."
+description: "Rust core library for Matrix clients, tested end-to-end against real homeservers, wrapped in a Dart/Flutter plugin."
+homepage: "https://github.com/sneurlax/manymatrix"
+repository: "https://github.com/sneurlax/manymatrix"
+issue_tracker: "https://github.com/sneurlax/manymatrix/issues"
+topics:
+  - matrix
+  - chat
+  - e2ee
+  - ffi
 publish_to: 'none'
 resolution: workspace
 
