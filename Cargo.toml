@@ -24,9 +24,6 @@ keywords = ["matrix", "chat", "e2ee", "flutter", "ffi"]
 categories = ["api-bindings", "asynchronous"]
 readme = "README.md"
 
-[workspace.package.metadata.crane]
-name = "manymatrix"
-
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
