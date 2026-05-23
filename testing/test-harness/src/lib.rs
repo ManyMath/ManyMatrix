@@ -42,6 +42,13 @@ macro_rules! e2e_test {
                 $name($crate::ServerKind::Synapse).await
             }
 
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _continuwuity_docker>]() -> anyhow::Result<()> {
+                init_tracing();
+                $name($crate::ServerKind::ContinuwuityDocker).await
+            }
+
             #[cfg(feature = "hosted-tests")]
             #[tokio::test]
             async fn [<$name _hosted_synapse>]() -> anyhow::Result<()> {
@@ -74,6 +81,13 @@ const TUWUNEL_IMAGE: &str = "ghcr.io/matrix-construct/tuwunel";
 #[cfg(feature = "docker-tests")]
 const TUWUNEL_TAG: &str = "latest";
 
+#[cfg(feature = "docker-tests")]
+const CONTINUWUITY_IMAGE: &str = "ghcr.io/continuwuity/continuwuity";
+#[cfg(feature = "docker-tests")]
+const CONTINUWUITY_TAG: &str = "v0.5.10";
+#[cfg(feature = "docker-tests")]
+const CONTINUWUITY_REGISTRATION_TOKEN: &str = "manymatrix_continuwuity_docker_test_token";
+
 #[cfg(feature = "hosted-tests")]
 const HOSTED_SYNAPSE_URL_ENV: &str = "MANYMATRIX_HOSTED_SYNAPSE_URL";
 #[cfg(feature = "hosted-tests")]
@@ -95,6 +109,9 @@ pub enum ServerKind {
     /// Docker-backed Tuwunel/Conduwuit server.
     #[cfg(feature = "docker-tests")]
     TuwunelDocker,
+    /// Docker-backed Continuwuity (conduwuit fork) server.
+    #[cfg(feature = "docker-tests")]
+    ContinuwuityDocker,
     /// Permanently hosted Synapse reached via `MANYMATRIX_HOSTED_SYNAPSE_URL`.
     #[cfg(feature = "hosted-tests")]
     HostedSynapse,
@@ -119,6 +136,8 @@ impl ServerKind {
             Self::Synapse => "synapse",
             #[cfg(feature = "docker-tests")]
             Self::TuwunelDocker => "tuwunel-docker",
+            #[cfg(feature = "docker-tests")]
+            Self::ContinuwuityDocker => "continuwuity-docker",
             #[cfg(feature = "hosted-tests")]
             Self::HostedSynapse => "synapse-hosted",
             #[cfg(feature = "hosted-tests")]
@@ -140,6 +159,8 @@ impl ServerKind {
             Self::Synapse => "synapse",
             #[cfg(feature = "docker-tests")]
             Self::TuwunelDocker => "tuwunel",
+            #[cfg(feature = "docker-tests")]
+            Self::ContinuwuityDocker => "continuwuity",
             #[cfg(feature = "hosted-tests")]
             Self::HostedSynapse => "synapse",
             #[cfg(feature = "hosted-tests")]
@@ -161,6 +182,8 @@ impl ServerKind {
             Self::Synapse => "/_matrix/client/versions",
             #[cfg(feature = "docker-tests")]
             Self::TuwunelDocker => "/_matrix/client/versions",
+            #[cfg(feature = "docker-tests")]
+            Self::ContinuwuityDocker => "/_matrix/client/versions",
             #[cfg(feature = "hosted-tests")]
             Self::HostedSynapse => "/_matrix/client/versions",
             #[cfg(feature = "hosted-tests")]
@@ -182,6 +205,8 @@ impl ServerKind {
             Self::Synapse => "open_registration",
             #[cfg(feature = "docker-tests")]
             Self::TuwunelDocker => "open_registration",
+            #[cfg(feature = "docker-tests")]
+            Self::ContinuwuityDocker => "registration_token",
             #[cfg(feature = "hosted-tests")]
             Self::HostedSynapse => "shared_secret",
             #[cfg(feature = "hosted-tests")]
@@ -221,6 +246,15 @@ impl ServerKind {
                 label: format!("{TUWUNEL_IMAGE}:{TUWUNEL_TAG}"),
                 image: Some(TUWUNEL_IMAGE.to_owned()),
                 tag: Some(TUWUNEL_TAG.to_owned()),
+                digest: None,
+                revision: None,
+            },
+            #[cfg(feature = "docker-tests")]
+            Self::ContinuwuityDocker => compat::ServerSourceMetadata {
+                source_type: "docker".to_owned(),
+                label: format!("{CONTINUWUITY_IMAGE}:{CONTINUWUITY_TAG}"),
+                image: Some(CONTINUWUITY_IMAGE.to_owned()),
+                tag: Some(CONTINUWUITY_TAG.to_owned()),
                 digest: None,
                 revision: None,
             },
@@ -282,6 +316,8 @@ impl std::fmt::Display for ServerKind {
             ServerKind::Synapse => write!(f, "Synapse"),
             #[cfg(feature = "docker-tests")]
             ServerKind::TuwunelDocker => write!(f, "Docker Tuwunel"),
+            #[cfg(feature = "docker-tests")]
+            ServerKind::ContinuwuityDocker => write!(f, "Docker Continuwuity"),
             #[cfg(feature = "hosted-tests")]
             ServerKind::HostedSynapse => write!(f, "Hosted Synapse"),
             #[cfg(feature = "hosted-tests")]
@@ -352,6 +388,8 @@ impl TestHomeserver {
             ServerKind::Synapse => Self::start_synapse().await,
             #[cfg(feature = "docker-tests")]
             ServerKind::TuwunelDocker => Self::start_tuwunel_docker().await,
+            #[cfg(feature = "docker-tests")]
+            ServerKind::ContinuwuityDocker => Self::start_continuwuity_docker().await,
             #[cfg(feature = "hosted-tests")]
             ServerKind::HostedSynapse | ServerKind::HostedTuwunel => {
                 Self::start_hosted(kind).await
@@ -457,6 +495,68 @@ impl TestHomeserver {
             bound_port,
             kind: ServerKind::TuwunelDocker,
             registration_token: None,
+            #[cfg(feature = "hosted-tests")]
+            shared_secret: None,
+            run_suffix: None,
+            registered: std::sync::Mutex::new(Vec::new()),
+        })
+    }
+
+    /// Continuwuity (conduwuit fork) requires a one-time bootstrap: it always
+    /// generates its own one-shot registration token on first boot and prints
+    /// it to stdout, and the operator-configured `CONDUWUIT_REGISTRATION_TOKEN`
+    /// does not take effect until *some* account has been created. So this
+    /// scrapes the printed token from container logs, uses it to register a
+    /// disposable bootstrap account, and only then treats the configured
+    /// static token as usable for real test registrations.
+    #[cfg(feature = "docker-tests")]
+    async fn start_continuwuity_docker() -> Result<Self> {
+        let container = GenericImage::new(CONTINUWUITY_IMAGE, CONTINUWUITY_TAG)
+            .with_exposed_port(6167.tcp())
+            .with_wait_for(WaitFor::http(
+                HttpWaitStrategy::new("/_matrix/client/versions")
+                    .with_port(6167.tcp())
+                    .with_expected_status_code(200u16),
+            ))
+            .with_env_var("CONDUWUIT_SERVER_NAME", "localhost")
+            .with_env_var("CONDUWUIT_ADDRESS", "0.0.0.0")
+            .with_env_var("CONDUWUIT_PORT", "6167")
+            .with_env_var("CONDUWUIT_DATABASE_PATH", "/var/lib/continuwuity")
+            .with_env_var("CONDUWUIT_ALLOW_REGISTRATION", "true")
+            .with_env_var("CONDUWUIT_REGISTRATION_TOKEN", CONTINUWUITY_REGISTRATION_TOKEN)
+            .with_env_var("CONDUWUIT_LOG", "info")
+            .with_env_var("CONDUWUIT_ALLOW_CHECK_FOR_UPDATES", "false")
+            .start()
+            .await
+            .context("failed to start Docker Continuwuity container")?;
+
+        let bound_port = container
+            .get_host_port_ipv4(6167)
+            .await
+            .context("failed to get mapped Docker Continuwuity port")?;
+        let base_url = format!("http://localhost:{bound_port}");
+
+        // Continuwuity logs its welcome banner (with the auto-generated
+        // bootstrap token) to stderr via `tracing`, slightly *after* it
+        // starts answering HTTP requests, so the readiness probe above can
+        // pass before the banner is flushed. Poll briefly for it.
+        let bootstrap_token = wait_for_continuwuity_bootstrap_token(&container).await?;
+
+        register_user_via_registration_token(
+            &base_url,
+            "manymatrix_continuwuity_bootstrap",
+            "manymatrix_bootstrap_password",
+            &bootstrap_token,
+        )
+        .await
+        .context("failed to register Continuwuity bootstrap account to unlock the configured registration token")?;
+
+        Ok(Self {
+            backend: HomeserverBackend::Docker(container),
+            base_url,
+            bound_port,
+            kind: ServerKind::ContinuwuityDocker,
+            registration_token: Some(CONTINUWUITY_REGISTRATION_TOKEN.to_owned()),
             #[cfg(feature = "hosted-tests")]
             shared_secret: None,
             run_suffix: None,
@@ -623,6 +723,22 @@ impl TestHomeserver {
             None => username.to_owned(),
         };
 
+        #[cfg(feature = "docker-tests")]
+        if self.kind == ServerKind::ContinuwuityDocker {
+            let token = self
+                .registration_token
+                .as_deref()
+                .context("Continuwuity docker tier has no registration token configured")?;
+            let user =
+                register_user_via_registration_token(&self.base_url, &localpart, password, token)
+                    .await?;
+            self.registered
+                .lock()
+                .expect("registered users mutex poisoned")
+                .push(user.clone());
+            return Ok(user);
+        }
+
         #[cfg(feature = "hosted-tests")]
         let user = match &self.shared_secret {
             Some(secret) => {
@@ -656,6 +772,50 @@ impl TestHomeserver {
 
         Ok(user)
     }
+}
+
+/// Polls Continuwuity's stderr for the auto-generated bootstrap token; the
+/// welcome banner is flushed slightly after the HTTP readiness probe passes.
+#[cfg(feature = "docker-tests")]
+async fn wait_for_continuwuity_bootstrap_token(
+    container: &ContainerAsync<GenericImage>,
+) -> Result<String> {
+    const MAX_ATTEMPTS: usize = 20;
+    const RETRY_DELAY: Duration = Duration::from_millis(250);
+
+    for attempt in 0..MAX_ATTEMPTS {
+        let stderr = container
+            .stderr_to_vec()
+            .await
+            .context("failed to read Docker Continuwuity stderr for bootstrap token")?;
+        match extract_continuwuity_bootstrap_token(&String::from_utf8_lossy(&stderr)) {
+            Ok(token) => return Ok(token),
+            Err(_) if attempt + 1 < MAX_ATTEMPTS => tokio::time::sleep(RETRY_DELAY).await,
+            Err(error) => return Err(error),
+        }
+    }
+
+    bail!("Continuwuity bootstrap registration token never appeared in startup logs")
+}
+
+/// Continuwuity prints its auto-generated bootstrap registration token as
+/// `registration token \x1b[1;32mTOKEN\x1b[0m` (ANSI-colored) on first boot.
+#[cfg(feature = "docker-tests")]
+fn extract_continuwuity_bootstrap_token(logs: &str) -> Result<String> {
+    const MARKER: &str = "registration token ";
+
+    let after_marker = logs
+        .find(MARKER)
+        .map(|index| &logs[index + MARKER.len()..])
+        .context("startup logs do not mention a registration token")?;
+    let after_color = after_marker
+        .strip_prefix("\u{1b}[1;32m")
+        .unwrap_or(after_marker);
+    let end = after_color
+        .find(['\u{1b}', ' '])
+        .context("could not find end of registration token in startup logs")?;
+
+    Ok(after_color[..end].trim().to_owned())
 }
 
 #[cfg(any(feature = "embedded-tests", feature = "docker-tests"))]
@@ -839,6 +999,54 @@ async fn cleanup_hosted_users(base_url: &str, users: Vec<RegisteredUser>) {
             }
         }
     }
+}
+
+/// Register a user against a server whose *only* registration stage is
+/// `m.login.registration_token` (Continuwuity/conduwuit): probes with an
+/// empty auth body to obtain a UIA session, then submits the token.
+///
+/// Unlike Synapse/Tuwunel, Continuwuity's response to an unsupported stage
+/// (e.g. `m.login.dummy`) omits `session` entirely, so the dummy-then-token
+/// fallback in [`register_user_via_api`] doesn't apply here.
+#[cfg(feature = "docker-tests")]
+async fn register_user_via_registration_token(
+    base_url: &str,
+    username: &str,
+    password: &str,
+    registration_token: &str,
+) -> Result<RegisteredUser> {
+    let http = reqwest::Client::new();
+    let url = format!("{base_url}/_matrix/client/v3/register");
+
+    let (probe_status, probe_json) =
+        post_json_with_retry(&http, &url, &serde_json::json!({}), "register (flow probe)").await?;
+    if probe_status.is_success() {
+        return extract_registered_user(&probe_json);
+    }
+    let session = probe_json["session"]
+        .as_str()
+        .context("registration challenge missing session")?;
+
+    let body = serde_json::json!({
+        "username": username,
+        "password": password,
+        "auth": {
+            "type": "m.login.registration_token",
+            "token": registration_token,
+            "session": session,
+        },
+        "inhibit_login": false,
+    });
+    let (status, json) = post_json_with_retry(&http, &url, &body, "token registration").await?;
+    if status.is_success() {
+        return extract_registered_user(&json);
+    }
+
+    bail!(
+        "registration failed ({}): {}",
+        status,
+        serde_json::to_string_pretty(&json)?
+    );
 }
 
 async fn register_user_via_api(
