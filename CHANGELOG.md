@@ -7,6 +7,11 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Expanded compatibility matrix (COMP-05): `ServerKind::ContinuwuityDocker`
+  adds Continuwuity (actively-maintained conduwuit fork) as a third
+  Docker-tier homeserver family alongside Synapse and Tuwunel, wired into
+  `scripts/compatibility.sh docker`'s report. CI: new `docker-compat.yml`
+  workflow runs the Docker-inclusive compatibility report on push to `dev`.
 - Package/release metadata: real `[workspace.package]` fields, dual
   MIT/Apache-2.0 `LICENSE-*` files, this changelog, `scripts/release.sh`.
 
