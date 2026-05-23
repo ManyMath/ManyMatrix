@@ -1,0 +1,26 @@
+name: Docker Compatibility Tier
+
+# Runs the Docker-inclusive compatibility report (Synapse, Tuwunel, and
+# Continuwuity containers) on the manytier-ci act_runner, which has a Docker
+# daemon available. Complements hosted-e2e.yml, which covers the permanently
+# hosted homeservers and the web/extension E2E harness.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  docker-tier:
+    name: Docker compatibility report (Synapse, Tuwunel, Continuwuity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Run Docker-inclusive compatibility report
+        run: bash scripts/compatibility.sh docker
