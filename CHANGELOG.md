@@ -12,6 +12,12 @@ is workspace-wide (all publishable crates share one version, see
   Docker-tier homeserver family alongside Synapse and Tuwunel, wired into
   `scripts/compatibility.sh docker`'s report. CI: new `docker-compat.yml`
   workflow runs the Docker-inclusive compatibility report on push to `dev`.
+- Expanded compatibility matrix (COMP-05), cont'd: `ServerKind::DendriteDocker`
+  adds Dendrite (Go reference implementation) as a fourth Docker-tier
+  homeserver family. Generates a real `dendrite.yaml` + signing key via
+  one-shot prep containers before starting the server, and registers users
+  through Synapse's shared-secret admin API (which Dendrite also
+  implements). All 10 `test-harness` e2e scenarios pass against it.
 - Package/release metadata: real `[workspace.package]` fields, dual
   MIT/Apache-2.0 `LICENSE-*` files, this changelog, `scripts/release.sh`.
 
