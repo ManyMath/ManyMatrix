@@ -69,6 +69,8 @@ fn compiled_server_kinds() -> Vec<ServerKind> {
     kinds.push(ServerKind::TuwunelDocker);
     #[cfg(feature = "docker-tests")]
     kinds.push(ServerKind::ContinuwuityDocker);
+    #[cfg(feature = "docker-tests")]
+    kinds.push(ServerKind::DendriteDocker);
     #[cfg(feature = "hosted-tests")]
     kinds.push(ServerKind::HostedSynapse);
     #[cfg(feature = "hosted-tests")]

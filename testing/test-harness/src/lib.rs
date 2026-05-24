@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 #[cfg(feature = "docker-tests")]
-use testcontainers::core::wait::HttpWaitStrategy;
+use testcontainers::core::wait::{ExitWaitStrategy, HttpWaitStrategy};
 #[cfg(feature = "docker-tests")]
-use testcontainers::core::{IntoContainerPort, WaitFor};
+use testcontainers::core::{IntoContainerPort, Mount, WaitFor};
 #[cfg(feature = "docker-tests")]
 use testcontainers::runners::AsyncRunner;
 #[cfg(feature = "docker-tests")]
@@ -49,6 +49,13 @@ macro_rules! e2e_test {
                 $name($crate::ServerKind::ContinuwuityDocker).await
             }
 
+            #[cfg(feature = "docker-tests")]
+            #[tokio::test]
+            async fn [<$name _dendrite_docker>]() -> anyhow::Result<()> {
+                init_tracing();
+                $name($crate::ServerKind::DendriteDocker).await
+            }
+
             #[cfg(feature = "hosted-tests")]
             #[tokio::test]
             async fn [<$name _hosted_synapse>]() -> anyhow::Result<()> {
@@ -88,6 +95,15 @@ const CONTINUWUITY_TAG: &str = "v0.5.10";
 #[cfg(feature = "docker-tests")]
 const CONTINUWUITY_REGISTRATION_TOKEN: &str = "manymatrix_continuwuity_docker_test_token";
 
+#[cfg(feature = "docker-tests")]
+const DENDRITE_IMAGE: &str = "matrixdotorg/dendrite-monolith";
+#[cfg(feature = "docker-tests")]
+const DENDRITE_TAG: &str = "latest";
+/// `generate-config -ci` bakes this fixed shared secret into the generated
+/// config (Dendrite's Complement test default), no need to patch the YAML.
+#[cfg(feature = "docker-tests")]
+const DENDRITE_SHARED_SECRET: &str = "complement";
+
 #[cfg(feature = "hosted-tests")]
 const HOSTED_SYNAPSE_URL_ENV: &str = "MANYMATRIX_HOSTED_SYNAPSE_URL";
 #[cfg(feature = "hosted-tests")]
@@ -112,6 +128,9 @@ pub enum ServerKind {
     /// Docker-backed Continuwuity (conduwuit fork) server.
     #[cfg(feature = "docker-tests")]
     ContinuwuityDocker,
+    /// Docker-backed Dendrite (Go reference implementation) server.
+    #[cfg(feature = "docker-tests")]
+    DendriteDocker,
     /// Permanently hosted Synapse reached via `MANYMATRIX_HOSTED_SYNAPSE_URL`.
     #[cfg(feature = "hosted-tests")]
     HostedSynapse,
@@ -138,6 +157,8 @@ impl ServerKind {
             Self::TuwunelDocker => "tuwunel-docker",
             #[cfg(feature = "docker-tests")]
             Self::ContinuwuityDocker => "continuwuity-docker",
+            #[cfg(feature = "docker-tests")]
+            Self::DendriteDocker => "dendrite-docker",
             #[cfg(feature = "hosted-tests")]
             Self::HostedSynapse => "synapse-hosted",
             #[cfg(feature = "hosted-tests")]
@@ -161,6 +182,8 @@ impl ServerKind {
             Self::TuwunelDocker => "tuwunel",
             #[cfg(feature = "docker-tests")]
             Self::ContinuwuityDocker => "continuwuity",
+            #[cfg(feature = "docker-tests")]
+            Self::DendriteDocker => "dendrite",
             #[cfg(feature = "hosted-tests")]
             Self::HostedSynapse => "synapse",
             #[cfg(feature = "hosted-tests")]
@@ -184,6 +207,8 @@ impl ServerKind {
             Self::TuwunelDocker => "/_matrix/client/versions",
             #[cfg(feature = "docker-tests")]
             Self::ContinuwuityDocker => "/_matrix/client/versions",
+            #[cfg(feature = "docker-tests")]
+            Self::DendriteDocker => "/_matrix/client/versions",
             #[cfg(feature = "hosted-tests")]
             Self::HostedSynapse => "/_matrix/client/versions",
             #[cfg(feature = "hosted-tests")]
@@ -207,6 +232,8 @@ impl ServerKind {
             Self::TuwunelDocker => "open_registration",
             #[cfg(feature = "docker-tests")]
             Self::ContinuwuityDocker => "registration_token",
+            #[cfg(feature = "docker-tests")]
+            Self::DendriteDocker => "shared_secret",
             #[cfg(feature = "hosted-tests")]
             Self::HostedSynapse => "shared_secret",
             #[cfg(feature = "hosted-tests")]
@@ -255,6 +282,15 @@ impl ServerKind {
                 label: format!("{CONTINUWUITY_IMAGE}:{CONTINUWUITY_TAG}"),
                 image: Some(CONTINUWUITY_IMAGE.to_owned()),
                 tag: Some(CONTINUWUITY_TAG.to_owned()),
+                digest: None,
+                revision: None,
+            },
+            #[cfg(feature = "docker-tests")]
+            Self::DendriteDocker => compat::ServerSourceMetadata {
+                source_type: "docker".to_owned(),
+                label: format!("{DENDRITE_IMAGE}:{DENDRITE_TAG}"),
+                image: Some(DENDRITE_IMAGE.to_owned()),
+                tag: Some(DENDRITE_TAG.to_owned()),
                 digest: None,
                 revision: None,
             },
@@ -318,6 +354,8 @@ impl std::fmt::Display for ServerKind {
             ServerKind::TuwunelDocker => write!(f, "Docker Tuwunel"),
             #[cfg(feature = "docker-tests")]
             ServerKind::ContinuwuityDocker => write!(f, "Docker Continuwuity"),
+            #[cfg(feature = "docker-tests")]
+            ServerKind::DendriteDocker => write!(f, "Docker Dendrite"),
             #[cfg(feature = "hosted-tests")]
             ServerKind::HostedSynapse => write!(f, "Hosted Synapse"),
             #[cfg(feature = "hosted-tests")]
@@ -337,6 +375,10 @@ enum HomeserverBackend {
     Embedded(EmbeddedHomeserver),
     #[cfg(feature = "docker-tests")]
     Docker(ContainerAsync<GenericImage>),
+    /// Docker container paired with a bind-mounted host config directory
+    /// (Dendrite: `dendrite.yaml` + signing key) that must outlive it.
+    #[cfg(feature = "docker-tests")]
+    DockerWithConfig(ContainerAsync<GenericImage>, tempfile::TempDir),
     /// Permanently hosted server; nothing to start or stop, but users created
     /// during the run are cleaned up (rooms left and forgotten) on `stop()`.
     #[cfg(feature = "hosted-tests")]
@@ -390,6 +432,8 @@ impl TestHomeserver {
             ServerKind::TuwunelDocker => Self::start_tuwunel_docker().await,
             #[cfg(feature = "docker-tests")]
             ServerKind::ContinuwuityDocker => Self::start_continuwuity_docker().await,
+            #[cfg(feature = "docker-tests")]
+            ServerKind::DendriteDocker => Self::start_dendrite_docker().await,
             #[cfg(feature = "hosted-tests")]
             ServerKind::HostedSynapse | ServerKind::HostedTuwunel => {
                 Self::start_hosted(kind).await
@@ -564,6 +608,91 @@ impl TestHomeserver {
         })
     }
 
+    /// Dendrite has no env-var config surface, unlike the Rust homeservers:
+    /// it needs a real `dendrite.yaml` plus a generated Ed25519 signing key.
+    /// Both are produced by one-shot `generate-config`/`generate-keys` runs
+    /// of the same image against a bind-mounted host directory, before the
+    /// real server container starts against that same mount.
+    #[cfg(feature = "docker-tests")]
+    async fn start_dendrite_docker() -> Result<Self> {
+        let config_dir =
+            tempfile::tempdir().context("failed to create Dendrite config directory")?;
+        let host_path = config_dir
+            .path()
+            .to_str()
+            .context("Dendrite config directory path is not valid UTF-8")?
+            .to_owned();
+
+        let config_container = GenericImage::new(DENDRITE_IMAGE, DENDRITE_TAG)
+            .with_entrypoint("/usr/bin/generate-config")
+            .with_wait_for(WaitFor::exit(ExitWaitStrategy::new().with_exit_code(0)))
+            .with_mount(Mount::bind_mount(host_path.clone(), "/etc/dendrite"))
+            .with_cmd(["-ci", "-server", "localhost", "-dir", "/etc/dendrite"])
+            .start()
+            .await
+            .context("failed to run Dendrite generate-config")?;
+        let config_yaml = config_container
+            .stdout_to_vec()
+            .await
+            .context("failed to read Dendrite generate-config output")?;
+        tokio::fs::write(config_dir.path().join("dendrite.yaml"), config_yaml)
+            .await
+            .context("failed to write Dendrite config file")?;
+        drop(config_container);
+
+        GenericImage::new(DENDRITE_IMAGE, DENDRITE_TAG)
+            .with_entrypoint("/usr/bin/generate-keys")
+            .with_wait_for(WaitFor::exit(ExitWaitStrategy::new().with_exit_code(0)))
+            .with_mount(Mount::bind_mount(host_path.clone(), "/etc/dendrite"))
+            .with_cmd([
+                "-private-key",
+                "/etc/dendrite/matrix_key.pem",
+                "-tls-cert",
+                "/etc/dendrite/server.crt",
+                "-tls-key",
+                "/etc/dendrite/server.key",
+            ])
+            .start()
+            .await
+            .context("failed to run Dendrite generate-keys")?;
+
+        let container = GenericImage::new(DENDRITE_IMAGE, DENDRITE_TAG)
+            .with_exposed_port(8008.tcp())
+            .with_wait_for(WaitFor::http(
+                HttpWaitStrategy::new("/_matrix/client/versions")
+                    .with_port(8008.tcp())
+                    .with_expected_status_code(200u16),
+            ))
+            .with_mount(Mount::bind_mount(host_path, "/etc/dendrite"))
+            .with_cmd([
+                "-config",
+                "/etc/dendrite/dendrite.yaml",
+                // `generate-config -ci` enables open registration guarded by
+                // this same flag Synapse/Tuwunel/Continuwuity require.
+                "-really-enable-open-registration",
+            ])
+            .start()
+            .await
+            .context("failed to start Docker Dendrite container")?;
+
+        let bound_port = container
+            .get_host_port_ipv4(8008)
+            .await
+            .context("failed to get mapped Docker Dendrite port")?;
+
+        Ok(Self {
+            backend: HomeserverBackend::DockerWithConfig(container, config_dir),
+            base_url: format!("http://localhost:{bound_port}"),
+            bound_port,
+            kind: ServerKind::DendriteDocker,
+            registration_token: None,
+            #[cfg(feature = "hosted-tests")]
+            shared_secret: None,
+            run_suffix: None,
+            registered: std::sync::Mutex::new(Vec::new()),
+        })
+    }
+
     #[cfg(feature = "hosted-tests")]
     async fn start_hosted(kind: ServerKind) -> Result<Self> {
         let (url_env, secret_env) = match kind {
@@ -638,6 +767,11 @@ impl TestHomeserver {
                 .context("failed to stop embedded Tuwunel server")?,
             #[cfg(feature = "docker-tests")]
             HomeserverBackend::Docker(container) => drop(container),
+            #[cfg(feature = "docker-tests")]
+            HomeserverBackend::DockerWithConfig(container, config_dir) => {
+                drop(container);
+                drop(config_dir);
+            }
             #[cfg(feature = "hosted-tests")]
             HomeserverBackend::Hosted => {
                 let users = self
@@ -672,6 +806,14 @@ impl TestHomeserver {
                     .context("failed to read container stdout")?;
                 Ok(String::from_utf8_lossy(&bytes).into_owned())
             }
+            #[cfg(feature = "docker-tests")]
+            HomeserverBackend::DockerWithConfig(container, _) => {
+                let bytes = container
+                    .stdout_to_vec()
+                    .await
+                    .context("failed to read container stdout")?;
+                Ok(String::from_utf8_lossy(&bytes).into_owned())
+            }
             #[cfg(feature = "hosted-tests")]
             HomeserverBackend::Hosted => {
                 Ok("hosted backend does not expose captured stdout".to_owned())
@@ -694,6 +836,14 @@ impl TestHomeserver {
             }
             #[cfg(feature = "docker-tests")]
             HomeserverBackend::Docker(container) => {
+                let bytes = container
+                    .stderr_to_vec()
+                    .await
+                    .context("failed to read container stderr")?;
+                Ok(String::from_utf8_lossy(&bytes).into_owned())
+            }
+            #[cfg(feature = "docker-tests")]
+            HomeserverBackend::DockerWithConfig(container, _) => {
                 let bytes = container
                     .stderr_to_vec()
                     .await
@@ -732,6 +882,22 @@ impl TestHomeserver {
             let user =
                 register_user_via_registration_token(&self.base_url, &localpart, password, token)
                     .await?;
+            self.registered
+                .lock()
+                .expect("registered users mutex poisoned")
+                .push(user.clone());
+            return Ok(user);
+        }
+
+        #[cfg(feature = "docker-tests")]
+        if self.kind == ServerKind::DendriteDocker {
+            let user = register_user_via_shared_secret(
+                &self.base_url,
+                &localpart,
+                password,
+                DENDRITE_SHARED_SECRET,
+            )
+            .await?;
             self.registered
                 .lock()
                 .expect("registered users mutex poisoned")
@@ -890,7 +1056,8 @@ async fn wait_for_readiness(base_url: &str) -> Result<()> {
 
 /// Register a user through Synapse's shared-secret admin API
 /// (`/_synapse/admin/v1/register`, HMAC-SHA1 over `nonce\0user\0password\0notadmin`).
-#[cfg(feature = "hosted-tests")]
+/// Dendrite implements the same endpoint for Synapse-tooling compatibility.
+#[cfg(any(feature = "docker-tests", feature = "hosted-tests"))]
 async fn register_user_via_shared_secret(
     base_url: &str,
     username: &str,
