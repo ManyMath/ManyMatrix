@@ -1,0 +1,62 @@
+name: Core CI
+
+# Runs the fast, infra-free verification gates (no Docker, no hosted
+# homeservers) on every push and PR against dev: cargo check across the
+# native workspace, the wasm target check + build for manymatrix-web, the
+# default embedded-Tuwunel test suite, and flutter analyze. Complements
+# docker-compat.yml (Docker-tier homeservers) and hosted-e2e.yml (permanently
+# hosted homeservers + web/extension E2E), which cover slower, infra-backed
+# tiers on push to dev only.
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  native-check:
+    name: cargo check + test (native workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check --workspace --exclude manymatrix-web
+        run: cargo check --workspace --exclude manymatrix-web
+      - name: cargo test --workspace --exclude manymatrix-web (default embedded tier)
+        run: cargo test --workspace --exclude manymatrix-web
+
+  wasm-check:
+    name: cargo check + wasm-pack build (manymatrix-web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check -p manymatrix-web --target wasm32-unknown-unknown
+        run: cargo check -p manymatrix-web --target wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: wasm-pack build --target web --release crates/web
+        run: wasm-pack build --target web --release crates/web
+
+  flutter-analyze:
+    name: flutter analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: flutter analyze
+        working-directory: flutter_plugin
+        run: flutter analyze

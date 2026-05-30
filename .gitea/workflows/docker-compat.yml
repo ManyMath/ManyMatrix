@@ -1,9 +1,9 @@
 name: Docker Compatibility Tier
 
-# Runs the Docker-inclusive compatibility report (Synapse, Tuwunel, and
-# Continuwuity containers) on the manytier-ci act_runner, which has a Docker
-# daemon available. Complements hosted-e2e.yml, which covers the permanently
-# hosted homeservers and the web/extension E2E harness.
+# Runs the Docker-inclusive compatibility report (Synapse, Tuwunel,
+# Continuwuity, and Dendrite containers) on the manytier-ci act_runner, which
+# has a Docker daemon available. Complements hosted-e2e.yml, which covers the
+# permanently hosted homeservers and the web/extension E2E harness.
 on:
   push:
     branches: [dev]
@@ -14,7 +14,7 @@ env:
 
 jobs:
   docker-tier:
-    name: Docker compatibility report (Synapse, Tuwunel, Continuwuity)
+    name: Docker compatibility report (Synapse, Tuwunel, Continuwuity, Dendrite)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
