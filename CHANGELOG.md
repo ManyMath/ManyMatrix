@@ -20,6 +20,12 @@ is workspace-wide (all publishable crates share one version, see
   implements). All 10 `test-harness` e2e scenarios pass against it.
 - Package/release metadata: real `[workspace.package]` fields, dual
   MIT/Apache-2.0 `LICENSE-*` files, this changelog, `scripts/release.sh`.
+- Documented git dependency publishing path (PUB-01): `cargo publish` to
+  crates.io is still blocked on an upstream `ruma-client-api` fix, but
+  `manymatrix-core` can be consumed today via `git = "..."` without any
+  extra patching, verified with a new `scripts/verify_git_dependency.sh`
+  regression script and documented in a new README "Consuming
+  manymatrix-core" section.
 
 ## [0.1.0] - pre-release history
 

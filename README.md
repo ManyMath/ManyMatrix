@@ -44,6 +44,25 @@ Shadow requirements:
 
 Docker and Shadow are sufficient for local compatibility validation. Public federation is a deployment concern and requires DNS, TLS certificates, and a reverse proxy.
 
+## Consuming manymatrix-core
+
+`manymatrix-core` is not yet published to crates.io, `cargo publish` is blocked on an
+upstream `ruma-client-api` fix (see `CHANGELOG.md`). In the
+meantime, depend on it directly via `git`:
+
+```toml
+[dependencies]
+manymatrix-core = { git = "https://github.com/sneurlax/manymatrix", rev = "<commit-sha>" }
+```
+
+This works today without any extra patching on the consumer side: the workspace-local
+`[patch.crates-io.ruma-client-api]` vendor patch (needed for our own build, which sets
+`--cfg ruma_unstable_exhaustive_types` via `.cargo/config.toml`) does not apply to, and
+is not needed by, downstream consumers, since that `rustflag` is scoped to this
+repository's own build tree. `scripts/verify_git_dependency.sh` regression-tests this
+path by scaffolding a scratch crate that depends on `manymatrix-core` via `git` and
+running `cargo check` against it.
+
 ## Flutter Workspace
 
 This project uses a Dart/Flutter workspace at the repository root.
