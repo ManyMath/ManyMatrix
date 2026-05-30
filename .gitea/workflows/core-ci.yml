@@ -31,6 +31,8 @@ jobs:
         run: cargo check --workspace --exclude manymatrix-web
       - name: cargo test --workspace --exclude manymatrix-web (default embedded tier)
         run: cargo test --workspace --exclude manymatrix-web
+      - name: scripts/verify_git_dependency.sh (PUB-01 consumption path)
+        run: bash scripts/verify_git_dependency.sh
 
   wasm-check:
     name: cargo check + wasm-pack build (manymatrix-web)
