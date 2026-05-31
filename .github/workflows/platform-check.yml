@@ -1,0 +1,53 @@
+name: Platform Check
+
+# Real-host cross-platform verification for PLAT-01. The self-hosted Gitea
+# runner (manytier-ci, see core-ci.yml / docker-compat.yml / hosted-e2e.yml)
+# is Linux-only, so it cannot verify Windows/macOS/iOS builds, cross-compiling
+# those from Linux needs toolchains (mingw-w64, Android/iOS NDKs) this
+# workspace doesn't vendor. This workflow runs on GitHub's hosted
+# windows-latest and macos-latest runners instead, giving native (not
+# cross-compiled) compiler/linker coverage for the crates the Flutter plugin
+# ships on those platforms.
+#
+# Scope: `cargo check` only, not full `cargo test`, the embedded-Tuwunel E2E
+# suite is exercised on Linux in core-ci.yml already, and re-running the full
+# suite on paid hosted runners for every push is unnecessary. This job's job
+# is catching platform-specific compile breaks (linker/ABI/target-cfg issues),
+# not re-verifying protocol behavior.
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-check:
+    name: cargo check (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check -p manymatrix-core -p manymatrix-cli -p manymatrix-ffi
+        run: cargo check -p manymatrix-core -p manymatrix-cli -p manymatrix-ffi
+
+  macos-check:
+    name: cargo check (macos-latest)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check -p manymatrix-core -p manymatrix-cli -p manymatrix-ffi (host, macOS)
+        run: cargo check -p manymatrix-core -p manymatrix-cli -p manymatrix-ffi
+      - name: cargo check -p manymatrix-core -p manymatrix-ffi --target aarch64-apple-ios
+        run: cargo check -p manymatrix-core -p manymatrix-ffi --target aarch64-apple-ios

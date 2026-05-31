@@ -7,6 +7,13 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Multi-host platform check (PLAT-01, partial): `.github/workflows/platform-check.yml`
+  runs `cargo check` for `manymatrix-core`/`-cli`/`-ffi` on GitHub-hosted
+  `windows-latest` and `macos-latest` runners (plus an `aarch64-apple-ios`
+  cross-check), since the project's only self-hosted CI runner is Linux-only.
+  Not yet exercised live — needs a push to the `origin` GitHub remote to run
+  for the first time. Android NDK cross-check and any real device/simulator
+  verification remain open.
 - Expanded compatibility matrix (COMP-05): `ServerKind::ContinuwuityDocker`
   adds Continuwuity (actively-maintained conduwuit fork) as a third
   Docker-tier homeserver family alongside Synapse and Tuwunel, wired into
