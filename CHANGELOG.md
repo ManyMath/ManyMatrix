@@ -11,9 +11,15 @@ is workspace-wide (all publishable crates share one version, see
   runs `cargo check` for `manymatrix-core`/`-cli`/`-ffi` on GitHub-hosted
   `windows-latest` and `macos-latest` runners (plus an `aarch64-apple-ios`
   cross-check), since the project's only self-hosted CI runner is Linux-only.
-  Not yet exercised live — needs a push to the `origin` GitHub remote to run
-  for the first time. Android NDK cross-check and any real device/simulator
-  verification remain open.
+  Also adds an `android-check` job (GitHub-hosted `ubuntu-latest`, which ships
+  a preinstalled Android SDK/NDK) running `cargo ndk -t arm64-v8a check` for
+  `manymatrix-core`/`-ffi`, the local sandbox and the self-hosted Gitea
+  runner both lack an NDK, confirmed by `cargo check --target
+  aarch64-linux-android` failing on `aarch64-linux-android-clang: No such
+  file or directory`, so this closes the "Android NDK cross-check" gap noted
+  previously. Not yet exercised live — needs a push to the `origin` GitHub
+  remote to run for the first time. Real device/simulator verification
+  remains open.
 - Expanded compatibility matrix (COMP-05): `ServerKind::ContinuwuityDocker`
   adds Continuwuity (actively-maintained conduwuit fork) as a third
   Docker-tier homeserver family alongside Synapse and Tuwunel, wired into

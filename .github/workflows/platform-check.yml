@@ -51,3 +51,22 @@ jobs:
         run: cargo check -p manymatrix-core -p manymatrix-cli -p manymatrix-ffi
       - name: cargo check -p manymatrix-core -p manymatrix-ffi --target aarch64-apple-ios
         run: cargo check -p manymatrix-core -p manymatrix-ffi --target aarch64-apple-ios
+
+  android-check:
+    name: cargo ndk check (arm64-v8a)
+    runs-on: ubuntu-latest
+    # GitHub's ubuntu-latest image ships an Android SDK + NDK preinstalled
+    # (ANDROID_NDK_HOME/ANDROID_NDK_LATEST_HOME), unlike the self-hosted
+    # manytier-ci Gitea runner which is a bare Linux toolchain, that's the
+    # NDK cross-check PLAT-01 flagged as unavailable locally.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: cargo ndk check -p manymatrix-core -p manymatrix-ffi (arm64-v8a)
+        run: cargo ndk -t arm64-v8a check -p manymatrix-core -p manymatrix-ffi
