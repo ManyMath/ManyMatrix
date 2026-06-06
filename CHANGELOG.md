@@ -7,6 +7,14 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Real internet-federation test (COMP-06): `testing/test-harness/tests/hosted_federation.rs`
+  creates a public aliased room on one permanently hosted server
+  (`synapse.manymatrix.com` or `tuwunel.manymatrix.com`) and joins it by
+  full alias from a client on the *other* hosted server, in both
+  directions, a cross-domain join and message delivery that only
+  succeeds via real server-to-server federation, closing the gap left by
+  Shadow's simulated-network federation test. Picked up automatically by
+  `scripts/compatibility.sh hosted`; no CI changes needed.
 - Multi-host platform check (PLAT-01, partial): `.github/workflows/platform-check.yml`
   runs `cargo check` for `manymatrix-core`/`-cli`/`-ffi` on GitHub-hosted
   `windows-latest` and `macos-latest` runners (plus an `aarch64-apple-ios`

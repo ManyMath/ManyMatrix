@@ -95,4 +95,18 @@ Shadow prerequisites are:
 - `shadow` installed and available on `PATH`.
 - `seccomp=unconfined` when running inside Docker or another restricted container.
 
-Docker and Shadow are sufficient for local compatibility validation. Public federation requires DNS, TLS certificates, and a reverse proxy, and is intentionally outside the local harness.
+Docker and Shadow are sufficient for local compatibility validation. Shadow's multi-homeserver scenario simulates federation over a virtual network; it does not exercise real internet server-to-server delivery.
+
+## Hosted Tier
+
+The hosted tier targets the permanently hosted `synapse.manymatrix.com` and `tuwunel.manymatrix.com` instances (see `~/dev/hetzner` for server-side config):
+
+```bash
+MANYMATRIX_HOSTED_SYNAPSE_URL=... \
+MANYMATRIX_HOSTED_SYNAPSE_REGISTRATION_SECRET=... \
+MANYMATRIX_HOSTED_TUWUNEL_URL=... \
+MANYMATRIX_HOSTED_TUWUNEL_REGISTRATION_TOKEN=... \
+  scripts/compatibility.sh hosted
+```
+
+This runs the standard E2E scenarios (`testing/test-harness/tests/e2e.rs`) against each hosted server individually, plus `testing/test-harness/tests/hosted_federation.rs` (COMP-06): a room created on one hosted server, joined by full alias from a client logged into the *other* hosted server, with a message sent across that join. Because the two servers are on genuinely distinct public domains, this only passes via real server-to-server federation over the open internet, unlike Shadow's simulated-network federation test above, or same-server tests where "federation" never leaves one homeserver.
