@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
 use matrix_sdk::room::MessagesOptions;
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
@@ -843,6 +844,20 @@ impl ManyMatrixClient {
             .map_err(|e| Error::Other(format!("enable recovery failed: {e}")))
     }
 
+    /// Block until all locally-created room keys have finished uploading to
+    /// the server-side backup. Upload happens on a background task that
+    /// `sync_once` only *signals*, so callers that need a just-created room
+    /// key to be durably backed up before proceeding (e.g. before a second
+    /// device restores from backup) must await this rather than polling sync.
+    pub async fn wait_for_backup_upload(&self) -> Result<(), Error> {
+        self.client
+            .encryption()
+            .backups()
+            .wait_for_steady_state()
+            .await
+            .map_err(|e| Error::Other(format!("waiting for backup upload failed: {e}")))
+    }
+
     /// Restore room keys from backup using the recovery key.
     pub async fn restore_key_backup(&self, recovery_key: &str) -> Result<(), Error> {
         self.client
@@ -1023,6 +1038,7 @@ impl ManyMatrixClient {
             .homeserver_url(homeserver_url)
             .sqlite_store(store_path, None)
             .handle_refresh_tokens()
+            .with_encryption_settings(key_backup_encryption_settings())
             .build()
             .await?;
         Ok(Self {
@@ -1031,6 +1047,17 @@ impl ManyMatrixClient {
             sync_token: Arc::new(Mutex::new(None)),
             store_path: store_path.to_owned(),
         })
+    }
+}
+
+/// `matrix-sdk`'s default `BackupDownloadStrategy` is `Manual`, restoring a
+/// backup via a recovery key (`restore_key_backup`) imports cross-signing
+/// secrets but fetches zero room keys unless this is set to `OneShot`,
+/// silently leaving restored clients unable to decrypt history.
+fn key_backup_encryption_settings() -> EncryptionSettings {
+    EncryptionSettings {
+        backup_download_strategy: BackupDownloadStrategy::OneShot,
+        ..Default::default()
     }
 }
 
@@ -1050,6 +1077,7 @@ impl ManyMatrixClient {
             .homeserver_url(homeserver_url)
             .indexeddb_store(store_name, None)
             .handle_refresh_tokens()
+            .with_encryption_settings(key_backup_encryption_settings())
             .build()
             .await?;
         info!("WASM client built for {}", homeserver_url);
