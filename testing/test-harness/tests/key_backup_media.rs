@@ -74,11 +74,11 @@ async fn key_backup_enable_and_restore(kind: ServerKind) -> Result<()> {
         // Send a message so there's something to back up
         alice.send_text(&room_id, "backup test message").await?;
 
-        // Run sync rounds to allow backup upload to complete
-        for _ in 0..5 {
-            alice.sync_once().await?;
-            tokio::time::sleep(Duration::from_millis(300)).await;
-        }
+        // Block until the just-created room key has actually finished
+        // uploading to the server-side backup. Backup upload runs on a
+        // background task that sync only *signals*; polling sync_once in a
+        // loop races that task and can proceed before the key is backed up.
+        alice.wait_for_backup_upload().await?;
 
         // Create a FRESH client for the same user with a new store
         let alice2_store = tempfile::tempdir()?;
@@ -92,6 +92,24 @@ async fn key_backup_enable_and_restore(kind: ServerKind) -> Result<()> {
             "Key backup restore succeeded with key: {}",
             &recovery_key[..8.min(recovery_key.len())]
         );
+
+        // Prove the restored keys actually decrypt: a fresh device has no
+        // Megolm session of its own for messages sent before it existed, so
+        // fetching the historical message only comes back with the real body
+        // (rather than an undecryptable ciphertext) if the backup restore
+        // actually recovered a usable session key.
+        let history = alice2.get_messages(&room_id, None, 10).await?;
+        let restored_msg = history
+            .messages
+            .iter()
+            .find(|m| m.body == "backup test message");
+        assert!(
+            restored_msg.is_some(),
+            "restored client should decrypt the pre-existing message via the recovered \
+             backup key; got bodies: {:?}",
+            history.messages.iter().map(|m| &m.body).collect::<Vec<_>>()
+        );
+        eprintln!("Verified real decryption round-trip via restored key backup");
 
         Ok(())
     }
