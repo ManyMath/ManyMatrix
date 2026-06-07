@@ -7,6 +7,22 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- **Fix: key backup restore silently recovered zero room keys.** `matrix-sdk`
+  defaults `EncryptionSettings::backup_download_strategy` to `Manual`, so
+  `ManyMatrixClient::restore_key_backup` (`client.encryption().recovery().recover()`)
+  imported cross-signing secrets but never actually downloaded any room keys
+  from the server-side backup, a new device recovering from a recovery key
+  would report success while remaining unable to decrypt any pre-existing
+  history. This was masked by the existing `key_backup_media.rs` test only
+  asserting that `restore_key_backup` didn't error, never checking that the
+  restored client could actually decrypt anything (a known "stretch goal"
+  gap from Phase 7). Fixed by building every `ManyMatrixClient` with
+  `BackupDownloadStrategy::OneShot`, and by adding `wait_for_backup_upload()`
+  (wraps `backups().wait_for_steady_state()`) so tests/callers can
+  deterministically wait for a just-created room key to finish uploading
+  before a second device tries to restore it, instead of racing the
+  background upload task via repeated `sync_once` polling. The test now
+  asserts the restored client decrypts the original message body.
 - Real internet-federation test (COMP-06): `testing/test-harness/tests/hosted_federation.rs`
   creates a public aliased room on one permanently hosted server
   (`synapse.manymatrix.com` or `tuwunel.manymatrix.com`) and joins it by
