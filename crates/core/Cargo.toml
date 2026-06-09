@@ -1,6 +1,6 @@
 [package]
 name = "manymatrix-core"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 description = "Rust core client library for Matrix, auth, sync, rooms, messaging, E2EE, media"

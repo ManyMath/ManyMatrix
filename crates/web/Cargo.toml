@@ -1,6 +1,6 @@
 [package]
 name = "manymatrix-web"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 description = "wasm-bindgen glue crate for the ManyMatrix Flutter web/extension bridge (not a standalone library)"
@@ -20,6 +20,6 @@ tracing-wasm = "0.2"
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-manymatrix-core = { path = "../core", version = "0.1.0" }
+manymatrix-core = { path = "../core", version = "0.2.0" }
 futures-util = "0.3"
 base64 = "0.22"

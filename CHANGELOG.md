@@ -7,6 +7,8 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-03
+
 - **Fix: key backup restore silently recovered zero room keys.** `matrix-sdk`
   defaults `EncryptionSettings::backup_download_strategy` to `Manual`, so
   `ManyMatrixClient::restore_key_backup` (`client.encryption().recovery().recover()`)
@@ -41,9 +43,11 @@ is workspace-wide (all publishable crates share one version, see
   runner both lack an NDK, confirmed by `cargo check --target
   aarch64-linux-android` failing on `aarch64-linux-android-clang: No such
   file or directory`, so this closes the "Android NDK cross-check" gap noted
-  previously. Not yet exercised live — needs a push to the `origin` GitHub
-  remote to run for the first time. Real device/simulator verification
-  remains open.
+  previously. **Still not exercised live**: the `origin` GitHub remote
+  (`sneurlax/manymatrix`) doesn't exist yet, so this workflow has never
+  actually run, creating that repository and pushing to it is a one-time
+  manual/account-level step, not something this automation can do for
+  itself. Real device/simulator verification remains open regardless.
 - Expanded compatibility matrix (COMP-05): `ServerKind::ContinuwuityDocker`
   adds Continuwuity (actively-maintained conduwuit fork) as a third
   Docker-tier homeserver family alongside Synapse and Tuwunel, wired into
