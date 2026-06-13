@@ -7,6 +7,14 @@ root [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## [Unreleased]
 
+## [1.0.0+2], 2026-07-03
+
+- Rust core bumped to `0.2.0` (see root `CHANGELOG.md` `[0.2.0]`), most
+  notably a fix for key backup restore silently recovering zero room keys.
+  No Dart-facing API changes.
+
+## [1.0.0+1]
+
 - Publish-readiness metadata: `homepage`/`repository`/`issue_tracker`/`topics` in
   `pubspec.yaml`, a package-local dual MIT/Apache-2.0 `LICENSE`, and this changelog.
   Package remains `publish_to: 'none'`, see the "Local Consumption Policy" section
