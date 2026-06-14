@@ -25,4 +25,7 @@ jobs:
       - name: Install libclang (bindgen/zstd-sys build dependency, e.g. via RocksDB)
         run: sudo apt-get update && sudo apt-get install -y libclang-dev
       - name: Run Docker-inclusive compatibility report
-        run: bash scripts/compatibility.sh docker
+        run: |
+          ulimit -n 65536 || ulimit -n "$(ulimit -Hn)" || true
+          ulimit -n
+          bash scripts/compatibility.sh docker

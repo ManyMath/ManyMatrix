@@ -7,6 +7,17 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- CI: `manytier-ci` runner environment gaps discovered by actually pushing
+  `dev` for the first time since Phase 26 (previously-unpushed local work
+  had never run on real CI). Fixed two: (1) missing `libclang-dev`, needed
+  by `bindgen`/`zstd-sys` (pulled in transitively, likely via
+  RocksDB/tuwunel-embed), added an install step to `core-ci.yml`'s
+  `native-check` and `docker-compat.yml`'s `docker-tier`. (2) the runner's
+  default 1024 file-descriptor `ulimit` is too low for the embedded-Tuwunel
+  test tier (each instance opens many RocksDB/SQLite file handles), raised
+  it in the `cargo test`/`compatibility.sh` steps of `core-ci.yml`,
+  `docker-compat.yml`, and defensively in `hosted-e2e.yml`.
+
 ## [0.2.0] - 2026-07-03
 
 - **Fix: key backup restore silently recovered zero room keys.** `matrix-sdk`

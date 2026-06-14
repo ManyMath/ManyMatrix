@@ -27,7 +27,10 @@ jobs:
           toolchain: 1.89.0
       - uses: Swatinem/rust-cache@v2
       - name: Run hosted E2E suite (Synapse + Tuwunel)
-        run: bash scripts/compatibility.sh hosted
+        run: |
+          ulimit -n 65536 || ulimit -n "$(ulimit -Hn)" || true
+          ulimit -n
+          bash scripts/compatibility.sh hosted
 
   web-e2e:
     name: Web/extension E2E

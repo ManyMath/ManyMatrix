@@ -32,7 +32,10 @@ jobs:
       - name: cargo check --workspace --exclude manymatrix-web
         run: cargo check --workspace --exclude manymatrix-web
       - name: cargo test --workspace --exclude manymatrix-web (default embedded tier)
-        run: cargo test --workspace --exclude manymatrix-web
+        run: |
+          ulimit -n 65536 || ulimit -n "$(ulimit -Hn)" || true
+          ulimit -n
+          cargo test --workspace --exclude manymatrix-web
       - name: scripts/verify_git_dependency.sh (PUB-01 consumption path)
         run: bash scripts/verify_git_dependency.sh
 
