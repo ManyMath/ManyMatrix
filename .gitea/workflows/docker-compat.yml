@@ -22,5 +22,7 @@ jobs:
         with:
           toolchain: 1.89.0
       - uses: Swatinem/rust-cache@v2
+      - name: Install libclang (bindgen/zstd-sys build dependency, e.g. via RocksDB)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
       - name: Run Docker-inclusive compatibility report
         run: bash scripts/compatibility.sh docker
