@@ -586,14 +586,25 @@ impl TestHomeserver {
         // pass before the banner is flushed. Poll briefly for it.
         let bootstrap_token = wait_for_continuwuity_bootstrap_token(&container).await?;
 
-        register_user_via_registration_token(
+        if let Err(error) = register_user_via_registration_token(
             &base_url,
             "manymatrix_continuwuity_bootstrap",
             "manymatrix_bootstrap_password",
             &bootstrap_token,
         )
         .await
-        .context("failed to register Continuwuity bootstrap account to unlock the configured registration token")?;
+        {
+            // Seen intermittently on the manytier-ci runner (never locally):
+            // the container passes its HTTP readiness probe and prints the
+            // bootstrap token, then the registration POST gets a connection
+            // refused, implying the container died in between. Attach its
+            // logs so a future occurrence is diagnosable instead of a bare
+            // "connection refused".
+            let logs = container_log_tail(&container).await;
+            return Err(error.context(format!(
+                "failed to register Continuwuity bootstrap account to unlock the configured registration token; container log tail:\n{logs}"
+            )));
+        }
 
         Ok(Self {
             backend: HomeserverBackend::Docker(container),
@@ -962,6 +973,33 @@ async fn wait_for_continuwuity_bootstrap_token(
     }
 
     bail!("Continuwuity bootstrap registration token never appeared in startup logs")
+}
+
+/// Combined stdout+stderr tail for a container, best-effort (never itself
+/// fails a test, this is only ever attached as diagnostic error context).
+#[cfg(feature = "docker-tests")]
+async fn container_log_tail(container: &ContainerAsync<GenericImage>) -> String {
+    const MAX_BYTES: usize = 4096;
+
+    let stdout = container.stdout_to_vec().await.unwrap_or_default();
+    let stderr = container.stderr_to_vec().await.unwrap_or_default();
+
+    let tail = |bytes: &[u8]| -> String {
+        let text = String::from_utf8_lossy(bytes);
+        text.chars()
+            .rev()
+            .take(MAX_BYTES)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect()
+    };
+
+    format!(
+        "--- stdout ---\n{}\n--- stderr ---\n{}",
+        tail(&stdout),
+        tail(&stderr)
+    )
 }
 
 /// Continuwuity prints its auto-generated bootstrap registration token as

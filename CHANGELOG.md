@@ -17,6 +17,21 @@ is workspace-wide (all publishable crates share one version, see
   test tier (each instance opens many RocksDB/SQLite file handles), raised
   it in the `cargo test`/`compatibility.sh` steps of `core-ci.yml`,
   `docker-compat.yml`, and defensively in `hosted-e2e.yml`.
+- COMP-06 real cross-domain federation test (`hosted_federation.rs`) verified
+  live against both hosted servers (`synapse.manymatrix.com` /
+  `tuwunel.manymatrix.com`): both directions pass, a public room created on
+  one server federates a join-by-alias and a message round-trip to the other.
+- `docker-compat.yml` observed failing on `manytier-ci` at commit `900ec6f9`
+  (the Continuwuity job: bootstrap-token scrape succeeds, then the
+  registration POST gets connection refused) but the identical scenario
+  passes reliably run directly on the same box outside the nested Actions job
+  container, a CI-environment-specific flake, not reproduced locally.
+  Root cause not confirmed (most likely the Continuwuity container dying
+  between the readiness probe and the registration POST under whatever makes
+  that nested environment different). Hardened `start_continuwuity_docker` to
+  attach the container's stdout/stderr tail to the error context on
+  registration failure, so the next occurrence is diagnosable instead of a
+  bare "connection refused".
 
 ## [0.2.0] - 2026-07-03
 
