@@ -45,6 +45,15 @@ is workspace-wide (all publishable crates share one version, see
   homeserver tier is unaffected. All 10 Continuwuity scenarios re-verified
   locally (`cargo test -p test-harness --test e2e --no-default-features
   --features docker-tests continuwuity_docker`).
+- `hosted-e2e.yml`'s hosted homeserver tier failed on the same CI run
+  (`federated_message_hosted_tuwunel_to_synapse` timed out waiting for a
+  message that never arrived). Root cause: the test called
+  `bob.sync_once()` exactly once, then waited on a channel with nothing
+  left to feed it, if real cross-domain federation delivered the message
+  after that single sync round, the event handler never got another chance
+  to fire. Replaced with `receive_federated_message_with_retry`, which
+  re-syncs between checks instead of syncing once and hoping. Verified live
+  against both hosted servers directly: both directions pass in 3.67s.
 
 ## [0.2.0] - 2026-07-03
 
