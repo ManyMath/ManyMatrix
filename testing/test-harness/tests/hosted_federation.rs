@@ -129,11 +129,9 @@ async fn federated_message(creator_kind: ServerKind, joiner_kind: ServerKind) ->
             .await?;
         eprintln!("alice: sent federated message");
 
-        bob.sync_once().await?;
-        let received = tokio::time::timeout(Duration::from_secs(20), rx.recv())
+        let received = receive_federated_message_with_retry(&bob, &mut rx, 30, Duration::from_secs(1))
             .await
-            .context("timed out waiting for federated message")?
-            .expect("should have received a federated message");
+            .context("timed out waiting for federated message")?;
         assert_eq!(received, "hello across the wire");
         eprintln!("bob: received federated message: {received}");
 
@@ -142,6 +140,33 @@ async fn federated_message(creator_kind: ServerKind, joiner_kind: ServerKind) ->
     .await;
 
     finalize_servers(creator, joiner, run_result).await
+}
+
+/// Polls `bob.sync_once()` until the awaited message shows up on `rx` or the
+/// attempt budget runs out. A single `sync_once()` call only observes
+/// whatever the server has to offer *at that moment*, real cross-domain
+/// federation delivery can take longer than one sync round (this direction
+/// is often slower than the other; see the module doc), so the event
+/// handler needs repeated sync rounds to have a chance of firing at all,
+/// not just a longer wait on a channel nothing is still feeding.
+async fn receive_federated_message_with_retry(
+    bob: &ManyMatrixClient,
+    rx: &mut mpsc::Receiver<String>,
+    max_attempts: u32,
+    interval: Duration,
+) -> Result<String> {
+    for attempt in 0..max_attempts {
+        bob.sync_once().await?;
+        match rx.try_recv() {
+            Ok(msg) => return Ok(msg),
+            Err(_) => {
+                eprintln!("bob: message not yet received after sync attempt {attempt}");
+                tokio::time::sleep(interval).await;
+            }
+        }
+    }
+
+    anyhow::bail!("federated message never arrived after {max_attempts} sync attempts")
 }
 
 async fn join_room_with_retry(
