@@ -32,6 +32,19 @@ is workspace-wide (all publishable crates share one version, see
   attach the container's stdout/stderr tail to the error context on
   registration failure, so the next occurrence is diagnosable instead of a
   bare "connection refused".
+- `docker-compat.yml`'s Continuwuity flake reproduced again on `manytier-ci`
+  (commit `d8d5ce76`), this time with the log-tail diagnostic attached, which
+  confirmed the actual mechanism: Continuwuity's own log showed it started
+  and began "Listening on [0.0.0.0:6167]" in under a second, yet every one of
+  the registration helper's 20 one-second retries against the mapped host
+  port still got `Connection refused`, the container was genuinely up, but
+  the nested runner's Docker port-publish path hadn't propagated to the job
+  container yet. Widened `post_json_with_retry`'s retry budget from 20 to 90
+  attempts (20s -> 90s) to absorb that propagation delay; this only affects
+  the failure path; the happy-path registration flow used by every
+  homeserver tier is unaffected. All 10 Continuwuity scenarios re-verified
+  locally (`cargo test -p test-harness --test e2e --no-default-features
+  --features docker-tests continuwuity_docker`).
 
 ## [0.2.0] - 2026-07-03
 

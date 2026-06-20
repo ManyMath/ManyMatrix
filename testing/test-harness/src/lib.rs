@@ -1322,7 +1322,15 @@ async fn post_json_with_retry(
     body: &serde_json::Value,
     request_name: &str,
 ) -> Result<(reqwest::StatusCode, serde_json::Value)> {
-    const MAX_ATTEMPTS: usize = 20;
+    // MAX_ATTEMPTS was 20 (20s total) until the docker-compat.yml flake
+    // investigation (2026-07-04) caught a real occurrence on `manytier-ci`:
+    // Continuwuity's own logs showed it listening on its mapped port almost
+    // immediately, yet every one of the 20 one-second retries still got
+    // "connection refused", the container was up, but the nested runner's
+    // Docker port-publish path hadn't propagated yet. Widened to give that
+    // propagation delay more room without changing behavior on the happy
+    // path (this only extends time spent when something is actually down).
+    const MAX_ATTEMPTS: usize = 90;
     const RETRY_DELAY: Duration = Duration::from_secs(1);
 
     for attempt in 0..MAX_ATTEMPTS {
