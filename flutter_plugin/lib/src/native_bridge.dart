@@ -129,6 +129,10 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execHandleOnly(bindings, method, args);
       case 'sync_token':
         return _execHandleOnly(bindings, method, args);
+      case 'whoami':
+        return _execHandleOnly(bindings, method, args);
+      case 'is_room_encrypted':
+        return _execWithHandleAndOneString(bindings, method, args);
       case 'create_room':
         return _execCreateRoom(bindings, args);
       case 'join_room':
@@ -242,6 +246,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         result = bindings.manymatrix_logout(handle);
       case 'sync_token':
         result = bindings.manymatrix_sync_token(handle);
+      case 'whoami':
+        result = bindings.manymatrix_whoami(handle);
       case 'bootstrap_cross_signing':
         result = bindings.manymatrix_bootstrap_cross_signing(handle);
       case 'setup_key_backup':
@@ -311,6 +317,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
           result = bindings.manymatrix_room_avatar_url(handle, s1.cast());
         case 'room_members':
           result = bindings.manymatrix_room_members(handle, s1.cast());
+        case 'is_room_encrypted':
+          result = bindings.manymatrix_is_room_encrypted(handle, s1.cast());
         case 'enable_encryption':
           result = bindings.manymatrix_enable_encryption(handle, s1.cast());
         case 'restore_key_backup':
@@ -807,6 +815,11 @@ class ManyMatrixBridge implements ffi.Finalizable {
     return await _call('sync_token', {}) as String?;
   }
 
+  /// Get the currently logged-in user's Matrix ID.
+  Future<String?> whoami() async {
+    return await _call('whoami', {}) as String?;
+  }
+
   /// Create a new room with optional name and topic.
   Future<String> createRoom({String? name, String? topic}) async {
     final result = await _call('create_room', {
@@ -860,6 +873,12 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Get the list of joined member user IDs for a room (JSON array string).
   Future<String?> roomMembers(String roomId) async {
     return await _call('room_members', {'s1': roomId}) as String?;
+  }
+
+  /// Check whether a room has encryption enabled.
+  Future<bool> isRoomEncrypted(String roomId) async {
+    final result = await _call('is_room_encrypted', {'s1': roomId}) as String?;
+    return result == 'true';
   }
 
   /// Send a plain-text message. Returns event ID.

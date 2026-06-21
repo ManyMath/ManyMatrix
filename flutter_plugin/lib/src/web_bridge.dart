@@ -261,6 +261,11 @@ class ManyMatrixBridge {
     return result['sync_token'] as String?;
   }
 
+  Future<String?> whoami() async {
+    final result = await _call('auth.whoami', {});
+    return result['user_id'] as String?;
+  }
+
   Future<String> createRoom({String? name, String? topic}) async {
     final result = await _call('rooms.create', {'name': name, 'topic': topic});
     return result['room_id'] as String;
@@ -314,6 +319,11 @@ class ManyMatrixBridge {
   Future<String?> roomMembers(String roomId) async {
     final result = await _call('rooms.members', {'room_id': roomId});
     return result['members_json'] as String?;
+  }
+
+  Future<bool> isRoomEncrypted(String roomId) async {
+    final result = await _call('e2ee.is_encrypted', {'room_id': roomId});
+    return result['encrypted'] as bool;
   }
 
   Future<String> sendText(String roomId, String body) async {

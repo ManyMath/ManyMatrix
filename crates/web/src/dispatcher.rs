@@ -317,6 +317,11 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 "device_id": device_id,
             }))
         }
+        "auth.whoami" => {
+            let client = get_client()?;
+            let user_id = client.current_user_id();
+            Ok(serde_json::json!({"user_id": user_id}))
+        }
         "auth.logout" => {
             let client = get_client()?;
             client.logout().await.map_err(sdk_err)?;
@@ -596,6 +601,15 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .await
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({}))
+        }
+        "e2ee.is_encrypted" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let encrypted = client
+                .is_room_encrypted(&args.room_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"encrypted": encrypted}))
         }
         "e2ee.enable" => {
             let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
