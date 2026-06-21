@@ -7,6 +7,14 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Fix: `whoami` and `is_room_encrypted` were fully implemented in
+  `manymatrix-core`/`manymatrix-ffi` (used by native platforms via the
+  auto-generated C bindings) but had no equivalent on web/WASM and no
+  wrapper in the Dart `ManyMatrixBridge` API on either platform, a Flutter
+  app had no way to ask "who am I logged in as" or "is this room encrypted"
+  at all. Added `auth.whoami` / `e2ee.is_encrypted` dispatcher cases to
+  `crates/web/src/dispatcher.rs`, and `whoami()` / `isRoomEncrypted()`
+  methods to both `native_bridge.dart` and `web_bridge.dart`.
 - CI: `manytier-ci` runner environment gaps discovered by actually pushing
   `dev` for the first time since Phase 26 (previously-unpushed local work
   had never run on real CI). Fixed two: (1) missing `libclang-dev`, needed
