@@ -450,6 +450,14 @@ class ManyMatrixBridge {
     });
   }
 
+  Future<void> startSas(String userId, String flowId) async {
+    await _call('e2ee.start_sas', {'user_id': userId, 'flow_id': flowId});
+  }
+
+  Future<void> acceptSas(String userId, String flowId) async {
+    await _call('e2ee.accept_sas', {'user_id': userId, 'flow_id': flowId});
+  }
+
   Future<String> getSasEmojis(String userId, String flowId) async {
     final result = await _call('e2ee.sas_emojis', {
       'user_id': userId,

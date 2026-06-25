@@ -638,6 +638,24 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({}))
         }
+        "e2ee.start_sas" => {
+            let args: VerificationFlowArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .start_sas(&args.user_id, &args.flow_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
+        "e2ee.accept_sas" => {
+            let args: VerificationFlowArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .accept_sas(&args.user_id, &args.flow_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
         "e2ee.sas_emojis" => {
             let args: VerificationFlowArgs = serde_json::from_str(args_json).map_err(serde_err)?;
             let client = get_client()?;

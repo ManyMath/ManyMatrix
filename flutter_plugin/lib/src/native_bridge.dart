@@ -183,6 +183,10 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execWithHandleAndTwoStrings(bindings, method, args);
       case 'accept_verification':
         return _execWithHandleAndTwoStrings(bindings, method, args);
+      case 'start_sas':
+        return _execWithHandleAndTwoStrings(bindings, method, args);
+      case 'accept_sas':
+        return _execWithHandleAndTwoStrings(bindings, method, args);
       case 'get_sas_emojis':
         return _execWithHandleAndTwoStrings(bindings, method, args);
       case 'confirm_sas':
@@ -362,6 +366,11 @@ class ManyMatrixBridge implements ffi.Finalizable {
         case 'accept_verification':
           result = bindings.manymatrix_accept_verification(
               handle, s1.cast(), s2.cast());
+        case 'start_sas':
+          result = bindings.manymatrix_start_sas(handle, s1.cast(), s2.cast());
+        case 'accept_sas':
+          result =
+              bindings.manymatrix_accept_sas(handle, s1.cast(), s2.cast());
         case 'get_sas_emojis':
           result =
               bindings.manymatrix_get_sas_emojis(handle, s1.cast(), s2.cast());
@@ -1000,6 +1009,18 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Accept an incoming SAS verification request.
   Future<void> acceptVerification(String userId, String flowId) async {
     await _call('accept_verification', {'s1': userId, 's2': flowId});
+  }
+
+  /// Transition an accepted verification request into a SAS flow.
+  /// Called by the party that initiated verification.
+  Future<void> startSas(String userId, String flowId) async {
+    await _call('start_sas', {'s1': userId, 's2': flowId});
+  }
+
+  /// Accept an in-progress SAS flow so short auth strings can be shown.
+  /// Called by the other party, after `startSas`.
+  Future<void> acceptSas(String userId, String flowId) async {
+    await _call('accept_sas', {'s1': userId, 's2': flowId});
   }
 
   /// Get SAS emojis for visual comparison. Returns JSON string.
