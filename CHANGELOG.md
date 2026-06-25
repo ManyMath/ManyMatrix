@@ -7,6 +7,17 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Fix: `start_sas`/`accept_sas`, the two middle steps of the six-step SAS
+  device-verification flow (`start_verification` -> `accept_verification` ->
+  `start_sas` -> `accept_sas` -> `get_sas_emojis` -> `confirm_sas`), were fully
+  implemented in `manymatrix-core`/`manymatrix-ffi` and covered by a real
+  end-to-end test (`testing/test-harness/tests/encryption.rs`'s
+  `sas_verification`), but were never wired into the web/WASM dispatcher or
+  either Dart bridge, a Flutter app following the rest of the exposed
+  verification flow would fail at this missing step. Added
+  `e2ee.start_sas`/`e2ee.accept_sas` to `crates/web/src/dispatcher.rs` and
+  `startSas()`/`acceptSas()` to both `native_bridge.dart` and
+  `web_bridge.dart`.
 - Fix: `whoami` and `is_room_encrypted` were fully implemented in
   `manymatrix-core`/`manymatrix-ffi` (used by native platforms via the
   auto-generated C bindings) but had no equivalent on web/WASM and no
