@@ -489,6 +489,15 @@ class ManyMatrixBridge {
     await _call('e2ee.restore_key_backup', {'recovery_key': recoveryKey});
   }
 
+  Future<String> enableRecovery() async {
+    final result = await _call('e2ee.enable_recovery', {});
+    return result['recovery_key'] as String;
+  }
+
+  Future<void> waitForBackupUpload() async {
+    await _call('e2ee.wait_for_backup_upload', {});
+  }
+
   Future<String> uploadMedia(
     String roomId,
     String filename,

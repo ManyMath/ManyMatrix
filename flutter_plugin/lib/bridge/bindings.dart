@@ -681,6 +681,48 @@ class ManyMatrixBindings {
           FfiResult Function(
               ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
 
+  /// Enable secret storage and key backup recovery.
+  ///
+  /// Returns the recovery key string in `FfiResult.data`.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_enable_recovery(
+    ffi.Pointer<ManyMatrixClient> handle,
+  ) {
+    return _manymatrix_enable_recovery(
+      handle,
+    );
+  }
+
+  late final _manymatrix_enable_recoveryPtr = _lookup<
+          ffi
+          .NativeFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>>(
+      'manymatrix_enable_recovery');
+  late final _manymatrix_enable_recovery = _manymatrix_enable_recoveryPtr
+      .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
+
+  /// Block until all locally-created room keys have finished uploading to the
+  /// server-side backup.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_wait_for_backup_upload(
+    ffi.Pointer<ManyMatrixClient> handle,
+  ) {
+    return _manymatrix_wait_for_backup_upload(
+      handle,
+    );
+  }
+
+  late final _manymatrix_wait_for_backup_uploadPtr = _lookup<
+          ffi
+          .NativeFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>>(
+      'manymatrix_wait_for_backup_upload');
+  late final _manymatrix_wait_for_backup_upload =
+      _manymatrix_wait_for_backup_uploadPtr
+          .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
+
   /// Upload a file as an attachment to a room.
   ///
   /// Returns the event ID string in `FfiResult.data`.

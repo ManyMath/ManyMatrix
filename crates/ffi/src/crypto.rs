@@ -205,3 +205,34 @@ pub unsafe extern "C" fn manymatrix_restore_key_backup(
         Err(e) => FfiResult::error(&e.to_string()),
     }
 }
+
+/// Enable secret storage and key backup recovery.
+///
+/// Returns the recovery key string in `FfiResult.data`.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_enable_recovery(handle: *mut ManyMatrixClient) -> FfiResult {
+    let client = client_from_handle(handle);
+    match RUNTIME.block_on(client.enable_recovery()) {
+        Ok(recovery_key) => FfiResult::success_string(&recovery_key),
+        Err(e) => FfiResult::error(&e.to_string()),
+    }
+}
+
+/// Block until all locally-created room keys have finished uploading to the
+/// server-side backup.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_wait_for_backup_upload(
+    handle: *mut ManyMatrixClient,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    match RUNTIME.block_on(client.wait_for_backup_upload()) {
+        Ok(()) => FfiResult::success_void(),
+        Err(e) => FfiResult::error(&e.to_string()),
+    }
+}

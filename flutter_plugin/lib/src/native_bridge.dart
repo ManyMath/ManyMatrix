@@ -199,6 +199,10 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execHandleOnly(bindings, method, args);
       case 'restore_key_backup':
         return _execWithHandleAndOneString(bindings, method, args);
+      case 'enable_recovery':
+        return _execHandleOnly(bindings, method, args);
+      case 'wait_for_backup_upload':
+        return _execHandleOnly(bindings, method, args);
       case 'upload_media':
         return _execUploadMedia(bindings, args);
       case 'download_media':
@@ -256,6 +260,10 @@ class ManyMatrixBridge implements ffi.Finalizable {
         result = bindings.manymatrix_bootstrap_cross_signing(handle);
       case 'setup_key_backup':
         result = bindings.manymatrix_setup_key_backup(handle);
+      case 'enable_recovery':
+        result = bindings.manymatrix_enable_recovery(handle);
+      case 'wait_for_backup_upload':
+        result = bindings.manymatrix_wait_for_backup_upload(handle);
       default:
         throw Exception('Unknown handle-only method: $method');
     }
@@ -1055,6 +1063,17 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Restore room keys from backup using recovery key.
   Future<void> restoreKeyBackup(String recoveryKey) async {
     await _call('restore_key_backup', {'s1': recoveryKey});
+  }
+
+  /// Enable secret storage and key backup recovery. Returns the recovery key.
+  Future<String> enableRecovery() async {
+    final result = await _call('enable_recovery', {});
+    return result as String;
+  }
+
+  /// Block until locally-created room keys finish uploading to backup.
+  Future<void> waitForBackupUpload() async {
+    await _call('wait_for_backup_upload', {});
   }
 
   /// Upload media to a room. Returns event ID.

@@ -703,6 +703,16 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({}))
         }
+        "e2ee.enable_recovery" => {
+            let client = get_client()?;
+            let recovery_key = client.enable_recovery().await.map_err(sdk_err)?;
+            Ok(serde_json::json!({"recovery_key": recovery_key}))
+        }
+        "e2ee.wait_for_backup_upload" => {
+            let client = get_client()?;
+            client.wait_for_backup_upload().await.map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
+        }
         "events.subscribe" => {
             let client = get_client()?;
             if EVENTS_SUBSCRIBED.swap(true, Ordering::Relaxed) {

@@ -348,6 +348,25 @@ struct FfiResult manymatrix_restore_key_backup(struct ManyMatrixClient *handle,
                                                const char *recovery_key);
 
 /**
+ * Enable secret storage and key backup recovery.
+ *
+ * Returns the recovery key string in `FfiResult.data`.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+ struct FfiResult manymatrix_enable_recovery(struct ManyMatrixClient *handle);
+
+/**
+ * Block until all locally-created room keys have finished uploading to the
+ * server-side backup.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+ struct FfiResult manymatrix_wait_for_backup_upload(struct ManyMatrixClient *handle);
+
+/**
  * Upload a file as an attachment to a room.
  *
  * Returns the event ID string in `FfiResult.data`.
