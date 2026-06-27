@@ -7,6 +7,28 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Perf: `[profile.release]` had no size tuning at all, every publishable
+  crate (including `manymatrix-ffi`, the cdylib cargokit ships to Flutter
+  apps on every platform) built with default codegen settings and no debug
+  info stripping, despite "binary size" being a stated project constraint
+  since v1.0. Added `lto = true`, `codegen-units = 1`, `strip = "symbols"`.
+  `panic` stays `"unwind"` (not `"abort"`, unlike cargokit's own
+  `super_native_extensions` example profile) because `crates/web`'s `call()`
+  dispatcher uses `catch_unwind()` to turn a panic into an `{err}` envelope
+  instead of trapping the whole wasm module. Measured on
+  `target/release/libmanymatrix_ffi.so`: 62.9 MiB unstripped (before) -> 37.1
+  MiB (after), a 41% reduction; the binary is also now properly `stripped`
+  per `file`.
+  - Found and fixed a real regression along the way: with LTO enabled, rustc
+    lowers large `memcpy`s to wasm bulk-memory ops (`memory.copy`) on
+    `wasm32-unknown-unknown`, which the `wasm-opt` binary bundled with
+    `wasm-pack` rejects by default (`wasm-validator error ... unexpected
+    false: all used features should be allowed`), breaking `wasm-pack build
+    --target web --release crates/web`. Fixed via
+    `[package.metadata.wasm-pack.profile.release]` in `crates/web/Cargo.toml`
+    (`wasm-opt = ["-O", "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int"]`). Verified both locally and on
+    `manytier-ci`'s `core-ci.yml` (`wasm-check` job green).
 - Fix: `enable_recovery` and `wait_for_backup_upload` were fully implemented
   in `manymatrix-core` and covered by a real end-to-end test
   (`testing/test-harness/tests/key_backup_media.rs`), but had **no FFI
