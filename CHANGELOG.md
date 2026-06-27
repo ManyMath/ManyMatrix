@@ -7,6 +7,23 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Fix: `enable_recovery` and `wait_for_backup_upload` were fully implemented
+  in `manymatrix-core` and covered by a real end-to-end test
+  (`testing/test-harness/tests/key_backup_media.rs`), but had **no FFI
+  export at all** (unlike the SAS/whoami gaps found previously, which at
+  least had FFI+generated Dart C bindings), so neither the web dispatcher
+  nor either Dart bridge could reach them either. Without `enable_recovery`
+  there was no way for an app to actually generate/obtain a recovery key in
+  the first place, even though `setupKeyBackup()`/`restoreKeyBackup()` were
+  both already exposed; without `wait_for_backup_upload` there was no way to
+  know when a freshly-created room key is safely durable in backup before a
+  second device tries to restore it. Added
+  `manymatrix_enable_recovery`/`manymatrix_wait_for_backup_upload` to
+  `crates/ffi/src/crypto.rs` (regenerating `crates/ffi/binding.h` and
+  `flutter_plugin/lib/bridge/bindings.dart`), `e2ee.enable_recovery`/
+  `e2ee.wait_for_backup_upload` to `crates/web/src/dispatcher.rs`, and
+  `enableRecovery()`/`waitForBackupUpload()` to both `native_bridge.dart`
+  and `web_bridge.dart`.
 - Fix: `start_sas`/`accept_sas`, the two middle steps of the six-step SAS
   device-verification flow (`start_verification` -> `accept_verification` ->
   `start_sas` -> `accept_sas` -> `get_sas_emojis` -> `confirm_sas`), were fully
