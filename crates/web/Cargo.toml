@@ -23,3 +23,9 @@ serde_json = { workspace = true }
 manymatrix-core = { path = "../core", version = "0.2.0" }
 futures-util = "0.3"
 base64 = "0.22"
+
+[package.metadata.wasm-pack.profile.release]
+# The workspace's [profile.release] LTO now lets rustc lower large memcpys to
+# wasm bulk-memory ops (memory.copy) on wasm32-unknown-unknown; the wasm-opt
+# binary bundled with wasm-pack rejects those unless bulk memory is enabled.
+wasm-opt = ["-O", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]

@@ -35,7 +35,13 @@ url = "2"
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 
 [profile.release]
+# panic must stay "unwind", not "abort": crates/web's call() dispatcher uses
+# catch_unwind() to turn a panic into an {err} envelope instead of trapping
+# the whole wasm module.
 panic = "unwind"
+lto = true
+codegen-units = 1
+strip = "symbols"
 
 [profile.shadow]
 inherits = "release"
