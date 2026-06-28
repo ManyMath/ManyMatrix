@@ -1327,10 +1327,19 @@ async fn post_json_with_retry(
     // Continuwuity's own logs showed it listening on its mapped port almost
     // immediately, yet every one of the 20 one-second retries still got
     // "connection refused", the container was up, but the nested runner's
-    // Docker port-publish path hadn't propagated yet. Widened to give that
-    // propagation delay more room without changing behavior on the happy
-    // path (this only extends time spent when something is actually down).
-    const MAX_ATTEMPTS: usize = 90;
+    // Docker port-publish path hadn't propagated yet. Widened to 90 (90s)
+    // to give that propagation delay more room.
+    //
+    // 2026-07-04 (later same day): the flake recurred on `manytier-ci` even
+    // at 90 attempts, Continuwuity's container log showed it listening at
+    // 07:02:59.451Z, and the harness gave up at 07:04:29.805Z, ~90.4s later,
+    // i.e. it needed *more* than 90s this time, not less. So the port-
+    // publish propagation delay in this nested-runner environment is not a
+    // fixed/bounded quantity; widening further only reduces the flake's
+    // probability, it doesn't eliminate it. Widened again to 240 (4 min).
+    // This only extends time spent when something is actually unreachable;
+    // the happy path (registration succeeds immediately) is unaffected.
+    const MAX_ATTEMPTS: usize = 240;
     const RETRY_DELAY: Duration = Duration::from_secs(1);
 
     for attempt in 0..MAX_ATTEMPTS {
