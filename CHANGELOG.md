@@ -7,6 +7,11 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Fix: `docker-compat.yml`'s registration-retry flake (Continuwuity
+  `Connection refused` despite the container already listening) recurred on
+  `manytier-ci` even after the prior 90s retry budget, this occurrence
+  needed more than 90s. Widened `post_json_with_retry`'s `MAX_ATTEMPTS` from
+  90 to 240 (4 min); compiles clean, not yet re-verified live.
 - Perf: `[profile.release]` had no size tuning at all, every publishable
   crate (including `manymatrix-ffi`, the cdylib cargokit ships to Flutter
   apps on every platform) built with default codegen settings and no debug
