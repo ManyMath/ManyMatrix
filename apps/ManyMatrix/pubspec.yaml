@@ -1,0 +1,43 @@
+# Named manymatrix_app to avoid colliding with the manymatrix plugin package
+# at ../../flutter_plugin (a plain Dart FFI package this app consumes).
+name: manymatrix_app
+description: ManyMatrix, a cross-platform Matrix client built on manyui.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.10.0 <4.0.0"
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.0
+  flutter_hooks: ^0.20.5
+  hooks_riverpod: ^2.5.0
+  manymatrix:
+    path: ../../flutter_plugin
+  manyui:
+    path: ../../../ManyUI/manyui
+  manyui_hooks:
+    path: ../../../ManyUI/manyui_hooks
+  manyui_riverpod:
+    path: ../../../ManyUI/manyui_riverpod
+  # TODO(manymatrix): move session persistence to secure storage
+  # (e.g. flutter_secure_storage) -- shared_preferences is plaintext.
+  shared_preferences: ^2.4.0
+
+# The app builds on the manyui library, developed in lockstep from a sibling
+# checkout (../../../ManyUI). manyui is not yet published, so its packages'
+# hosted self-references are overridden to the sibling paths.
+dependency_overrides:
+  manyui:
+    path: ../../../ManyUI/manyui
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: false
