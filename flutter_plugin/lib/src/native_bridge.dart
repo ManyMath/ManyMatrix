@@ -61,8 +61,13 @@ class ManyMatrixBridge implements ffi.Finalizable {
 
     _libraryPath = libraryPath;
 
-    // Open library on main isolate for NativeFinalizer and dispose()
-    final lib = ffi.DynamicLibrary.open(libraryPath);
+    // Open library on main isolate for NativeFinalizer and dispose(). An
+    // empty path means the symbols are force-linked into the executable
+    // itself (macOS/iOS Runner via -force_load, see platform Podfiles)
+    // rather than shipped as a standalone .so/.dylib/.dll.
+    final lib = libraryPath.isEmpty
+        ? ffi.DynamicLibrary.process()
+        : ffi.DynamicLibrary.open(libraryPath);
     _mainBindings = ManyMatrixBindings(lib);
 
     // Set up NativeFinalizer using the manymatrix_free function pointer
@@ -87,7 +92,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Runs in its own isolate with its own DynamicLibrary and bindings instance.
   /// Listens for _FfiRequest messages and executes the corresponding FFI call.
   static void _workerEntryPoint(_WorkerInit init) {
-    final lib = ffi.DynamicLibrary.open(init.libraryPath);
+    final lib = init.libraryPath.isEmpty
+        ? ffi.DynamicLibrary.process()
+        : ffi.DynamicLibrary.open(init.libraryPath);
     final bindings = ManyMatrixBindings(lib);
     final port = ReceivePort();
     init.sendPort.send(port.sendPort);

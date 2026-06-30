@@ -8,19 +8,20 @@ const String? matrixRuntimeUnsupportedReason = null;
 
 /// Path passed to `ManyMatrixBridge.initialize`.
 ///
-/// Cargokit bundles the Rust library next to the executable (or links it on
-/// iOS), so the bare library name resolves through the platform loader.
+/// Cargokit bundles the Rust library next to the executable on Linux/
+/// Android/Windows, so the bare library name resolves through the platform
+/// loader there. On macOS/iOS the Runner app target force-loads the static
+/// lib directly into the executable (see macos/ios Podfile), so the empty
+/// path tells native_bridge.dart to use `DynamicLibrary.process()` instead
+/// of opening a standalone .dylib that is never produced.
 String defaultLibraryPath() {
   if (Platform.isLinux || Platform.isAndroid) {
     return 'libmanymatrix_ffi.so';
   }
-  if (Platform.isMacOS) {
-    return 'libmanymatrix_ffi.dylib';
-  }
   if (Platform.isWindows) {
     return 'manymatrix_ffi.dll';
   }
-  if (Platform.isIOS) {
+  if (Platform.isMacOS || Platform.isIOS) {
     return '';
   }
   throw UnsupportedError(
