@@ -51,9 +51,9 @@ class RoomsPage extends ConsumerWidget {
                           : MThemeMode.dark;
                 },
                 semanticLabel: 'Toggle theme',
-            child: Text(ref.watch(themeModeProvider) == MThemeMode.dark
-                ? '\u2600'
-                : '\u263e'),
+            child: MIcon(ref.watch(themeModeProvider) == MThemeMode.dark
+                ? MIconData.sun
+                : MIconData.moon),
               ),
               const SizedBox(width: 8),
               MButton(

@@ -51,9 +51,9 @@ class LoginPage extends HookConsumerWidget {
                   mode == MThemeMode.dark ? MThemeMode.light : MThemeMode.dark;
             },
             semanticLabel: 'Toggle theme',
-            child: Text(ref.watch(themeModeProvider) == MThemeMode.dark
-                ? '\u2600'
-                : '\u263e'),
+            child: MIcon(ref.watch(themeModeProvider) == MThemeMode.dark
+                ? MIconData.sun
+                : MIconData.moon),
           ),
         ],
       ),
