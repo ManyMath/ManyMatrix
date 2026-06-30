@@ -113,3 +113,9 @@ final roomListProvider =
     AsyncNotifierProvider<RoomListController, List<RoomSummary>>(
   RoomListController.new,
 );
+
+/// Joined member user IDs for a room, fetched on demand (room-info view).
+final roomMembersProvider =
+    FutureProvider.family<List<String>, String>((ref, roomId) {
+  return ref.watch(matrixServiceProvider).roomMembers(roomId);
+});

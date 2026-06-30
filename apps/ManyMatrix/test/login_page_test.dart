@@ -57,6 +57,15 @@ class FakeMatrixService implements MatrixService {
   Future<List<RoomSummary>> joinedRooms() async => const <RoomSummary>[];
 
   @override
+  Future<String> createRoom({String? name, String? topic}) async => '!new:example.org';
+
+  @override
+  Future<String> joinRoom(String roomIdOrAlias) async => roomIdOrAlias;
+
+  @override
+  Future<void> invite(String roomId, String userId) async {}
+
+  @override
   Future<PaginatedMessages> getMessages(
     String roomId, {
     String? fromToken,
@@ -72,6 +81,29 @@ class FakeMatrixService implements MatrixService {
 
   @override
   Future<void> sendReadReceipt(String roomId, String eventId) async {}
+
+  List<String> membersForRoom = const <String>[];
+  final List<String> kicked = <String>[];
+  final List<String> banned = <String>[];
+  final List<String> redacted = <String>[];
+
+  @override
+  Future<List<String>> roomMembers(String roomId) async => membersForRoom;
+
+  @override
+  Future<void> kick(String roomId, String userId, {String? reason}) async {
+    kicked.add(userId);
+  }
+
+  @override
+  Future<void> ban(String roomId, String userId, {String? reason}) async {
+    banned.add(userId);
+  }
+
+  @override
+  Future<void> redact(String roomId, String eventId, {String? reason}) async {
+    redacted.add(eventId);
+  }
 
   @override
   void dispose() {

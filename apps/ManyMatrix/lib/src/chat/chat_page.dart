@@ -8,6 +8,8 @@ import 'package:manymatrix/manymatrix.dart';
 
 import '../matrix/providers.dart';
 import '../matrix/room_timeline.dart';
+import '../room_info/room_info_page.dart';
+import 'invite_dialog.dart';
 import 'message_bubble.dart';
 
 /// Full-screen chat route used by the narrow layout.
@@ -37,6 +39,24 @@ class ChatPage extends ConsumerWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          MButton(
+            variant: MButtonVariant.ghost,
+            onPressed: () => showInviteDialog(context, ref, roomId: roomId),
+            semanticLabel: 'Invite to room',
+            child: const Text('Invite'),
+          ),
+          const SizedBox(width: 8),
+          MButton(
+            variant: MButtonVariant.ghost,
+            onPressed: () => Navigator.of(context).push(
+              PageRouteBuilder<void>(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    RoomInfoPage(roomId: roomId, roomName: roomName),
+              ),
+            ),
+            semanticLabel: 'Room info',
+            child: const Text('Info'),
           ),
         ],
       ),
@@ -98,11 +118,39 @@ class ChatView extends HookConsumerWidget {
         if (showRoomHeader) ...<Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Text(
-              roomName ?? roomId,
-              style: theme.typography.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    roomName ?? roomId,
+                    style: theme.typography.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                MButton(
+                  variant: MButtonVariant.ghost,
+                  onPressed: () =>
+                      showInviteDialog(context, ref, roomId: roomId),
+                  semanticLabel: 'Invite to room',
+                  child: const Text('Invite'),
+                ),
+                const SizedBox(width: 8),
+                MButton(
+                  variant: MButtonVariant.ghost,
+                  onPressed: () => Navigator.of(context).push(
+                    PageRouteBuilder<void>(
+                      pageBuilder: (context, animation, secondaryAnimation) =>
+                          RoomInfoPage(
+                        roomId: roomId,
+                        roomName: roomName ?? roomId,
+                      ),
+                    ),
+                  ),
+                  semanticLabel: 'Room info',
+                  child: const Text('Info'),
+                ),
+              ],
             ),
           ),
           Container(height: 1, color: theme.colors.border),

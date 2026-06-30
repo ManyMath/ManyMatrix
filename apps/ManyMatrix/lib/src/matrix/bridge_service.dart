@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:manymatrix/manymatrix.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +36,16 @@ abstract class MatrixService {
 
   Future<List<RoomSummary>> joinedRooms();
 
+  /// Creates a new room with optional name and topic. Returns the new room's
+  /// ID.
+  Future<String> createRoom({String? name, String? topic});
+
+  /// Joins a room by ID or alias. Returns the (possibly resolved) room ID.
+  Future<String> joinRoom(String roomIdOrAlias);
+
+  /// Invites a user to a room.
+  Future<void> invite(String roomId, String userId);
+
   Future<PaginatedMessages> getMessages(
     String roomId, {
     String? fromToken,
@@ -46,6 +57,18 @@ abstract class MatrixService {
   Future<void> sendTyping(String roomId, bool typing);
 
   Future<void> sendReadReceipt(String roomId, String eventId);
+
+  /// The joined member user IDs for a room.
+  Future<List<String>> roomMembers(String roomId);
+
+  /// Removes [userId] from [roomId], optionally recording a reason.
+  Future<void> kick(String roomId, String userId, {String? reason});
+
+  /// Bans [userId] from [roomId], optionally recording a reason.
+  Future<void> ban(String roomId, String userId, {String? reason});
+
+  /// Redacts (deletes) [eventId] in [roomId], optionally recording a reason.
+  Future<void> redact(String roomId, String eventId, {String? reason});
 
   /// Releases native resources. The service must not be used afterwards.
   void dispose();
@@ -173,6 +196,18 @@ class BridgeMatrixService implements MatrixService {
   Future<List<RoomSummary>> joinedRooms() => _requireClient.joinedRooms();
 
   @override
+  Future<String> createRoom({String? name, String? topic}) =>
+      _requireClient.createRoom(name: name, topic: topic);
+
+  @override
+  Future<String> joinRoom(String roomIdOrAlias) =>
+      _requireClient.joinRoom(roomIdOrAlias);
+
+  @override
+  Future<void> invite(String roomId, String userId) =>
+      _requireClient.invite(roomId, userId);
+
+  @override
   Future<PaginatedMessages> getMessages(
     String roomId, {
     String? fromToken,
@@ -191,6 +226,26 @@ class BridgeMatrixService implements MatrixService {
   @override
   Future<void> sendReadReceipt(String roomId, String eventId) =>
       _requireClient.sendReadReceipt(roomId, eventId);
+
+  @override
+  Future<List<String>> roomMembers(String roomId) async {
+    final json = await _requireClient.roomMembers(roomId);
+    if (json == null || json.isEmpty) return const <String>[];
+    final decoded = jsonDecode(json) as List<dynamic>;
+    return decoded.cast<String>();
+  }
+
+  @override
+  Future<void> kick(String roomId, String userId, {String? reason}) =>
+      _requireClient.kick(roomId, userId, reason: reason);
+
+  @override
+  Future<void> ban(String roomId, String userId, {String? reason}) =>
+      _requireClient.ban(roomId, userId, reason: reason);
+
+  @override
+  Future<void> redact(String roomId, String eventId, {String? reason}) =>
+      _requireClient.redact(roomId, eventId, reason: reason);
 
   @override
   void dispose() {
