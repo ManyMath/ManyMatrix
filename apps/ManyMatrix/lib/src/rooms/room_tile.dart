@@ -26,59 +26,31 @@ class RoomTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = MTheme.of(context);
     final preview = room.lastMessage;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Semantics(
-        button: true,
-        selected: selected,
-        label: 'Open room ${room.displayName}',
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? theme.colors.muted : null,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: <Widget>[
-              MAvatar(
-                size: 36,
-                fallback: Text(_initial),
-                semanticLabel: room.displayName,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      room.displayName,
-                      style: theme.typography.body,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (preview != null)
-                      Text(
-                        '${preview.sender.split(':').first}: ${preview.body}',
-                        style: theme.typography.bodySmall
-                            .copyWith(color: theme.colors.mutedForeground),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
-              ),
-              if (room.unreadCount > 0) ...<Widget>[
-                const SizedBox(width: 8),
-                MBadge(child: Text('${room.unreadCount}')),
-              ],
-            ],
-          ),
-        ),
+    return MListTile(
+      leading: MAvatar(
+        size: 36,
+        fallback: Text(_initial),
+        semanticLabel: room.displayName,
       ),
+      title: Text(
+        room.displayName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: preview != null
+          ? Text(
+              '${preview.sender.split(':').first}: ${preview.body}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            )
+          : null,
+      trailing:
+          room.unreadCount > 0 ? MBadge(child: Text('${room.unreadCount}')) : null,
+      selected: selected,
+      onTap: onTap,
+      semanticLabel: 'Open room ${room.displayName}',
     );
   }
 }
