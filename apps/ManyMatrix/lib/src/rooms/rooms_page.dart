@@ -6,6 +6,7 @@ import 'package:manymatrix/manymatrix.dart';
 import '../chat/chat_page.dart';
 import '../matrix/providers.dart';
 import '../theme.dart';
+import 'room_dialogs.dart';
 import 'room_tile.dart';
 
 /// Breakpoint above which rooms and chat render side by side.
@@ -54,6 +55,17 @@ class RoomsPage extends ConsumerWidget {
             child: MIcon(ref.watch(themeModeProvider) == MThemeMode.dark
                 ? MIconData.sun
                 : MIconData.moon),
+              ),
+              const SizedBox(width: 8),
+              MButton(
+                variant: MButtonVariant.ghost,
+                onPressed: () => showJoinRoomDialog(context, ref),
+                child: const Text('Join room'),
+              ),
+              const SizedBox(width: 8),
+              MButton(
+                onPressed: () => showCreateRoomDialog(context, ref),
+                child: const Text('Create room'),
               ),
               const SizedBox(width: 8),
               MButton(
@@ -144,10 +156,26 @@ class _RoomListBody extends ConsumerWidget {
       data: (list) {
         if (list.isEmpty) {
           return Center(
-            child: Text(
-              'No rooms yet',
-              style: theme.typography.body
-                  .copyWith(color: theme.colors.mutedForeground),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'No rooms yet',
+                  style: theme.typography.body
+                      .copyWith(color: theme.colors.mutedForeground),
+                ),
+                const SizedBox(height: 16),
+                MButton(
+                  onPressed: () => showCreateRoomDialog(context, ref),
+                  child: const Text('Create room'),
+                ),
+                const SizedBox(height: 8),
+                MButton(
+                  variant: MButtonVariant.ghost,
+                  onPressed: () => showJoinRoomDialog(context, ref),
+                  child: const Text('Join room'),
+                ),
+              ],
             ),
           );
         }
