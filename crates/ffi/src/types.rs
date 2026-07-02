@@ -57,12 +57,17 @@ pub struct FfiBuffer {
 
 /// Callback type for incoming message events. Receives JSON-serialized MessageEvent.
 ///
-/// **Lifetime contract:** The string pointer is valid only for the duration of the
-/// callback invocation. The Dart side must copy the string before returning.
-pub type MessageCallback = extern "C" fn(*const c_char);
+/// **Lifetime contract:** the pointer is heap-allocated and owned by the receiver.
+/// `NativeCallable.listener` (the Dart-side registration mechanism) posts this call
+/// across isolates and returns before the target isolate reads the pointee, so a
+/// pointer valid only for the invocation's duration is not safe here: the receiver
+/// must free the pointer with `ffi_free_string` once done reading it.
+pub type MessageCallback = extern "C" fn(*mut c_char);
 
 /// Callback type for incoming reaction events. Receives JSON-serialized ReactionEvent.
-pub type ReactionCallback = extern "C" fn(*const c_char);
+/// Same ownership contract as [`MessageCallback`].
+pub type ReactionCallback = extern "C" fn(*mut c_char);
 
 /// Callback type for incoming receipt events. Receives JSON-serialized ReceiptEvent.
-pub type ReceiptCallback = extern "C" fn(*const c_char);
+/// Same ownership contract as [`MessageCallback`].
+pub type ReceiptCallback = extern "C" fn(*mut c_char);

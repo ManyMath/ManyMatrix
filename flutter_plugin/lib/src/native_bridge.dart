@@ -1153,7 +1153,12 @@ class ManyMatrixBridge implements ffi.Finalizable {
     final nativeCallable =
         ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
       (ffi.Pointer<ffi.Char> ptr) {
+        // Rust hands over ownership of this heap-allocated string (see
+        // MessageCallback's doc comment) precisely because NativeCallable.listener
+        // posts across isolates and returns before this closure runs: a pointer
+        // valid only for the native call's duration would already be dangling here.
         final json = ptr.cast<Utf8>().toDartString();
+        _mainBindings.ffi_free_string(ptr.cast());
         callback(json);
       },
     );
@@ -1173,6 +1178,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
         ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
       (ffi.Pointer<ffi.Char> ptr) {
         final json = ptr.cast<Utf8>().toDartString();
+        _mainBindings.ffi_free_string(ptr.cast());
         callback(json);
       },
     );
@@ -1192,6 +1198,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
         ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
       (ffi.Pointer<ffi.Char> ptr) {
         final json = ptr.cast<Utf8>().toDartString();
+        _mainBindings.ffi_free_string(ptr.cast());
         callback(json);
       },
     );

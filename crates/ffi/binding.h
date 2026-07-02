@@ -43,20 +43,25 @@ typedef struct FfiBuffer {
 /**
  * Callback type for incoming message events. Receives JSON-serialized MessageEvent.
  *
- * **Lifetime contract:** The string pointer is valid only for the duration of the
- * callback invocation. The Dart side must copy the string before returning.
+ * **Lifetime contract:** the pointer is heap-allocated and owned by the receiver.
+ * `NativeCallable.listener` (the Dart-side registration mechanism) posts this call
+ * across isolates and returns before the target isolate reads the pointee, so a
+ * pointer valid only for the invocation's duration is not safe here: the receiver
+ * must free the pointer with `ffi_free_string` once done reading it.
  */
-typedef void (*MessageCallback)(const char*);
+typedef void (*MessageCallback)(char*);
 
 /**
  * Callback type for incoming reaction events. Receives JSON-serialized ReactionEvent.
+ * Same ownership contract as [`MessageCallback`].
  */
-typedef void (*ReactionCallback)(const char*);
+typedef void (*ReactionCallback)(char*);
 
 /**
  * Callback type for incoming receipt events. Receives JSON-serialized ReceiptEvent.
+ * Same ownership contract as [`MessageCallback`].
  */
-typedef void (*ReceiptCallback)(const char*);
+typedef void (*ReceiptCallback)(char*);
 
 /**
  * Free an FfiResult, releasing the error message string if present.
@@ -85,7 +90,12 @@ typedef void (*ReceiptCallback)(const char*);
 
 /**
  * Register a callback for incoming messages (JSON `MessageEvent`).
- * String pointer valid only during invocation.
+ *
+ * The pointer passed to `callback` is heap-allocated and owned by the callee:
+ * the caller must free it with [`crate::ffi_free_string`] once done reading it.
+ * `NativeCallable.listener` on the Dart side posts the call to another isolate's
+ * event loop and returns before that isolate has read the pointee, so a pointer
+ * into a temporary freed when this closure returns is not safe here.
  *
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
@@ -95,7 +105,10 @@ typedef void (*ReceiptCallback)(const char*);
 
 /**
  * Register a callback for incoming reactions (JSON `ReactionEvent`).
- * String pointer valid only during invocation.
+ *
+ * The pointer passed to `callback` is heap-allocated and owned by the callee:
+ * the caller must free it with [`crate::ffi_free_string`] once done reading it.
+ * See [`manymatrix_on_message`] for why a temporary pointer is not safe here.
  *
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
@@ -105,7 +118,10 @@ typedef void (*ReceiptCallback)(const char*);
 
 /**
  * Register a callback for read receipts (JSON `ReceiptEvent`).
- * String pointer valid only during invocation.
+ *
+ * The pointer passed to `callback` is heap-allocated and owned by the callee:
+ * the caller must free it with [`crate::ffi_free_string`] once done reading it.
+ * See [`manymatrix_on_message`] for why a temporary pointer is not safe here.
  *
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
