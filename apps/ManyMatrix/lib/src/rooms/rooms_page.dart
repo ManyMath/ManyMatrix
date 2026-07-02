@@ -3,6 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
 import 'package:manymatrix/manymatrix.dart';
 
+import '../accounts/accounts_dialog.dart';
 import '../chat/chat_page.dart';
 import '../matrix/providers.dart';
 import '../theme.dart';
@@ -42,39 +43,53 @@ class RoomsPage extends ConsumerWidget {
                 )
               else
                 const Spacer(),
-              MButton(
-                variant: MButtonVariant.ghost,
-                onPressed: () {
-                  final mode = ref.read(themeModeProvider);
-                  ref.read(themeModeProvider.notifier).state =
-                      mode == MThemeMode.dark
-                          ? MThemeMode.light
-                          : MThemeMode.dark;
-                },
-                semanticLabel: 'Toggle theme',
-            child: MIcon(ref.watch(themeModeProvider) == MThemeMode.dark
-                ? MIconData.sun
-                : MIconData.moon),
-              ),
-              const SizedBox(width: 8),
-              MButton(
-                variant: MButtonVariant.ghost,
-                onPressed: () => showJoinRoomDialog(context, ref),
-                child: const Text('Join room'),
-              ),
-              const SizedBox(width: 8),
-              MButton(
-                onPressed: () => showCreateRoomDialog(context, ref),
-                child: const Text('Create room'),
-              ),
-              const SizedBox(width: 8),
-              MButton(
-                variant: MButtonVariant.ghost,
-                onPressed: () {
-                  ref.read(selectedRoomIdProvider.notifier).state = null;
-                  ref.read(authControllerProvider.notifier).signOut();
-                },
-                child: const Text('Logout'),
+              Flexible(
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: <Widget>[
+                    MButton(
+                      variant: MButtonVariant.ghost,
+                      onPressed: () {
+                        final mode = ref.read(themeModeProvider);
+                        ref.read(themeModeProvider.notifier).state =
+                            mode == MThemeMode.dark
+                                ? MThemeMode.light
+                                : MThemeMode.dark;
+                      },
+                      semanticLabel: 'Toggle theme',
+                      child: MIcon(
+                          ref.watch(themeModeProvider) == MThemeMode.dark
+                              ? MIconData.sun
+                              : MIconData.moon),
+                    ),
+                    MButton(
+                      variant: MButtonVariant.ghost,
+                      onPressed: () => showJoinRoomDialog(context, ref),
+                      child: const Text('Join room'),
+                    ),
+                    MButton(
+                      onPressed: () => showCreateRoomDialog(context, ref),
+                      child: const Text('Create room'),
+                    ),
+                    MButton(
+                      variant: MButtonVariant.ghost,
+                      onPressed: () => showAccountsDialog(context),
+                      child: const Text('Accounts'),
+                    ),
+                    MButton(
+                      variant: MButtonVariant.ghost,
+                      onPressed: () {
+                        ref.read(selectedRoomIdProvider.notifier).state =
+                            null;
+                        ref.read(authControllerProvider.notifier).signOut();
+                      },
+                      child: const Text('Logout'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

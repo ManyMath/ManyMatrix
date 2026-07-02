@@ -31,11 +31,16 @@ String defaultLibraryPath() {
 
 /// Directory handed to the Rust SDK for its persistent store.
 ///
+/// Scoped per [accountId] so that multiple accounts never share a store
+/// (sharing one path across accounts would corrupt each other's state).
+///
 /// TODO(manymatrix): use a real per-app support directory (path_provider's
 /// getApplicationSupportDirectory) instead of the system temp dir.
-String defaultStorePath() {
+String defaultStorePath(String accountId) {
+  final safeId = accountId.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
   final dir = Directory(
-    '${Directory.systemTemp.path}${Platform.pathSeparator}manymatrix_app_store',
+    '${Directory.systemTemp.path}${Platform.pathSeparator}'
+    'manymatrix_app_store${Platform.pathSeparator}$safeId',
   );
   dir.createSync(recursive: true);
   return dir.path;

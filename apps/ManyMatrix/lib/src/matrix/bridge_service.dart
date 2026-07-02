@@ -76,15 +76,22 @@ abstract class MatrixService {
 
 /// Production [MatrixService] backed by [ManyMatrixBridge].
 ///
+/// Scoped to one saved account, identified by [accountId]: its persisted
+/// session and on-disk store path are namespaced under that id, so that
+/// switching accounts (a fresh instance per account, one live at a time,
+/// see `matrixServiceProvider`) never shares state between accounts.
+///
 /// Owns the bridge lifecycle: `initialize` once per process, `create` per
 /// session, callback registration, `syncForever` after auth, and `dispose`.
 class BridgeMatrixService implements MatrixService {
-  BridgeMatrixService();
+  BridgeMatrixService({required String accountId}) : _accountId = accountId;
 
-  static const _prefsHomeserverKey = 'manymatrix.homeserver';
-  static const _prefsSessionKey = 'manymatrix.session';
+  final String _accountId;
 
   static bool _bridgeInitialized = false;
+
+  String get _prefsHomeserverKey => 'manymatrix.$_accountId.homeserver';
+  String get _prefsSessionKey => 'manymatrix.$_accountId.session';
 
   ManyMatrixBridge? _client;
   String? _userId;
@@ -107,7 +114,7 @@ class BridgeMatrixService implements MatrixService {
 
   Future<ManyMatrixBridge> _createClient(String homeserverUrl) async {
     await _ensureInitialized();
-    return ManyMatrixBridge.create(homeserverUrl, defaultStorePath());
+    return ManyMatrixBridge.create(homeserverUrl, defaultStorePath(_accountId));
   }
 
   /// Wires callbacks and kicks off the background Rust sync thread.

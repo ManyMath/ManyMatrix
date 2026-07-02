@@ -13,4 +13,4 @@ const String? matrixRuntimeUnsupportedReason =
 String defaultLibraryPath() => '';
 
 /// Unused on web; present so callers compile on every platform.
-String defaultStorePath() => 'manymatrix-web-store';
+String defaultStorePath(String accountId) => 'manymatrix-web-store-$accountId';
