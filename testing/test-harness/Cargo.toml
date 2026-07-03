@@ -17,6 +17,11 @@ name = "web_e2e_actor"
 path = "src/bin/web_e2e_actor.rs"
 required-features = ["hosted-tests"]
 
+[[bin]]
+name = "spike_homeserver"
+path = "src/bin/spike_homeserver.rs"
+required-features = ["embedded-tests"]
+
 [dependencies]
 manymatrix-core = { path = "../../crates/core" }
 manymatrix-ffi = { path = "../../crates/ffi" }
