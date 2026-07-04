@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
+import 'package:manyui_hooks/manyui_hooks.dart';
 import 'package:manymatrix/manymatrix.dart';
 
 import '../matrix/providers.dart';
@@ -236,8 +237,7 @@ class _Composer extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = MTheme.of(context);
-    final controller = useMemoized(() => MController<String>(''), [roomId]);
-    useEffect(() => controller.dispose, [controller]);
+    final controller = useMController<String>('', [roomId]);
     final sending = useState(false);
     final sendError = useState<String?>(null);
     final typingTimer = useRef<Timer?>(null);

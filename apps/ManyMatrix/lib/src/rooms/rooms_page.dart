@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
+import 'package:manyui_riverpod/manyui_riverpod.dart';
 import 'package:manymatrix/manymatrix.dart';
 
 import '../accounts/accounts_dialog.dart';
@@ -35,8 +36,9 @@ class RoomsPage extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     userId,
-                    style: theme.typography.bodySmall
-                        .copyWith(color: theme.colors.mutedForeground),
+                    style: theme.typography.bodySmall.copyWith(
+                      color: theme.colors.mutedForeground,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -52,18 +54,14 @@ class RoomsPage extends ConsumerWidget {
                   children: <Widget>[
                     MButton(
                       variant: MButtonVariant.ghost,
-                      onPressed: () {
-                        final mode = ref.read(themeModeProvider);
-                        ref.read(themeModeProvider.notifier).state =
-                            mode == MThemeMode.dark
-                                ? MThemeMode.light
-                                : MThemeMode.dark;
-                      },
+                      onPressed: () => ref.toggleMThemeMode(themeModeProvider),
                       semanticLabel: 'Toggle theme',
                       child: MIcon(
-                          ref.watch(themeModeProvider) == MThemeMode.dark
-                              ? MIconData.sun
-                              : MIconData.moon),
+                        ref.watchMThemeMode(themeModeProvider) ==
+                                MThemeMode.dark
+                            ? MIconData.sun
+                            : MIconData.moon,
+                      ),
                     ),
                     MButton(
                       variant: MButtonVariant.ghost,
@@ -82,8 +80,7 @@ class RoomsPage extends ConsumerWidget {
                     MButton(
                       variant: MButtonVariant.ghost,
                       onPressed: () {
-                        ref.read(selectedRoomIdProvider.notifier).state =
-                            null;
+                        ref.read(selectedRoomIdProvider.notifier).state = null;
                         ref.read(authControllerProvider.notifier).signOut();
                       },
                       child: const Text('Logout'),
@@ -118,8 +115,9 @@ class _TwoPaneBody extends ConsumerWidget {
               ? Center(
                   child: Text(
                     'Select a room to start chatting',
-                    style: theme.typography.body
-                        .copyWith(color: theme.colors.mutedForeground),
+                    style: theme.typography.body.copyWith(
+                      color: theme.colors.mutedForeground,
+                    ),
                   ),
                 )
               : ChatView(
@@ -163,8 +161,9 @@ class _RoomListBody extends ConsumerWidget {
       error: (error, _) => Center(
         child: Text(
           'Could not load rooms: $error',
-          style: theme.typography.bodySmall
-              .copyWith(color: theme.colors.destructive),
+          style: theme.typography.bodySmall.copyWith(
+            color: theme.colors.destructive,
+          ),
           textAlign: TextAlign.center,
         ),
       ),
@@ -176,8 +175,9 @@ class _RoomListBody extends ConsumerWidget {
               children: <Widget>[
                 Text(
                   'No rooms yet',
-                  style: theme.typography.body
-                      .copyWith(color: theme.colors.mutedForeground),
+                  style: theme.typography.body.copyWith(
+                    color: theme.colors.mutedForeground,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 MButton(

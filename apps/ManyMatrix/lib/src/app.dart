@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
+import 'package:manyui_riverpod/manyui_riverpod.dart';
 
 import 'login/login_page.dart';
 import 'matrix/account.dart';
@@ -14,7 +15,7 @@ class ManyMatrixApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(themeModeProvider);
+    final mode = ref.watchMThemeMode(themeModeProvider);
     // Neither provider holds widget-visible state -- watching just
     // instantiates them: one loads persisted accounts at startup, the other
     // listens for changes and writes them back.
@@ -64,8 +65,9 @@ class _RestoringSplash extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               'Restoring session…',
-              style: theme.typography.bodySmall
-                  .copyWith(color: theme.colors.mutedForeground),
+              style: theme.typography.bodySmall.copyWith(
+                color: theme.colors.mutedForeground,
+              ),
             ),
           ],
         ),

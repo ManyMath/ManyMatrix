@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
+import 'package:manyui_riverpod/manyui_riverpod.dart';
 
 import '../matrix/auth.dart';
 import '../matrix/providers.dart';
@@ -31,7 +32,9 @@ class LoginPage extends HookConsumerWidget {
           ? _defaultHomeserver
           : homeserver.value.trim();
       if (username.value.trim().isEmpty || password.value.isEmpty) return;
-      ref.read(authControllerProvider.notifier).signIn(
+      ref
+          .read(authControllerProvider.notifier)
+          .signIn(
             homeserverUrl: server,
             username: username.value.trim(),
             password: password.value,
@@ -45,15 +48,13 @@ class LoginPage extends HookConsumerWidget {
           const Spacer(),
           MButton(
             variant: MButtonVariant.ghost,
-            onPressed: () {
-              final mode = ref.read(themeModeProvider);
-              ref.read(themeModeProvider.notifier).state =
-                  mode == MThemeMode.dark ? MThemeMode.light : MThemeMode.dark;
-            },
+            onPressed: () => ref.toggleMThemeMode(themeModeProvider),
             semanticLabel: 'Toggle theme',
-            child: MIcon(ref.watch(themeModeProvider) == MThemeMode.dark
-                ? MIconData.sun
-                : MIconData.moon),
+            child: MIcon(
+              ref.watchMThemeMode(themeModeProvider) == MThemeMode.dark
+                  ? MIconData.sun
+                  : MIconData.moon,
+            ),
           ),
         ],
       ),
@@ -101,8 +102,9 @@ class LoginPage extends HookConsumerWidget {
         const SizedBox(height: 8),
         Text(
           'Connect to your homeserver to get started.',
-          style: theme.typography.bodySmall
-              .copyWith(color: theme.colors.mutedForeground),
+          style: theme.typography.bodySmall.copyWith(
+            color: theme.colors.mutedForeground,
+          ),
         ),
         const SizedBox(height: 24),
         const MLabel('Homeserver'),
@@ -138,8 +140,9 @@ class LoginPage extends HookConsumerWidget {
           const SizedBox(height: 12),
           Text(
             error,
-            style: theme.typography.bodySmall
-                .copyWith(color: theme.colors.destructive),
+            style: theme.typography.bodySmall.copyWith(
+              color: theme.colors.destructive,
+            ),
           ),
         ],
         const SizedBox(height: 24),
@@ -170,13 +173,17 @@ class LoginPage extends HookConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text('Matrix on web coming soon', style: theme.typography.headlineSmall),
+        Text(
+          'Matrix on web coming soon',
+          style: theme.typography.headlineSmall,
+        ),
         const SizedBox(height: 8),
         Text(
           matrixRuntimeUnsupportedReason ??
               'This platform cannot run the Matrix bridge yet.',
-          style: theme.typography.bodySmall
-              .copyWith(color: theme.colors.mutedForeground),
+          style: theme.typography.bodySmall.copyWith(
+            color: theme.colors.mutedForeground,
+          ),
         ),
       ],
     );
