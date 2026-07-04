@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manymatrix/manymatrix.dart';
 
@@ -29,18 +31,18 @@ class RoomTimeline {
     String? endToken,
     bool clearEndToken = false,
     bool? loadingOlder,
-  }) =>
-      RoomTimeline(
-        newestFirst: newestFirst ?? this.newestFirst,
-        endToken: clearEndToken ? null : (endToken ?? this.endToken),
-        loadingOlder: loadingOlder ?? this.loadingOlder,
-      );
+  }) => RoomTimeline(
+    newestFirst: newestFirst ?? this.newestFirst,
+    endToken: clearEndToken ? null : (endToken ?? this.endToken),
+    loadingOlder: loadingOlder ?? this.loadingOlder,
+  );
 }
 
 /// Per-room timeline: initial page, older pages on demand, live appends.
 class RoomTimelineController
     extends AutoDisposeFamilyAsyncNotifier<RoomTimeline, String> {
   static const _pageSize = 50;
+  String? _lastReadReceiptEventId;
 
   @override
   Future<RoomTimeline> build(String roomId) async {
@@ -53,10 +55,12 @@ class RoomTimelineController
 
     final page = await service.getMessages(roomId, limit: _pageSize);
     // getMessages returns oldest -> newest; the UI wants newest at index 0.
-    return RoomTimeline(
+    final timeline = RoomTimeline(
       newestFirst: page.messages.reversed.toList(),
       endToken: page.endToken,
     );
+    _markNewestRead(timeline);
+    return timeline;
   }
 
   /// Appends a just-sent message immediately; the sync callback's copy is
@@ -68,10 +72,9 @@ class RoomTimelineController
     if (timeline == null) return;
     if (timeline.newestFirst.any((m) => m.eventId == event.eventId)) return;
     state = AsyncData(
-      timeline.copyWith(
-        newestFirst: [event, ...timeline.newestFirst],
-      ),
+      timeline.copyWith(newestFirst: [event, ...timeline.newestFirst]),
     );
+    _sendReadReceipt(event);
   }
 
   /// Fetches the next-older page and appends it to the end of the timeline.
@@ -80,11 +83,9 @@ class RoomTimelineController
     if (timeline == null || !timeline.canLoadOlder) return;
     state = AsyncData(timeline.copyWith(loadingOlder: true));
     try {
-      final page = await ref.read(matrixServiceProvider).getMessages(
-            arg,
-            fromToken: timeline.endToken,
-            limit: _pageSize,
-          );
+      final page = await ref
+          .read(matrixServiceProvider)
+          .getMessages(arg, fromToken: timeline.endToken, limit: _pageSize);
       final known = timeline.newestFirst.map((m) => m.eventId).toSet();
       final older = page.messages.reversed
           .where((m) => !known.contains(m.eventId))
@@ -99,9 +100,25 @@ class RoomTimelineController
       state = AsyncData(timeline.copyWith(loadingOlder: false));
     }
   }
+
+  void _markNewestRead(RoomTimeline timeline) {
+    if (timeline.newestFirst.isEmpty) return;
+    _sendReadReceipt(timeline.newestFirst.first);
+  }
+
+  void _sendReadReceipt(MessageEvent event) {
+    if (event.eventId == _lastReadReceiptEventId) return;
+    _lastReadReceiptEventId = event.eventId;
+    unawaited(
+      ref
+          .read(matrixServiceProvider)
+          .sendReadReceipt(event.roomId, event.eventId)
+          .catchError((_) {}),
+    );
+  }
 }
 
 final roomTimelineProvider = AsyncNotifierProvider.autoDispose
     .family<RoomTimelineController, RoomTimeline, String>(
-  RoomTimelineController.new,
-);
+      RoomTimelineController.new,
+    );
