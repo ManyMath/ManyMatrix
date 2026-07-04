@@ -14,8 +14,10 @@ import 'package:manymatrix_app/src/room_info/room_info_page.dart';
 class _FakeModerationService implements MatrixService {
   _FakeModerationService();
 
-  final List<({String userId, String? reason})> kicked = <({String userId, String? reason})>[];
-  final List<({String userId, String? reason})> banned = <({String userId, String? reason})>[];
+  final List<({String userId, String? reason})> kicked =
+      <({String userId, String? reason})>[];
+  final List<({String userId, String? reason})> banned =
+      <({String userId, String? reason})>[];
   bool failNext = false;
 
   @override
@@ -33,25 +35,38 @@ class _FakeModerationService implements MatrixService {
   @override
   Stream<MessageEvent> get messageEvents => const Stream<MessageEvent>.empty();
   @override
+  Stream<ReactionEvent> get reactionEvents =>
+      const Stream<ReactionEvent>.empty();
+  @override
+  Stream<ReceiptEvent> get receiptEvents => const Stream<ReceiptEvent>.empty();
+  @override
   String? get currentUserId => null;
   @override
   Future<String?> restoreSession() async => null;
   @override
-  Future<String> login({required String homeserverUrl, required String username, required String password}) async =>
-      throw UnimplementedError();
+  Future<String> login({
+    required String homeserverUrl,
+    required String username,
+    required String password,
+  }) async => throw UnimplementedError();
   @override
   Future<void> logout() async {}
   @override
   Future<List<RoomSummary>> joinedRooms() async => const <RoomSummary>[];
   @override
-  Future<String> createRoom({String? name, String? topic}) async => throw UnimplementedError();
+  Future<String> createRoom({String? name, String? topic}) async =>
+      throw UnimplementedError();
   @override
-  Future<String> joinRoom(String roomIdOrAlias) async => throw UnimplementedError();
+  Future<String> joinRoom(String roomIdOrAlias) async =>
+      throw UnimplementedError();
   @override
   Future<void> invite(String roomId, String userId) async {}
   @override
-  Future<PaginatedMessages> getMessages(String roomId, {String? fromToken, int limit = 50}) async =>
-      PaginatedMessages(messages: <MessageEvent>[]);
+  Future<PaginatedMessages> getMessages(
+    String roomId, {
+    String? fromToken,
+    int limit = 50,
+  }) async => PaginatedMessages(messages: <MessageEvent>[]);
   @override
   Future<String> sendText(String roomId, String body) async => r'$local';
   @override
@@ -66,12 +81,18 @@ class _FakeModerationService implements MatrixService {
   void dispose() {}
 }
 
-Widget _app(_FakeModerationService service, List<String> members, {String? currentUserId}) {
+Widget _app(
+  _FakeModerationService service,
+  List<String> members, {
+  String? currentUserId,
+}) {
   return ProviderScope(
     overrides: [
       matrixServiceProvider.overrideWithValue(service),
       currentUserIdProvider.overrideWithValue(currentUserId),
-      roomMembersProvider('!room:example.org').overrideWith((ref) async => members),
+      roomMembersProvider(
+        '!room:example.org',
+      ).overrideWith((ref) async => members),
     ],
     child: const MWidgetsApp(
       debugShowCheckedModeBanner: false,
@@ -82,14 +103,16 @@ Widget _app(_FakeModerationService service, List<String> members, {String? curre
 
 void main() {
   group('RoomInfoPage member list', () {
-    testWidgets('lists members and hides kick/ban for the current user',
-        (tester) async {
+    testWidgets('lists members and hides kick/ban for the current user', (
+      tester,
+    ) async {
       final service = _FakeModerationService();
-      await tester.pumpWidget(_app(
-        service,
-        const ['@alice:example.org', '@bob:example.org'],
-        currentUserId: '@alice:example.org',
-      ));
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+          '@bob:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
       await tester.pump();
 
       expect(find.text('@alice:example.org'), findsOneWidget);
@@ -99,14 +122,15 @@ void main() {
       expect(find.widgetWithText(MButton, 'Ban'), findsOneWidget);
     });
 
-    testWidgets('kick requires confirmation and calls the service',
-        (tester) async {
+    testWidgets('kick requires confirmation and calls the service', (
+      tester,
+    ) async {
       final service = _FakeModerationService();
-      await tester.pumpWidget(_app(
-        service,
-        const ['@bob:example.org'],
-        currentUserId: '@alice:example.org',
-      ));
+      await tester.pumpWidget(
+        _app(service, const [
+          '@bob:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
       await tester.pump();
 
       await tester.tap(find.widgetWithText(MButton, 'Kick'));
@@ -120,14 +144,15 @@ void main() {
       expect(service.kicked.single.userId, '@bob:example.org');
     });
 
-    testWidgets('cancelling the confirm dialog does not call the service',
-        (tester) async {
+    testWidgets('cancelling the confirm dialog does not call the service', (
+      tester,
+    ) async {
       final service = _FakeModerationService();
-      await tester.pumpWidget(_app(
-        service,
-        const ['@bob:example.org'],
-        currentUserId: '@alice:example.org',
-      ));
+      await tester.pumpWidget(
+        _app(service, const [
+          '@bob:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
       await tester.pump();
 
       await tester.tap(find.widgetWithText(MButton, 'Ban'));
@@ -140,11 +165,11 @@ void main() {
 
     testWidgets('a failed ban shows an error dialog', (tester) async {
       final service = _FakeModerationService()..failNext = true;
-      await tester.pumpWidget(_app(
-        service,
-        const ['@bob:example.org'],
-        currentUserId: '@alice:example.org',
-      ));
+      await tester.pumpWidget(
+        _app(service, const [
+          '@bob:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
       await tester.pump();
 
       await tester.tap(find.widgetWithText(MButton, 'Ban'));

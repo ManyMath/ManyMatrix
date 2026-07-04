@@ -144,6 +144,87 @@ void main() {
     });
   });
 
+  group('ReactionEvent', () {
+    test('fromJson with all fields', () {
+      final json = {
+        'event_id': '\$reaction1',
+        'room_id': '!abc:matrix.org',
+        'sender': '@bob:matrix.org',
+        'relates_to_event_id': '\$event1',
+        'key': '+1',
+        'timestamp': 1234567891,
+      };
+      final reaction = ReactionEvent.fromJson(json);
+      expect(reaction.eventId, '\$reaction1');
+      expect(reaction.roomId, '!abc:matrix.org');
+      expect(reaction.sender, '@bob:matrix.org');
+      expect(reaction.relatesToEventId, '\$event1');
+      expect(reaction.key, '+1');
+      expect(reaction.timestamp, 1234567891);
+    });
+
+    test('toJson round-trip', () {
+      final original = ReactionEvent(
+        eventId: '\$reaction',
+        roomId: '!r:m.org',
+        sender: '@a:m.org',
+        relatesToEventId: '\$target',
+        key: 'ok',
+        timestamp: 600,
+      );
+      final json = original.toJson();
+      final restored = ReactionEvent.fromJson(json);
+      expect(restored.eventId, original.eventId);
+      expect(restored.relatesToEventId, original.relatesToEventId);
+      expect(restored.key, original.key);
+    });
+  });
+
+  group('ReceiptEvent', () {
+    test('fromJson with all fields', () {
+      final json = {
+        'room_id': '!abc:matrix.org',
+        'user_id': '@bob:matrix.org',
+        'event_id': '\$event1',
+        'receipt_type': 'm.read',
+        'timestamp': 1234567892,
+      };
+      final receipt = ReceiptEvent.fromJson(json);
+      expect(receipt.roomId, '!abc:matrix.org');
+      expect(receipt.userId, '@bob:matrix.org');
+      expect(receipt.eventId, '\$event1');
+      expect(receipt.receiptType, 'm.read');
+      expect(receipt.timestamp, 1234567892);
+    });
+
+    test('fromJson accepts null timestamp', () {
+      final receipt = ReceiptEvent.fromJson({
+        'room_id': '!abc:matrix.org',
+        'user_id': '@bob:matrix.org',
+        'event_id': '\$event1',
+        'receipt_type': 'm.read',
+        'timestamp': null,
+      });
+      expect(receipt.timestamp, isNull);
+    });
+
+    test('toJson round-trip', () {
+      final original = ReceiptEvent(
+        roomId: '!r:m.org',
+        userId: '@a:m.org',
+        eventId: '\$target',
+        receiptType: 'm.read',
+        timestamp: 700,
+      );
+      final json = original.toJson();
+      final restored = ReceiptEvent.fromJson(json);
+      expect(restored.userId, original.userId);
+      expect(restored.eventId, original.eventId);
+      expect(restored.receiptType, original.receiptType);
+      expect(restored.timestamp, original.timestamp);
+    });
+  });
+
   group('PaginatedMessages', () {
     test('fromJson with messages and token', () {
       final json = {

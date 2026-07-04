@@ -21,13 +21,21 @@ class FakeMatrixService implements MatrixService {
   String? lastCreatedName;
   String? lastCreatedTopic;
   String? lastJoinedTarget;
-  final List<({String roomId, String userId})> invited = <({String roomId, String userId})>[];
+  final List<({String roomId, String userId})> invited =
+      <({String roomId, String userId})>[];
 
   final _messages = StreamController<MessageEvent>.broadcast();
   String? _userId = '@alice:example.org';
 
   @override
   Stream<MessageEvent> get messageEvents => _messages.stream;
+
+  @override
+  Stream<ReactionEvent> get reactionEvents =>
+      const Stream<ReactionEvent>.empty();
+
+  @override
+  Stream<ReceiptEvent> get receiptEvents => const Stream<ReceiptEvent>.empty();
 
   @override
   String? get currentUserId => _userId;
@@ -61,11 +69,7 @@ class FakeMatrixService implements MatrixService {
     const roomId = '!new:example.org';
     rooms = <RoomSummary>[
       ...rooms,
-      RoomSummary(
-        roomId: roomId,
-        displayName: name ?? roomId,
-        unreadCount: 0,
-      ),
+      RoomSummary(roomId: roomId, displayName: name ?? roomId, unreadCount: 0),
     ];
     return roomId;
   }
@@ -95,8 +99,7 @@ class FakeMatrixService implements MatrixService {
     String roomId, {
     String? fromToken,
     int limit = 50,
-  }) async =>
-      PaginatedMessages(messages: <MessageEvent>[]);
+  }) async => PaginatedMessages(messages: <MessageEvent>[]);
 
   @override
   Future<String> sendText(String roomId, String body) async => r'$local';
@@ -136,15 +139,20 @@ Widget _app(FakeMatrixService service) {
 }
 
 Future<void> _enterField(WidgetTester tester, Finder field, String text) async {
-  final editable =
-      find.descendant(of: field, matching: find.byType(EditableText));
+  final editable = find.descendant(
+    of: field,
+    matching: find.byType(EditableText),
+  );
   await tester.showKeyboard(editable);
   await tester.pump();
   await tester.enterText(editable, text);
   await tester.pump();
 }
 
-Future<void> _pumpToRooms(WidgetTester tester, FakeMatrixService service) async {
+Future<void> _pumpToRooms(
+  WidgetTester tester,
+  FakeMatrixService service,
+) async {
   await tester.pumpWidget(_app(service));
   // AuthRestoring -> AuthAuthenticated (restoreSession returns a userId
   // immediately) -> rooms list loads.
@@ -155,8 +163,9 @@ Future<void> _pumpToRooms(WidgetTester tester, FakeMatrixService service) async 
 
 void main() {
   group('create room dialog', () {
-    testWidgets('creating a room adds it to the list and selects it',
-        (tester) async {
+    testWidgets('creating a room adds it to the list and selects it', (
+      tester,
+    ) async {
       final service = FakeMatrixService();
       await _pumpToRooms(tester, service);
 
@@ -176,21 +185,23 @@ void main() {
       expect(find.text('No rooms yet'), findsNothing);
     });
 
-    testWidgets('a failed create shows an inline error and keeps the dialog open',
-        (tester) async {
-      final service = FakeMatrixService(failCreateWith: 'M_FORBIDDEN');
-      await _pumpToRooms(tester, service);
+    testWidgets(
+      'a failed create shows an inline error and keeps the dialog open',
+      (tester) async {
+        final service = FakeMatrixService(failCreateWith: 'M_FORBIDDEN');
+        await _pumpToRooms(tester, service);
 
-      await tester.tap(find.text('Create room').first);
-      await tester.pump();
-      await tester.tap(find.widgetWithText(MButton, 'Create'));
-      await tester.pump();
-      await tester.pump();
+        await tester.tap(find.text('Create room').first);
+        await tester.pump();
+        await tester.tap(find.widgetWithText(MButton, 'Create'));
+        await tester.pump();
+        await tester.pump();
 
-      expect(find.textContaining('Could not create room'), findsOneWidget);
-      // Dialog is still open -- Cancel button still present.
-      expect(find.widgetWithText(MButton, 'Cancel'), findsOneWidget);
-    });
+        expect(find.textContaining('Could not create room'), findsOneWidget);
+        // Dialog is still open -- Cancel button still present.
+        expect(find.widgetWithText(MButton, 'Cancel'), findsOneWidget);
+      },
+    );
   });
 
   group('join room dialog', () {

@@ -87,6 +87,57 @@ void main() {
     expect(timeline.newestFirst.single.eventId, 'event-1');
     expect(service.readReceipts, isEmpty);
   });
+
+  test('reaction and receipt callbacks attach metadata to messages', () async {
+    final service = _FakeMatrixService(
+      initialMessages: <MessageEvent>[_message('event-1')],
+    );
+    final container = _container(service);
+    addTearDown(container.dispose);
+    final provider = roomTimelineProvider(_roomId);
+    final subscription = container.listen(provider, (_, __) {});
+    addTearDown(subscription.close);
+
+    await container.read(provider.future);
+
+    service
+      ..emitReaction(_reaction('reaction-1', relatesToEventId: 'event-1'))
+      ..emitReceipt(_receipt('event-1', userId: '@bob:example.org'));
+    await Future<void>.delayed(Duration.zero);
+
+    final timeline = container.read(provider).value!;
+    expect(timeline.reactionsFor('event-1').single.key, '+1');
+    expect(timeline.receiptsFor('event-1').single.userId, '@bob:example.org');
+  });
+
+  test('duplicates reactions and moves receipts by reader', () async {
+    final service = _FakeMatrixService(
+      initialMessages: <MessageEvent>[
+        _message('event-1', timestamp: 1),
+        _message('event-2', timestamp: 2),
+      ],
+    );
+    final container = _container(service);
+    addTearDown(container.dispose);
+    final provider = roomTimelineProvider(_roomId);
+    final subscription = container.listen(provider, (_, __) {});
+    addTearDown(subscription.close);
+
+    await container.read(provider.future);
+
+    final reaction = _reaction('reaction-1', relatesToEventId: 'event-1');
+    service
+      ..emitReaction(reaction)
+      ..emitReaction(reaction)
+      ..emitReceipt(_receipt('event-1', userId: '@bob:example.org'))
+      ..emitReceipt(_receipt('event-2', userId: '@bob:example.org'));
+    await Future<void>.delayed(Duration.zero);
+
+    final timeline = container.read(provider).value!;
+    expect(timeline.reactionsFor('event-1'), hasLength(1));
+    expect(timeline.receiptsFor('event-1'), isEmpty);
+    expect(timeline.receiptsFor('event-2').single.userId, '@bob:example.org');
+  });
 }
 
 const _roomId = '!room:example.org';
@@ -108,6 +159,27 @@ MessageEvent _message(String eventId, {int timestamp = 0}) {
   );
 }
 
+ReactionEvent _reaction(String eventId, {required String relatesToEventId}) {
+  return ReactionEvent(
+    eventId: eventId,
+    roomId: _roomId,
+    sender: '@bob:example.org',
+    relatesToEventId: relatesToEventId,
+    key: '+1',
+    timestamp: 3,
+  );
+}
+
+ReceiptEvent _receipt(String eventId, {required String userId}) {
+  return ReceiptEvent(
+    roomId: _roomId,
+    userId: userId,
+    eventId: eventId,
+    receiptType: 'm.read',
+    timestamp: 4,
+  );
+}
+
 class _FakeMatrixService implements MatrixService {
   _FakeMatrixService({
     this.initialMessages = const <MessageEvent>[],
@@ -121,13 +193,29 @@ class _FakeMatrixService implements MatrixService {
   bool failReadReceipt = false;
 
   final _messages = StreamController<MessageEvent>.broadcast();
+  final _reactions = StreamController<ReactionEvent>.broadcast();
+  final _receipts = StreamController<ReceiptEvent>.broadcast();
 
   void emit(MessageEvent event) {
     _messages.add(event);
   }
 
+  void emitReaction(ReactionEvent event) {
+    _reactions.add(event);
+  }
+
+  void emitReceipt(ReceiptEvent event) {
+    _receipts.add(event);
+  }
+
   @override
   Stream<MessageEvent> get messageEvents => _messages.stream;
+
+  @override
+  Stream<ReactionEvent> get reactionEvents => _reactions.stream;
+
+  @override
+  Stream<ReceiptEvent> get receiptEvents => _receipts.stream;
 
   @override
   String? get currentUserId => '@alice:example.org';
@@ -197,5 +285,7 @@ class _FakeMatrixService implements MatrixService {
   @override
   void dispose() {
     _messages.close();
+    _reactions.close();
+    _receipts.close();
   }
 }

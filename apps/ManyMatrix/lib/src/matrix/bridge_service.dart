@@ -15,6 +15,12 @@ abstract class MatrixService {
   /// Typed message events from the background sync thread. Broadcast.
   Stream<MessageEvent> get messageEvents;
 
+  /// Typed reaction events from the background sync thread. Broadcast.
+  Stream<ReactionEvent> get reactionEvents;
+
+  /// Typed read-receipt events from the background sync thread. Broadcast.
+  Stream<ReceiptEvent> get receiptEvents;
+
   /// The logged-in user's Matrix ID, or null when logged out.
   String? get currentUserId;
 
@@ -97,11 +103,26 @@ class BridgeMatrixService implements MatrixService {
   String? _userId;
 
   final _rawMessages = StreamController<String>.broadcast();
-  late final Stream<MessageEvent> _messageEvents =
-      messageEventStream(_rawMessages.stream).asBroadcastStream();
+  final _rawReactions = StreamController<String>.broadcast();
+  final _rawReceipts = StreamController<String>.broadcast();
+  late final Stream<MessageEvent> _messageEvents = messageEventStream(
+    _rawMessages.stream,
+  ).asBroadcastStream();
+  late final Stream<ReactionEvent> _reactionEvents = reactionEventStream(
+    _rawReactions.stream,
+  ).asBroadcastStream();
+  late final Stream<ReceiptEvent> _receiptEvents = receiptEventStream(
+    _rawReceipts.stream,
+  ).asBroadcastStream();
 
   @override
   Stream<MessageEvent> get messageEvents => _messageEvents;
+
+  @override
+  Stream<ReactionEvent> get reactionEvents => _reactionEvents;
+
+  @override
+  Stream<ReceiptEvent> get receiptEvents => _receiptEvents;
 
   @override
   String? get currentUserId => _userId;
@@ -120,6 +141,8 @@ class BridgeMatrixService implements MatrixService {
   /// Wires callbacks and kicks off the background Rust sync thread.
   Future<void> _startSession(ManyMatrixBridge client) async {
     client.onMessage(_rawMessages.add);
+    client.onReaction(_rawReactions.add);
+    client.onReceipt(_rawReceipts.add);
     _userId = await client.whoami();
     await client.syncForever();
   }
@@ -219,8 +242,7 @@ class BridgeMatrixService implements MatrixService {
     String roomId, {
     String? fromToken,
     int limit = 50,
-  }) =>
-      _requireClient.getMessages(roomId, fromToken: fromToken, limit: limit);
+  }) => _requireClient.getMessages(roomId, fromToken: fromToken, limit: limit);
 
   @override
   Future<String> sendText(String roomId, String body) =>
@@ -259,5 +281,7 @@ class BridgeMatrixService implements MatrixService {
     _client?.dispose();
     _client = null;
     _rawMessages.close();
+    _rawReactions.close();
+    _rawReceipts.close();
   }
 }

@@ -142,9 +142,9 @@ class ChatView extends HookConsumerWidget {
                     PageRouteBuilder<void>(
                       pageBuilder: (context, animation, secondaryAnimation) =>
                           RoomInfoPage(
-                        roomId: roomId,
-                        roomName: roomName ?? roomId,
-                      ),
+                            roomId: roomId,
+                            roomName: roomName ?? roomId,
+                          ),
                     ),
                   ),
                   semanticLabel: 'Room info',
@@ -165,8 +165,9 @@ class ChatView extends HookConsumerWidget {
             error: (error, _) => Center(
               child: Text(
                 'Could not load messages: $error',
-                style: theme.typography.bodySmall
-                    .copyWith(color: theme.colors.destructive),
+                style: theme.typography.bodySmall.copyWith(
+                  color: theme.colors.destructive,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -175,8 +176,9 @@ class ChatView extends HookConsumerWidget {
                 return Center(
                   child: Text(
                     'No messages yet — say hi!',
-                    style: theme.typography.body
-                        .copyWith(color: theme.colors.mutedForeground),
+                    style: theme.typography.body.copyWith(
+                      color: theme.colors.mutedForeground,
+                    ),
                   ),
                 );
               }
@@ -199,10 +201,20 @@ class ChatView extends HookConsumerWidget {
                     );
                   }
                   final message = data.newestFirst[index];
+                  final isMine =
+                      currentUserId != null && message.sender == currentUserId;
                   return MessageBubble(
                     message: message,
-                    isMine: currentUserId != null &&
-                        message.sender == currentUserId,
+                    isMine: isMine,
+                    reactions: data.reactionsFor(message.eventId),
+                    receipts: isMine
+                        ? data
+                              .receiptsFor(message.eventId)
+                              .where(
+                                (receipt) => receipt.userId != currentUserId,
+                              )
+                              .toList()
+                        : const <ReceiptEvent>[],
                   );
                 },
               );
@@ -229,7 +241,11 @@ class _Composer extends HookConsumerWidget {
     final sending = useState(false);
     final sendError = useState<String?>(null);
     final typingTimer = useRef<Timer?>(null);
-    useEffect(() => () => typingTimer.value?.cancel(), const []);
+    useEffect(
+      () =>
+          () => typingTimer.value?.cancel(),
+      const [],
+    );
 
     void onChanged(String text) {
       if (text.isEmpty) return;
@@ -254,7 +270,9 @@ class _Composer extends HookConsumerWidget {
         controller.value = '';
         final sender = service.currentUserId;
         if (sender != null) {
-          ref.read(roomTimelineProvider(roomId).notifier).addLocalEcho(
+          ref
+              .read(roomTimelineProvider(roomId).notifier)
+              .addLocalEcho(
                 MessageEvent(
                   eventId: eventId,
                   roomId: roomId,
@@ -282,8 +300,9 @@ class _Composer extends HookConsumerWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 sendError.value!,
-                style: theme.typography.bodySmall
-                    .copyWith(color: theme.colors.destructive),
+                style: theme.typography.bodySmall.copyWith(
+                  color: theme.colors.destructive,
+                ),
               ),
             ),
           Row(

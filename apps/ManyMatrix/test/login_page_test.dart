@@ -27,6 +27,13 @@ class FakeMatrixService implements MatrixService {
   Stream<MessageEvent> get messageEvents => _messages.stream;
 
   @override
+  Stream<ReactionEvent> get reactionEvents =>
+      const Stream<ReactionEvent>.empty();
+
+  @override
+  Stream<ReceiptEvent> get receiptEvents => const Stream<ReceiptEvent>.empty();
+
+  @override
   String? get currentUserId => _userId;
 
   @override
@@ -57,7 +64,8 @@ class FakeMatrixService implements MatrixService {
   Future<List<RoomSummary>> joinedRooms() async => const <RoomSummary>[];
 
   @override
-  Future<String> createRoom({String? name, String? topic}) async => '!new:example.org';
+  Future<String> createRoom({String? name, String? topic}) async =>
+      '!new:example.org';
 
   @override
   Future<String> joinRoom(String roomIdOrAlias) async => roomIdOrAlias;
@@ -70,8 +78,7 @@ class FakeMatrixService implements MatrixService {
     String roomId, {
     String? fromToken,
     int limit = 50,
-  }) async =>
-      PaginatedMessages(messages: <MessageEvent>[]);
+  }) async => PaginatedMessages(messages: <MessageEvent>[]);
 
   @override
   Future<String> sendText(String roomId, String body) async => r'$local';
@@ -121,11 +128,7 @@ Widget _app(FakeMatrixService service) {
   );
 }
 
-Future<void> _enterField(
-  WidgetTester tester,
-  int index,
-  String text,
-) async {
+Future<void> _enterField(WidgetTester tester, int index, String text) async {
   final editable = find.descendant(
     of: find.byType(MTextField).at(index),
     matching: find.byType(EditableText),
@@ -139,8 +142,9 @@ Future<void> _enterField(
 }
 
 void main() {
-  testWidgets('signs in through the fake service and lands on rooms',
-      (tester) async {
+  testWidgets('signs in through the fake service and lands on rooms', (
+    tester,
+  ) async {
     final service = FakeMatrixService();
     await tester.pumpWidget(_app(service));
     await tester.pump(); // AuthRestoring -> AuthUnauthenticated
@@ -164,8 +168,9 @@ void main() {
     expect(find.text('No rooms yet'), findsOneWidget);
   });
 
-  testWidgets('shows a friendly error when credentials are rejected',
-      (tester) async {
+  testWidgets('shows a friendly error when credentials are rejected', (
+    tester,
+  ) async {
     final service = FakeMatrixService(failLoginWith: 'M_FORBIDDEN');
     await tester.pumpWidget(_app(service));
     await tester.pump();

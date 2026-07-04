@@ -14,6 +14,8 @@ class RoomTimeline {
     required this.newestFirst,
     this.endToken,
     this.loadingOlder = false,
+    this.reactionsByEventId = const <String, List<ReactionEvent>>{},
+    this.receiptsByEventId = const <String, List<ReceiptEvent>>{},
   });
 
   final List<MessageEvent> newestFirst;
@@ -24,17 +26,33 @@ class RoomTimeline {
   /// True while a load-older request is in flight.
   final bool loadingOlder;
 
+  /// Reaction events keyed by the message event ID they annotate.
+  final Map<String, List<ReactionEvent>> reactionsByEventId;
+
+  /// Read receipt events keyed by the message event ID they mark as read.
+  final Map<String, List<ReceiptEvent>> receiptsByEventId;
+
   bool get canLoadOlder => endToken != null && !loadingOlder;
+
+  List<ReactionEvent> reactionsFor(String eventId) =>
+      reactionsByEventId[eventId] ?? const <ReactionEvent>[];
+
+  List<ReceiptEvent> receiptsFor(String eventId) =>
+      receiptsByEventId[eventId] ?? const <ReceiptEvent>[];
 
   RoomTimeline copyWith({
     List<MessageEvent>? newestFirst,
     String? endToken,
     bool clearEndToken = false,
     bool? loadingOlder,
+    Map<String, List<ReactionEvent>>? reactionsByEventId,
+    Map<String, List<ReceiptEvent>>? receiptsByEventId,
   }) => RoomTimeline(
     newestFirst: newestFirst ?? this.newestFirst,
     endToken: clearEndToken ? null : (endToken ?? this.endToken),
     loadingOlder: loadingOlder ?? this.loadingOlder,
+    reactionsByEventId: reactionsByEventId ?? this.reactionsByEventId,
+    receiptsByEventId: receiptsByEventId ?? this.receiptsByEventId,
   );
 }
 
@@ -43,21 +61,35 @@ class RoomTimelineController
     extends AutoDisposeFamilyAsyncNotifier<RoomTimeline, String> {
   static const _pageSize = 50;
   String? _lastReadReceiptEventId;
+  final _reactionsByEventId = <String, List<ReactionEvent>>{};
+  final _receiptsByEventId = <String, List<ReceiptEvent>>{};
 
   @override
   Future<RoomTimeline> build(String roomId) async {
     final service = ref.watch(matrixServiceProvider);
 
-    final subscription = service.messageEvents
+    final messageSubscription = service.messageEvents
         .where((event) => event.roomId == roomId)
         .listen(_appendLive);
-    ref.onDispose(subscription.cancel);
+    final reactionSubscription = service.reactionEvents
+        .where((event) => event.roomId == roomId)
+        .listen(_applyReaction);
+    final receiptSubscription = service.receiptEvents
+        .where((event) => event.roomId == roomId)
+        .listen(_applyReceipt);
+    ref.onDispose(() {
+      unawaited(messageSubscription.cancel());
+      unawaited(reactionSubscription.cancel());
+      unawaited(receiptSubscription.cancel());
+    });
 
     final page = await service.getMessages(roomId, limit: _pageSize);
     // getMessages returns oldest -> newest; the UI wants newest at index 0.
     final timeline = RoomTimeline(
       newestFirst: page.messages.reversed.toList(),
       endToken: page.endToken,
+      reactionsByEventId: _reactionSnapshot(),
+      receiptsByEventId: _receiptSnapshot(),
     );
     _markNewestRead(timeline);
     return timeline;
@@ -86,19 +118,82 @@ class RoomTimelineController
       final page = await ref
           .read(matrixServiceProvider)
           .getMessages(arg, fromToken: timeline.endToken, limit: _pageSize);
-      final known = timeline.newestFirst.map((m) => m.eventId).toSet();
+      final current = state.valueOrNull ?? timeline;
+      final known = current.newestFirst.map((m) => m.eventId).toSet();
       final older = page.messages.reversed
           .where((m) => !known.contains(m.eventId))
           .toList();
       state = AsyncData(
-        RoomTimeline(
-          newestFirst: [...timeline.newestFirst, ...older],
-          endToken: page.messages.isEmpty ? null : page.endToken,
+        current.copyWith(
+          newestFirst: [...current.newestFirst, ...older],
+          endToken: page.endToken,
+          clearEndToken: page.messages.isEmpty,
+          loadingOlder: false,
+          reactionsByEventId: _reactionSnapshot(),
+          receiptsByEventId: _receiptSnapshot(),
         ),
       );
     } on Object {
-      state = AsyncData(timeline.copyWith(loadingOlder: false));
+      final current = state.valueOrNull ?? timeline;
+      state = AsyncData(current.copyWith(loadingOlder: false));
     }
+  }
+
+  void _applyReaction(ReactionEvent event) {
+    final existing =
+        _reactionsByEventId[event.relatesToEventId] ?? const <ReactionEvent>[];
+    if (existing.any((reaction) => reaction.eventId == event.eventId)) return;
+    _reactionsByEventId[event.relatesToEventId] = <ReactionEvent>[
+      ...existing,
+      event,
+    ];
+    final timeline = state.valueOrNull;
+    if (timeline == null) return;
+    state = AsyncData(
+      timeline.copyWith(reactionsByEventId: _reactionSnapshot()),
+    );
+  }
+
+  void _applyReceipt(ReceiptEvent event) {
+    for (final entry in _receiptsByEventId.entries.toList()) {
+      final remaining = entry.value
+          .where(
+            (receipt) =>
+                receipt.userId != event.userId ||
+                receipt.receiptType != event.receiptType,
+          )
+          .toList();
+      if (remaining.isEmpty) {
+        _receiptsByEventId.remove(entry.key);
+      } else {
+        _receiptsByEventId[entry.key] = remaining;
+      }
+    }
+
+    final existing =
+        _receiptsByEventId[event.eventId] ?? const <ReceiptEvent>[];
+    _receiptsByEventId[event.eventId] = <ReceiptEvent>[...existing, event];
+    final timeline = state.valueOrNull;
+    if (timeline == null) return;
+    state = AsyncData(timeline.copyWith(receiptsByEventId: _receiptSnapshot()));
+  }
+
+  Map<String, List<ReactionEvent>> _reactionSnapshot() {
+    return Map<String, List<ReactionEvent>>.unmodifiable(
+      _reactionsByEventId.map(
+        (eventId, reactions) =>
+            MapEntry(eventId, List<ReactionEvent>.unmodifiable(reactions)),
+      ),
+    );
+  }
+
+  Map<String, List<ReceiptEvent>> _receiptSnapshot() {
+    return Map<String, List<ReceiptEvent>>.unmodifiable(
+      _receiptsByEventId.map(
+        (eventId, receipts) =>
+            MapEntry(eventId, List<ReceiptEvent>.unmodifiable(receipts)),
+      ),
+    );
   }
 
   void _markNewestRead(RoomTimeline timeline) {
