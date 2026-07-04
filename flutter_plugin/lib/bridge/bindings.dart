@@ -146,6 +146,35 @@ class ManyMatrixBindings {
   late final _manymatrix_on_receipt = _manymatrix_on_receiptPtr.asFunction<
       void Function(ffi.Pointer<ManyMatrixClient>, ReceiptCallback)>();
 
+  /// Register a callback for incoming custom message-like events (JSON `CustomEvent`) whose
+  /// `event_type` matches `event_type` exactly.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer. `event_type` must be a valid C string.
+  /// `callback` must remain valid for the lifetime of the client.
+  void manymatrix_on_custom_event(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> event_type,
+    CustomEventCallback callback,
+  ) {
+    return _manymatrix_on_custom_event(
+      handle,
+      event_type,
+      callback,
+    );
+  }
+
+  late final _manymatrix_on_custom_eventPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              CustomEventCallback)>>('manymatrix_on_custom_event');
+  late final _manymatrix_on_custom_event =
+      _manymatrix_on_custom_eventPtr.asFunction<
+          void Function(ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>,
+              CustomEventCallback)>();
+
   /// Create a new ManyMatrixClient pointing at the given homeserver URL.
   ///
   /// Returns an opaque handle (pointer) to the client in `FfiResult.data`.
@@ -894,6 +923,41 @@ class ManyMatrixBindings {
   late final _manymatrix_send_text = _manymatrix_send_textPtr.asFunction<
       FfiResult Function(ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>,
           ffi.Pointer<ffi.Char>)>();
+
+  /// Send a message-like event of an arbitrary `event_type` with arbitrary JSON
+  /// `content_json` to a room. Returns the event ID string. `content_json` must be
+  /// valid JSON.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_send_custom_event(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+    ffi.Pointer<ffi.Char> event_type,
+    ffi.Pointer<ffi.Char> content_json,
+  ) {
+    return _manymatrix_send_custom_event(
+      handle,
+      room_id,
+      event_type,
+      content_json,
+    );
+  }
+
+  late final _manymatrix_send_custom_eventPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>>('manymatrix_send_custom_event');
+  late final _manymatrix_send_custom_event =
+      _manymatrix_send_custom_eventPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>();
 
   /// Send a formatted HTML message to a room. Returns the event ID string.
   ///
@@ -1693,3 +1757,11 @@ typedef ReceiptCallback
     = ffi.Pointer<ffi.NativeFunction<ReceiptCallbackFunction>>;
 typedef ReceiptCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
 typedef DartReceiptCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
+
+/// Callback type for incoming custom (non-standard) message-like events. Receives
+/// JSON-serialized CustomEvent.
+typedef CustomEventCallback
+    = ffi.Pointer<ffi.NativeFunction<CustomEventCallbackFunction>>;
+typedef CustomEventCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
+typedef DartCustomEventCallbackFunction = void Function(
+    ffi.Pointer<ffi.Char>);

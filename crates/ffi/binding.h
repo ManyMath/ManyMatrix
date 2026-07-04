@@ -64,6 +64,12 @@ typedef void (*ReactionCallback)(char*);
 typedef void (*ReceiptCallback)(char*);
 
 /**
+ * Callback type for incoming custom (non-standard) message-like events. Receives
+ * JSON-serialized CustomEvent. Same ownership contract as [`MessageCallback`].
+ */
+typedef void (*CustomEventCallback)(char*);
+
+/**
  * Free an FfiResult, releasing the error message string if present.
  *
  * # Safety
@@ -128,6 +134,23 @@ typedef void (*ReceiptCallback)(char*);
  * valid for the lifetime of the client.
  */
  void manymatrix_on_receipt(struct ManyMatrixClient *handle, ReceiptCallback callback);
+
+/**
+ * Register a callback for incoming custom message-like events (JSON `CustomEvent`) whose
+ * `event_type` matches `event_type` exactly.
+ *
+ * The pointer passed to `callback` is heap-allocated and owned by the callee:
+ * the caller must free it with [`crate::ffi_free_string`] once done reading it.
+ * See [`manymatrix_on_message`] for why a temporary pointer is not safe here.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer. `event_type` must be a valid C string.
+ * `callback` must remain valid for the lifetime of the client.
+ */
+
+void manymatrix_on_custom_event(struct ManyMatrixClient *handle,
+                                const char *event_type,
+                                CustomEventCallback callback);
 
 /**
  * Create a new ManyMatrixClient pointing at the given homeserver URL.
@@ -449,6 +472,19 @@ struct FfiResult manymatrix_register_pusher(struct ManyMatrixClient *handle,
 struct FfiResult manymatrix_send_text(struct ManyMatrixClient *handle,
                                       const char *room_id,
                                       const char *body);
+
+/**
+ * Send a message-like event of an arbitrary `event_type` with arbitrary JSON `content_json`
+ * to a room. Returns the event ID string. `content_json` must be valid JSON.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+
+struct FfiResult manymatrix_send_custom_event(struct ManyMatrixClient *handle,
+                                              const char *room_id,
+                                              const char *event_type,
+                                              const char *content_json);
 
 /**
  * Send a formatted HTML message to a room. Returns the event ID string.

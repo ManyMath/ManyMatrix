@@ -141,6 +141,20 @@ pub struct MessageEvent {
     pub file_size: Option<u64>,
 }
 
+/// A received custom (non-standard) message-like event: any Matrix event type that isn't
+/// one of this crate's fixed shapes (`m.room.message`, `m.reaction`, etc). `content` is the
+/// event's raw JSON content, verbatim, since a custom event type has no fixed schema for
+/// this crate to deserialize into.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomEvent {
+    pub event_id: String,
+    pub room_id: String,
+    pub sender: String,
+    pub event_type: String,
+    pub content: Value,
+    pub timestamp: u64,
+}
+
 /// Result of paginating messages in a room.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedMessages {

@@ -1,7 +1,8 @@
-use std::ffi::CString;
+use std::ffi::{c_char, CString};
 
 use crate::client::{client_from_handle, ManyMatrixClient};
-use crate::types::{MessageCallback, ReactionCallback, ReceiptCallback};
+use crate::str_from_ptr;
+use crate::types::{CustomEventCallback, MessageCallback, ReactionCallback, ReceiptCallback};
 
 /// Register a callback for incoming messages (JSON `MessageEvent`).
 ///
@@ -70,6 +71,33 @@ pub unsafe extern "C" fn manymatrix_on_receipt(
     let client = client_from_handle(handle);
     client.on_receipt(move |receipt| {
         if let Ok(json) = serde_json::to_string(&receipt) {
+            if let Ok(cstr) = CString::new(json) {
+                callback(cstr.into_raw());
+            }
+        }
+    });
+}
+
+/// Register a callback for incoming custom message-like events (JSON `CustomEvent`) whose
+/// `event_type` matches `event_type` exactly.
+///
+/// The pointer passed to `callback` is heap-allocated and owned by the callee:
+/// the caller must free it with [`crate::ffi_free_string`] once done reading it.
+/// See [`manymatrix_on_message`] for why a temporary pointer is not safe here.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer. `event_type` must be a valid C string.
+/// `callback` must remain valid for the lifetime of the client.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_on_custom_event(
+    handle: *mut ManyMatrixClient,
+    event_type: *const c_char,
+    callback: CustomEventCallback,
+) {
+    let client = client_from_handle(handle);
+    let event_type = str_from_ptr(event_type);
+    client.on_custom_event(event_type, move |event| {
+        if let Ok(json) = serde_json::to_string(&event) {
             if let Ok(cstr) = CString::new(json) {
                 callback(cstr.into_raw());
             }

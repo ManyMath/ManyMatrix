@@ -20,17 +20,18 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::{
-    AnyMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent, OriginalSyncMessageLikeEvent,
-    SyncEphemeralRoomEvent,
+    AnyMessageLikeEvent, AnySyncMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent,
+    OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent,
 };
+use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
 use matrix_sdk::{Client, Room, RoomMemberships, SendOutsideWasm, SyncOutsideWasm};
 use tracing::info;
 
 use crate::session::StoredSession;
 use crate::types::{
-    CreateRoomOptions, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent, ReceiptEvent,
-    RoomSummary, RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
+    CreateRoomOptions, CustomEvent, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent,
+    ReceiptEvent, RoomSummary, RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
 };
 use crate::Error;
 
@@ -164,6 +165,21 @@ impl ManyMatrixClient {
         let room = self.get_room_parsed(room_id)?;
         let content = RoomMessageEventContent::text_plain(body);
         let resp = room.send(content).await?;
+        Ok(resp.event_id.to_string())
+    }
+
+    /// Send a message-like event of an arbitrary, non-standard `event_type` with arbitrary
+    /// JSON `content`: for consumers that need their own event shape (e.g. an app-specific
+    /// `io.example.foo` event) rather than one of this crate's fixed message/reaction shapes.
+    /// Returns the event ID.
+    pub async fn send_custom_event(
+        &self,
+        room_id: &str,
+        event_type: &str,
+        content: serde_json::Value,
+    ) -> Result<String, Error> {
+        let room = self.get_room_parsed(room_id)?;
+        let resp = room.send_raw(event_type, content).await?;
         Ok(resp.event_id.to_string())
     }
 
@@ -1023,6 +1039,48 @@ impl ManyMatrixClient {
                             }
                         }
                     }
+                }
+            },
+        );
+    }
+
+    /// Register a callback for incoming custom (non-standard) message-like events whose
+    /// `event_type` matches `event_type` exactly. Registers on the raw, undeserialized event
+    /// so it works for any event type (including ones this crate has no typed model for)
+    /// rather than only the fixed shapes `on_message`/`on_reaction` cover.
+    pub fn on_custom_event<F>(&self, event_type: &str, callback: F)
+    where
+        F: Fn(CustomEvent) + SendOutsideWasm + SyncOutsideWasm + 'static,
+    {
+        let callback = Arc::new(callback);
+        let wanted_type = event_type.to_owned();
+        self.client.add_event_handler(
+            move |ev: Raw<AnySyncMessageLikeEvent>, room: Room| {
+                let callback = callback.clone();
+                let wanted_type = wanted_type.clone();
+                async move {
+                    let actual_type: Option<String> = ev.get_field("type").ok().flatten();
+                    if actual_type.as_deref() != Some(wanted_type.as_str()) {
+                        return;
+                    }
+                    let event_id: Option<String> = ev.get_field("event_id").ok().flatten();
+                    let sender: Option<String> = ev.get_field("sender").ok().flatten();
+                    let timestamp: Option<u64> = ev.get_field("origin_server_ts").ok().flatten();
+                    let content: Option<serde_json::Value> =
+                        ev.get_field("content").ok().flatten();
+                    let (Some(event_id), Some(sender), Some(timestamp), Some(content)) =
+                        (event_id, sender, timestamp, content)
+                    else {
+                        return;
+                    };
+                    callback(CustomEvent {
+                        event_id,
+                        room_id: room.room_id().to_string(),
+                        sender,
+                        event_type: wanted_type,
+                        content,
+                        timestamp,
+                    });
                 }
             },
         );

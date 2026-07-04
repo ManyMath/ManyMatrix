@@ -178,6 +178,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execRedact(bindings, args);
       case 'send_thread_reply':
         return _execWithHandleAndThreeStrings(bindings, method, args);
+      case 'send_custom_event':
+        return _execWithHandleAndThreeStrings(bindings, method, args);
       case 'send_read_receipt':
         return _execWithHandleAndTwoStrings(bindings, method, args);
       case 'send_typing':
@@ -441,6 +443,13 @@ class ManyMatrixBridge implements ffi.Finalizable {
           );
         case 'send_thread_reply':
           result = bindings.manymatrix_send_thread_reply(
+            handle,
+            s1.cast(),
+            s2.cast(),
+            s3.cast(),
+          );
+        case 'send_custom_event':
+          result = bindings.manymatrix_send_custom_event(
             handle,
             s1.cast(),
             s2.cast(),
@@ -911,6 +920,25 @@ class ManyMatrixBridge implements ffi.Finalizable {
     return result as String;
   }
 
+  /// Send a message-like event of an arbitrary [eventType] with arbitrary JSON
+  /// [content] to a room. Returns the event ID.
+  ///
+  /// Unlike [sendText]/[sendReaction]/etc, this is not limited to this plugin's fixed
+  /// message shapes: use it for an app-specific event type (e.g. `io.example.foo`)
+  /// with its own content schema. Pair with [onCustomEvent] to receive it.
+  Future<String> sendCustomEvent(
+    String roomId,
+    String eventType,
+    Map<String, dynamic> content,
+  ) async {
+    final result = await _call('send_custom_event', {
+      's1': roomId,
+      's2': eventType,
+      's3': jsonEncode(content),
+    });
+    return result as String;
+  }
+
   /// Send a formatted HTML message. Returns event ID.
   Future<String> sendHtml(String roomId, String body, String html) async {
     final result = await _call('send_html', {
@@ -1209,6 +1237,39 @@ class ManyMatrixBridge implements ffi.Finalizable {
   ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
       _receiptCallable;
 
+  /// Register a callback for incoming custom (non-standard) message-like events whose
+  /// event type matches [eventType] exactly. Pairs with [sendCustomEvent].
+  ///
+  /// The callback receives a JSON-serialized CustomEvent string (`event_id`, `room_id`,
+  /// `sender`, `event_type`, `content`, `timestamp`). Unlike [onMessage]/[onReaction]/
+  /// [onReceipt], multiple event types can each have their own registration: every call
+  /// to this method adds a new native handler rather than replacing a single one, so keep
+  /// the returned callables alive in [_customEventCallables] for the client's lifetime.
+  void onCustomEvent(String eventType, void Function(String json) callback) {
+    final nativeCallable =
+        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
+      (ffi.Pointer<ffi.Char> ptr) {
+        final json = ptr.cast<Utf8>().toDartString();
+        _mainBindings.ffi_free_string(ptr.cast());
+        callback(json);
+      },
+    );
+    final eventTypePtr = eventType.toNativeUtf8();
+    try {
+      _mainBindings.manymatrix_on_custom_event(
+        _handle,
+        eventTypePtr.cast(),
+        nativeCallable.nativeFunction,
+      );
+    } finally {
+      calloc.free(eventTypePtr);
+    }
+    _customEventCallables.add(nativeCallable);
+  }
+
+  final List<ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>>
+      _customEventCallables = [];
+
   /// Dispose the client, freeing native resources.
   ///
   /// After calling dispose, this instance must not be used again.
@@ -1217,6 +1278,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
     _messageCallable?.close();
     _reactionCallable?.close();
     _receiptCallable?.close();
+    for (final callable in _customEventCallables) {
+      callable.close();
+    }
     _mainBindings.manymatrix_free(_handle);
   }
 }

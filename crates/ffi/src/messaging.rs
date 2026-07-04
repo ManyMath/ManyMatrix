@@ -23,6 +23,32 @@ pub unsafe extern "C" fn manymatrix_send_text(
     }
 }
 
+/// Send a message-like event of an arbitrary `event_type` with arbitrary JSON `content_json`
+/// to a room. Returns the event ID string. `content_json` must be valid JSON.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_send_custom_event(
+    handle: *mut ManyMatrixClient,
+    room_id: *const c_char,
+    event_type: *const c_char,
+    content_json: *const c_char,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let room_id = str_from_ptr(room_id);
+    let event_type = str_from_ptr(event_type);
+    let content_json = str_from_ptr(content_json);
+    let content: serde_json::Value = match serde_json::from_str(content_json) {
+        Ok(value) => value,
+        Err(e) => return FfiResult::error(&format!("invalid content_json: {e}")),
+    };
+    match RUNTIME.block_on(client.send_custom_event(room_id, event_type, content)) {
+        Ok(event_id) => FfiResult::success_string(&event_id),
+        Err(e) => FfiResult::error(&e.to_string()),
+    }
+}
+
 /// Send a formatted HTML message to a room. Returns the event ID string.
 ///
 /// # Safety

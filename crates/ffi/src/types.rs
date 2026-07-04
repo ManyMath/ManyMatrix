@@ -71,3 +71,7 @@ pub type ReactionCallback = extern "C" fn(*mut c_char);
 /// Callback type for incoming receipt events. Receives JSON-serialized ReceiptEvent.
 /// Same ownership contract as [`MessageCallback`].
 pub type ReceiptCallback = extern "C" fn(*mut c_char);
+
+/// Callback type for incoming custom (non-standard) message-like events. Receives
+/// JSON-serialized CustomEvent. Same ownership contract as [`MessageCallback`].
+pub type CustomEventCallback = extern "C" fn(*mut c_char);
