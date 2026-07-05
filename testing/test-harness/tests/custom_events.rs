@@ -19,6 +19,7 @@ const TEST_SYNC_TIMEOUT: Duration = Duration::from_secs(1);
 const TEST_SYNC_RETRY_DELAY: Duration = Duration::from_millis(250);
 const TEST_SYNC_ATTEMPTS: usize = 5;
 const LOCAL_MEDIA_CLOCK_CORRECTION_TOLERANCE: Duration = Duration::from_millis(350);
+const ENCRYPTED_CUSTOM_EVENT_LATENCY_SAMPLES: usize = 5;
 
 async fn sync_once_retry(client: &ManyMatrixClient) -> Result<()> {
     let mut last_err = None;
@@ -184,39 +185,59 @@ async fn encrypted_custom_event_round_trip(kind: ServerKind) -> Result<()> {
         let _ = tx.try_send(ev);
     });
 
-    let sent_at = Instant::now();
-    let event_id = alice
-        .send_custom_event(
-            &room_id,
-            "io.manymath.encrypted.test",
-            json!({ "action": "play", "position_ms": 12000 }),
-        )
-        .await?;
-    eprintln!("Alice sent encrypted custom event: {}", event_id);
+    let mut observed_latencies = Vec::with_capacity(ENCRYPTED_CUSTOM_EVENT_LATENCY_SAMPLES);
+    for sample in 0..ENCRYPTED_CUSTOM_EVENT_LATENCY_SAMPLES {
+        let position_ms = 12000 + sample as i64;
+        let sent_at = Instant::now();
+        let event_id = alice
+            .send_custom_event(
+                &room_id,
+                "io.manymath.encrypted.test",
+                json!({ "action": "play", "position_ms": position_ms, "sample": sample }),
+            )
+            .await?;
+        eprintln!("Alice sent encrypted custom event sample {sample}: {event_id}");
 
-    sync_once_retry(&bob).await?;
-    let event = tokio::time::timeout(Duration::from_secs(10), rx.recv())
-        .await
-        .expect("encrypted custom event receive timed out")
-        .expect("encrypted custom event channel closed unexpectedly");
-    let observed_latency = sent_at.elapsed();
+        sync_once_retry(&bob).await?;
+        let event = tokio::time::timeout(Duration::from_secs(10), rx.recv())
+            .await
+            .expect("encrypted custom event receive timed out")
+            .expect("encrypted custom event channel closed unexpectedly");
+        let observed_latency = sent_at.elapsed();
+        eprintln!(
+            "Encrypted custom event sample {sample} observed after {} ms",
+            observed_latency.as_millis()
+        );
+        observed_latencies.push(observed_latency);
+
+        assert_eq!(event.event_id, event_id);
+        assert_eq!(event.room_id, room_id);
+        assert_eq!(event.event_type, "io.manymath.encrypted.test");
+        assert_eq!(event.content["action"], "play");
+        assert_eq!(event.content["position_ms"].as_i64(), Some(position_ms));
+        assert_eq!(event.content["sample"].as_u64(), Some(sample as u64));
+        assert!(event.timestamp > 0);
+    }
+
+    let max_latency = observed_latencies
+        .iter()
+        .copied()
+        .max()
+        .expect("latency sample set should not be empty");
+    let total_latency: Duration = observed_latencies.iter().copied().sum();
+    let average_latency = total_latency / observed_latencies.len() as u32;
     eprintln!(
-        "Encrypted custom event observed after {} ms",
-        observed_latency.as_millis()
+        "Encrypted custom event latency samples: count={} avg={} ms max={} ms",
+        observed_latencies.len(),
+        average_latency.as_millis(),
+        max_latency.as_millis()
     );
-
-    assert_eq!(event.event_id, event_id);
-    assert_eq!(event.room_id, room_id);
-    assert_eq!(event.event_type, "io.manymath.encrypted.test");
-    assert_eq!(event.content["action"], "play");
-    assert_eq!(event.content["position_ms"], 12000);
-    assert!(event.timestamp > 0);
 
     if enforces_local_media_latency_tolerance(kind) {
         assert!(
-            observed_latency <= LOCAL_MEDIA_CLOCK_CORRECTION_TOLERANCE,
-            "encrypted custom-event latency {} ms exceeded local_media tolerance {} ms",
-            observed_latency.as_millis(),
+            max_latency <= LOCAL_MEDIA_CLOCK_CORRECTION_TOLERANCE,
+            "max encrypted custom-event latency {} ms exceeded local_media tolerance {} ms",
+            max_latency.as_millis(),
             LOCAL_MEDIA_CLOCK_CORRECTION_TOLERANCE.as_millis()
         );
     }
