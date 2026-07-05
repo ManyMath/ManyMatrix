@@ -7,6 +7,7 @@ import 'package:ffi/ffi.dart';
 
 import '../bridge/bindings.dart';
 import 'models/models.dart';
+import 'web_bridge_errors.dart';
 
 /// Initialization data sent to the worker isolate.
 class _WorkerInit {
@@ -26,7 +27,7 @@ class _FfiRequest {
 /// Response from the worker isolate.
 class _FfiResponse {
   final dynamic data;
-  final String? error;
+  final Map<String, dynamic>? error;
   _FfiResponse.success(this.data) : error = null;
   _FfiResponse.failure(this.error) : data = null;
 }
@@ -105,7 +106,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
           final result = _executeFFI(bindings, message.method, message.args);
           message.replyPort.send(_FfiResponse.success(result));
         } catch (e) {
-          message.replyPort.send(_FfiResponse.failure(e.toString()));
+          message.replyPort.send(
+            _FfiResponse.failure(_errorEnvelope(e, method: message.method)),
+          );
         }
       }
     });
@@ -736,13 +739,42 @@ class ManyMatrixBridge implements ffi.Finalizable {
 
   // --- Result helpers ---
 
-  static void _checkResult(ManyMatrixBindings bindings, FfiResult result) {
+  static Map<String, dynamic> _errorEnvelope(Object error, {String? method}) {
+    final exception = error is ManyMatrixException
+        ? error
+        : manyMatrixExceptionForNativeError('$error', method: method);
+    return {
+      'kind': exception.kind,
+      'message': exception.message,
+      'details': {
+        ...exception.details,
+        if (method != null) 'method': method,
+      },
+    };
+  }
+
+  static ManyMatrixException _exceptionFromEnvelope(
+    Map<String, dynamic> envelope,
+  ) {
+    final details = envelope['details'];
+    return manyMatrixExceptionForEnvelope(
+      envelope['kind'] as String? ?? 'MatrixSdkError',
+      envelope['message'] as String? ?? 'Unknown FFI error',
+      details: details is Map<String, dynamic> ? details : const {},
+    );
+  }
+
+  static void _checkResult(
+    ManyMatrixBindings bindings,
+    FfiResult result, {
+    String? method,
+  }) {
     if (!result.ok) {
       final errorMsg = result.error_msg == ffi.nullptr
           ? 'Unknown FFI error'
           : result.error_msg.cast<Utf8>().toDartString();
       bindings.ffi_free_result(result);
-      throw Exception(errorMsg);
+      throw manyMatrixExceptionForNativeError(errorMsg, method: method);
     }
   }
 
@@ -769,7 +801,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ));
     final response = await replyPort.first as _FfiResponse;
     replyPort.close();
-    if (response.error != null) throw Exception(response.error);
+    if (response.error != null) throw _exceptionFromEnvelope(response.error!);
     return response.data;
   }
 
@@ -789,7 +821,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
     ));
     final response = await replyPort.first as _FfiResponse;
     replyPort.close();
-    if (response.error != null) throw Exception(response.error);
+    if (response.error != null) throw _exceptionFromEnvelope(response.error!);
     final address = response.data as int;
     return ManyMatrixBridge._(
       ffi.Pointer<ManyMatrixClient>.fromAddress(address),
@@ -827,7 +859,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
       _handle,
       syncStatusCallable.nativeFunction,
     );
-    _checkResult(_mainBindings, result);
+    _checkResult(_mainBindings, result, method: 'sync_forever');
   }
 
   /// Get the list of joined rooms as parsed RoomSummary objects.

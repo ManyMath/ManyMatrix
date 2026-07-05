@@ -28,3 +28,50 @@ class ManyMatrixPanicException extends ManyMatrixException {
   ManyMatrixPanicException(String message, {Map<String, dynamic>? details})
       : super('PanicError', message, details ?? {});
 }
+
+ManyMatrixException manyMatrixExceptionForEnvelope(
+  String kind,
+  String message, {
+  Map<String, dynamic>? details,
+}) {
+  switch (kind) {
+    case 'MatrixSdkError':
+      return ManyMatrixSdkException(message, details: details);
+    case 'SerdeError':
+      return ManyMatrixSerdeException(message, details: details);
+    case 'StorageError':
+      return ManyMatrixStorageException(message, details: details);
+    case 'PanicError':
+      return ManyMatrixPanicException(message, details: details);
+    default:
+      return ManyMatrixException(kind, message, details ?? {});
+  }
+}
+
+ManyMatrixException manyMatrixExceptionForNativeError(
+  String message, {
+  String? method,
+}) {
+  final lower = message.toLowerCase();
+  final details = <String, dynamic>{
+    'transport': 'native_ffi',
+    if (method != null) 'method': method,
+  };
+  if (lower.contains('json') ||
+      lower.contains('serde') ||
+      lower.contains('invalid content_json') ||
+      lower.contains('id parse error')) {
+    return ManyMatrixSerdeException(message, details: details);
+  }
+  if (lower.contains('panic')) {
+    return ManyMatrixPanicException(message, details: details);
+  }
+  if (lower.contains('io error') ||
+      lower.contains('storage') ||
+      lower.contains('store') ||
+      lower.contains('no native reply') ||
+      lower.contains('unknown ffi method')) {
+    return ManyMatrixStorageException(message, details: details);
+  }
+  return ManyMatrixSdkException(message, details: details);
+}

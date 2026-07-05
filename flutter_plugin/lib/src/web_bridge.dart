@@ -155,20 +155,8 @@ class ManyMatrixBridge {
     String kind,
     String message,
     Map<String, dynamic> details,
-  ) {
-    switch (kind) {
-      case 'MatrixSdkError':
-        return ManyMatrixSdkException(message, details: details);
-      case 'SerdeError':
-        return ManyMatrixSerdeException(message, details: details);
-      case 'StorageError':
-        return ManyMatrixStorageException(message, details: details);
-      case 'PanicError':
-        return ManyMatrixPanicException(message, details: details);
-      default:
-        return ManyMatrixException(kind, message, details);
-    }
-  }
+  ) =>
+      manyMatrixExceptionForEnvelope(kind, message, details: details);
 
   static final _sensitiveKeys =
       RegExp(r'password|token|recovery_key', caseSensitive: false);

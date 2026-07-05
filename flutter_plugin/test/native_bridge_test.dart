@@ -20,4 +20,22 @@ void main() {
       (bridge, callback) => bridge.onSyncStatus(callback),
     );
   });
+
+  test('native error mapper returns structured exception types', () {
+    final serde = manyMatrixExceptionForNativeError(
+      'invalid content_json: expected value',
+      method: 'send_custom_event',
+    );
+    expect(serde, isA<ManyMatrixSerdeException>());
+    expect(serde.kind, 'SerdeError');
+    expect(serde.details['method'], 'send_custom_event');
+
+    final sdk = manyMatrixExceptionForEnvelope(
+      'MatrixSdkError',
+      'M_FORBIDDEN: not allowed',
+      details: const {'method': 'invite'},
+    );
+    expect(sdk, isA<ManyMatrixSdkException>());
+    expect(sdk.details['method'], 'invite');
+  });
 }
