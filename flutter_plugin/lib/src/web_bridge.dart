@@ -278,6 +278,20 @@ class ManyMatrixBridge {
     await _call('rooms.invite', {'room_id': roomId, 'user_id': userId});
   }
 
+  Future<void> setCustomEventPowerLevels(
+    String roomId,
+    String eventType, {
+    required int requiredPowerLevel,
+    Map<String, int> userPowerLevels = const {},
+  }) async {
+    await _call('rooms.set_custom_event_power_levels', {
+      'room_id': roomId,
+      'event_type': eventType,
+      'required_power_level': requiredPowerLevel,
+      'user_power_levels': userPowerLevels,
+    });
+  }
+
   Future<void> leaveRoom(String roomId) async {
     await _call('rooms.leave', {'room_id': roomId});
   }

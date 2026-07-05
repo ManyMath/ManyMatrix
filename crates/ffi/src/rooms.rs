@@ -1,10 +1,19 @@
 use std::ffi::c_char;
 
 use manymatrix_core::{CreateRoomOptions, RoomVisibility};
+use serde::Deserialize;
 
 use crate::client::{client_from_handle, ManyMatrixClient};
 use crate::types::FfiResult;
 use crate::{optional_str_from_ptr, str_from_ptr, RUNTIME};
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomEventPowerLevelsConfig {
+    required_power_level: i64,
+    #[serde(default)]
+    user_power_levels: std::collections::BTreeMap<String, i64>,
+}
 
 /// Create a new room with the given name and topic.
 ///
@@ -64,6 +73,39 @@ pub unsafe extern "C" fn manymatrix_invite(
     let room_id = str_from_ptr(room_id);
     let user_id = str_from_ptr(user_id);
     match RUNTIME.block_on(client.invite(room_id, user_id)) {
+        Ok(()) => FfiResult::success_void(),
+        Err(e) => FfiResult::error(&e.to_string()),
+    }
+}
+
+/// Configure the power level required to send a custom event type in a room.
+///
+/// `config_json` must be a JSON object with `requiredPowerLevel` and optional
+/// `userPowerLevels` map of Matrix user ID to power level.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_set_custom_event_power_levels(
+    handle: *mut ManyMatrixClient,
+    room_id: *const c_char,
+    event_type: *const c_char,
+    config_json: *const c_char,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let room_id = str_from_ptr(room_id);
+    let event_type = str_from_ptr(event_type);
+    let config_json = str_from_ptr(config_json);
+    let config: CustomEventPowerLevelsConfig = match serde_json::from_str(config_json) {
+        Ok(config) => config,
+        Err(e) => return FfiResult::error(&format!("invalid config_json: {e}")),
+    };
+    match RUNTIME.block_on(client.set_custom_event_power_levels(
+        room_id,
+        event_type,
+        config.required_power_level,
+        config.user_power_levels.into_iter().collect(),
+    )) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error(&e.to_string()),
     }

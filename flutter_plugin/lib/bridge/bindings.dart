@@ -983,6 +983,43 @@ class ManyMatrixBindings {
               ffi.Pointer<ffi.Char>,
               ffi.Pointer<ffi.Char>)>();
 
+  /// Configure the power level required to send a custom event type in a room.
+  ///
+  /// `config_json` must be a JSON object with `requiredPowerLevel` and optional
+  /// `userPowerLevels` map of Matrix user ID to power level.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_set_custom_event_power_levels(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+    ffi.Pointer<ffi.Char> event_type,
+    ffi.Pointer<ffi.Char> config_json,
+  ) {
+    return _manymatrix_set_custom_event_power_levels(
+      handle,
+      room_id,
+      event_type,
+      config_json,
+    );
+  }
+
+  late final _manymatrix_set_custom_event_power_levelsPtr = _lookup<
+          ffi.NativeFunction<
+              FfiResult Function(
+                  ffi.Pointer<ManyMatrixClient>,
+                  ffi.Pointer<ffi.Char>,
+                  ffi.Pointer<ffi.Char>,
+                  ffi.Pointer<ffi.Char>)>>(
+      'manymatrix_set_custom_event_power_levels');
+  late final _manymatrix_set_custom_event_power_levels =
+      _manymatrix_set_custom_event_power_levelsPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>();
+
   /// Send a formatted HTML message to a room. Returns the event ID string.
   ///
   /// # Safety

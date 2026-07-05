@@ -183,6 +183,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execWithHandleAndThreeStrings(bindings, method, args);
       case 'send_custom_event':
         return _execWithHandleAndThreeStrings(bindings, method, args);
+      case 'set_custom_event_power_levels':
+        return _execWithHandleAndThreeStrings(bindings, method, args);
       case 'send_read_receipt':
         return _execWithHandleAndTwoStrings(bindings, method, args);
       case 'send_typing':
@@ -452,6 +454,13 @@ class ManyMatrixBridge implements ffi.Finalizable {
           );
         case 'send_custom_event':
           result = bindings.manymatrix_send_custom_event(
+            handle,
+            s1.cast(),
+            s2.cast(),
+            s3.cast(),
+          );
+        case 'set_custom_event_power_levels':
+          result = bindings.manymatrix_set_custom_event_power_levels(
             handle,
             s1.cast(),
             s2.cast(),
@@ -911,6 +920,27 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Invite a user to a room.
   Future<void> invite(String roomId, String userId) async {
     await _call('invite', {'s1': roomId, 's2': userId});
+  }
+
+  /// Configure the power level required to send a custom event type.
+  ///
+  /// [userPowerLevels] applies explicit Matrix user power levels in the same
+  /// `m.room.power_levels` state update, so apps can raise one user to the
+  /// required level while reserving the event type.
+  Future<void> setCustomEventPowerLevels(
+    String roomId,
+    String eventType, {
+    required int requiredPowerLevel,
+    Map<String, int> userPowerLevels = const {},
+  }) async {
+    await _call('set_custom_event_power_levels', {
+      's1': roomId,
+      's2': eventType,
+      's3': jsonEncode({
+        'requiredPowerLevel': requiredPowerLevel,
+        'userPowerLevels': userPowerLevels,
+      }),
+    });
   }
 
   /// Leave a room.

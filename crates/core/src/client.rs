@@ -18,10 +18,11 @@ use matrix_sdk::ruma::events::room::message::{
     AddMentions, ForwardThread, ReplyWithinThread, RoomMessageEventContent,
     RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
 };
+use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevelsEventContent;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::{
     AnyMessageLikeEvent, AnySyncMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent,
-    OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent,
+    OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent, TimelineEventType,
 };
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
@@ -181,6 +182,57 @@ impl ManyMatrixClient {
         let room = self.get_room_parsed(room_id)?;
         let resp = room.send_raw(event_type, content).await?;
         Ok(resp.event_id.to_string())
+    }
+
+    /// Updates `m.room.power_levels` so a custom message-like event type requires a specific
+    /// power level, optionally adjusting explicit user power levels in the same state event.
+    ///
+    /// This is the authorization counterpart to [`Self::send_custom_event`]: apps can reserve
+    /// a transport event type for a room role without ManyMatrix needing to know that event's
+    /// schema. The homeserver enforces the resulting `events[event_type]` threshold before
+    /// accepting future sends of that custom event type.
+    pub async fn set_custom_event_power_levels(
+        &self,
+        room_id: &str,
+        event_type: &str,
+        required_power_level: i64,
+        user_power_levels: Vec<(String, i64)>,
+    ) -> Result<(), Error> {
+        let event_type = event_type.trim();
+        if event_type.is_empty() {
+            return Err(Error::Other("custom event type must not be empty".into()));
+        }
+
+        let room = self.get_room_parsed(room_id)?;
+        let required_power_level = required_power_level
+            .try_into()
+            .map_err(|err| Error::Other(format!("invalid required power level: {err}")))?;
+        let mut power_levels = room
+            .power_levels()
+            .await
+            .map_err(|err| Error::Other(format!("could not load room power levels: {err}")))?;
+        power_levels.events.insert(
+            TimelineEventType::from(event_type.to_owned()),
+            required_power_level,
+        );
+
+        for (user_id, power_level) in user_power_levels {
+            let user_id = <&UserId>::try_from(user_id.as_str())
+                .map_err(|err| Error::Other(format!("invalid user ID '{user_id}': {err}")))?;
+            let power_level = power_level
+                .try_into()
+                .map_err(|err| Error::Other(format!("invalid user power level: {err}")))?;
+            if power_level == power_levels.users_default {
+                power_levels.users.remove(user_id);
+            } else {
+                power_levels.users.insert(user_id.to_owned(), power_level);
+            }
+        }
+
+        let content = RoomPowerLevelsEventContent::try_from(power_levels)
+            .map_err(|err| Error::Other(format!("invalid room power levels: {err}")))?;
+        room.send_state_event(content).await?;
+        Ok(())
     }
 
     /// List joined rooms.
