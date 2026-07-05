@@ -75,3 +75,8 @@ pub type ReceiptCallback = extern "C" fn(*mut c_char);
 /// Callback type for incoming custom (non-standard) message-like events. Receives
 /// JSON-serialized CustomEvent. Same ownership contract as [`MessageCallback`].
 pub type CustomEventCallback = extern "C" fn(*mut c_char);
+
+/// Callback type for sync-loop status events. Receives JSON such as
+/// `{"state":"exited","ok":false,"error":"..."}`. Same ownership contract as
+/// [`MessageCallback`].
+pub type SyncStatusCallback = extern "C" fn(*mut c_char);

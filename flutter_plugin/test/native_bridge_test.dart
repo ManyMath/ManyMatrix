@@ -7,4 +7,17 @@ void main() {
     // Cannot test actual FFI without native library loaded.
     expect(ManyMatrixBridge, isNotNull);
   });
+
+  test('ManyMatrixBridge exposes sync status callback API', () {
+    void acceptsSyncStatusRegistrar(
+      void Function(ManyMatrixBridge, void Function(String)) registrar,
+    ) {
+      expect(registrar,
+          isA<void Function(ManyMatrixBridge, void Function(String))>());
+    }
+
+    acceptsSyncStatusRegistrar(
+      (bridge, callback) => bridge.onSyncStatus(callback),
+    );
+  });
 }

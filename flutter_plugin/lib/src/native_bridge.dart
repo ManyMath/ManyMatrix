@@ -386,8 +386,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
         case 'start_sas':
           result = bindings.manymatrix_start_sas(handle, s1.cast(), s2.cast());
         case 'accept_sas':
-          result =
-              bindings.manymatrix_accept_sas(handle, s1.cast(), s2.cast());
+          result = bindings.manymatrix_accept_sas(handle, s1.cast(), s2.cast());
         case 'get_sas_emojis':
           result =
               bindings.manymatrix_get_sas_emojis(handle, s1.cast(), s2.cast());
@@ -819,7 +818,16 @@ class ManyMatrixBridge implements ffi.Finalizable {
 
   /// Start the continuous sync loop in a background thread.
   Future<void> syncForever() async {
-    await _call('sync_forever', {});
+    final syncStatusCallable = _syncStatusCallable;
+    if (syncStatusCallable == null) {
+      await _call('sync_forever', {});
+      return;
+    }
+    final result = _mainBindings.manymatrix_sync_forever_with_status(
+      _handle,
+      syncStatusCallable.nativeFunction,
+    );
+    _checkResult(_mainBindings, result);
   }
 
   /// Get the list of joined rooms as parsed RoomSummary objects.
@@ -1270,6 +1278,27 @@ class ManyMatrixBridge implements ffi.Finalizable {
   final List<ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>>
       _customEventCallables = [];
 
+  /// Register a callback for background sync-loop status events.
+  ///
+  /// The callback receives a JSON string such as
+  /// `{"state":"exited","ok":false,"error":"..."}` when a native sync loop
+  /// exits after being started with [syncForever].
+  void onSyncStatus(void Function(String json) callback) {
+    _syncStatusCallable?.close();
+    final nativeCallable =
+        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
+      (ffi.Pointer<ffi.Char> ptr) {
+        final json = ptr.cast<Utf8>().toDartString();
+        _mainBindings.ffi_free_string(ptr.cast());
+        callback(json);
+      },
+    );
+    _syncStatusCallable = nativeCallable;
+  }
+
+  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
+      _syncStatusCallable;
+
   /// Dispose the client, freeing native resources.
   ///
   /// After calling dispose, this instance must not be used again.
@@ -1278,6 +1307,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
     _messageCallable?.close();
     _reactionCallable?.close();
     _receiptCallable?.close();
+    _syncStatusCallable?.close();
     for (final callable in _customEventCallables) {
       callable.close();
     }

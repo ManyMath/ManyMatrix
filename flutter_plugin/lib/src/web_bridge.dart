@@ -234,7 +234,16 @@ class ManyMatrixBridge {
   }
 
   Future<void> syncForever() async {
-    await _call('sync.start', {});
+    try {
+      await _call('sync.start', {});
+    } catch (error) {
+      _onSyncStatusCallback?.call(jsonEncode({
+        'state': 'start_failed',
+        'ok': false,
+        'error': '$error',
+      }));
+      rethrow;
+    }
   }
 
   Future<List<RoomSummary>> joinedRooms() async {
@@ -532,6 +541,7 @@ class ManyMatrixBridge {
     final encoded = result['data_base64'] as String?;
     return encoded == null ? null : base64Decode(encoded);
   }
+
   Future<void> registerPusher({
     required String appId,
     required String pushKey,
@@ -560,6 +570,7 @@ class ManyMatrixBridge {
   void Function(String json)? _onMessageCallback;
   void Function(String json)? _onReactionCallback;
   void Function(String json)? _onReceiptCallback;
+  void Function(String json)? _onSyncStatusCallback;
   JSFunction? _eventListener;
   bool _eventsSubscribed = false;
 
@@ -635,6 +646,10 @@ class ManyMatrixBridge {
     _ensureEventChannel();
   }
 
+  void onSyncStatus(void Function(String json) callback) {
+    _onSyncStatusCallback = callback;
+  }
+
   void dispose() {
     final listener = _eventListener;
     if (listener != null) {
@@ -644,6 +659,7 @@ class ManyMatrixBridge {
     _onMessageCallback = null;
     _onReactionCallback = null;
     _onReceiptCallback = null;
+    _onSyncStatusCallback = null;
     _eventsSubscribed = false;
   }
 }

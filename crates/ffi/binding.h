@@ -70,6 +70,13 @@ typedef void (*ReceiptCallback)(char*);
 typedef void (*CustomEventCallback)(char*);
 
 /**
+ * Callback type for sync-loop status events. Receives JSON such as
+ * `{"state":"exited","ok":false,"error":"..."}`. Same ownership contract as
+ * [`MessageCallback`].
+ */
+typedef void (*SyncStatusCallback)(char*);
+
+/**
  * Free an FfiResult, releasing the error message string if present.
  *
  * # Safety
@@ -201,6 +208,17 @@ struct FfiResult manymatrix_login(struct ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
  */
  struct FfiResult manymatrix_sync_forever(struct ManyMatrixClient *handle);
+
+/**
+ * Start the sync loop on a background thread and report when it exits.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
+ * `callback` must remain valid for the lifetime of the client.
+ */
+
+struct FfiResult manymatrix_sync_forever_with_status(struct ManyMatrixClient *handle,
+                                                     SyncStatusCallback callback);
 
 /**
  * Get the list of joined rooms as a JSON array of RoomSummary objects.

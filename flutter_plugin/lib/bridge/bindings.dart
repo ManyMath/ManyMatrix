@@ -289,6 +289,30 @@ class ManyMatrixBindings {
   late final _manymatrix_sync_forever = _manymatrix_sync_foreverPtr
       .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
 
+  /// Start the sync loop on a background thread and report when it exits.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
+  /// `callback` must remain valid for the lifetime of the client.
+  FfiResult manymatrix_sync_forever_with_status(
+    ffi.Pointer<ManyMatrixClient> handle,
+    SyncStatusCallback callback,
+  ) {
+    return _manymatrix_sync_forever_with_status(
+      handle,
+      callback,
+    );
+  }
+
+  late final _manymatrix_sync_forever_with_statusPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              SyncStatusCallback)>>('manymatrix_sync_forever_with_status');
+  late final _manymatrix_sync_forever_with_status =
+      _manymatrix_sync_forever_with_statusPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>, SyncStatusCallback)>();
+
   /// Get the list of joined rooms as a JSON array of RoomSummary objects.
   ///
   /// # Safety
@@ -1763,5 +1787,10 @@ typedef DartReceiptCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
 typedef CustomEventCallback
     = ffi.Pointer<ffi.NativeFunction<CustomEventCallbackFunction>>;
 typedef CustomEventCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
-typedef DartCustomEventCallbackFunction = void Function(
-    ffi.Pointer<ffi.Char>);
+typedef DartCustomEventCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
+
+/// Callback type for sync-loop status events.
+typedef SyncStatusCallback
+    = ffi.Pointer<ffi.NativeFunction<SyncStatusCallbackFunction>>;
+typedef SyncStatusCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
+typedef DartSyncStatusCallbackFunction = void Function(ffi.Pointer<ffi.Char>);

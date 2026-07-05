@@ -1,9 +1,9 @@
-use std::ffi::{c_char, c_void};
+use std::ffi::{c_char, c_void, CString};
 use std::path::Path;
 
 use manymatrix_core::ManyMatrixClient as CoreClient;
 
-use crate::types::FfiResult;
+use crate::types::{FfiResult, SyncStatusCallback};
 use crate::{str_from_ptr, RUNTIME};
 
 /// Opaque FFI handle for the core Matrix client.
@@ -109,6 +109,41 @@ pub unsafe extern "C" fn manymatrix_sync_forever(handle: *mut ManyMatrixClient) 
     let client_ref: &'static CoreClient = &*(handle as *const CoreClient);
     std::thread::spawn(move || {
         RUNTIME.block_on(client_ref.sync_forever()).ok();
+    });
+    FfiResult::success_void()
+}
+
+/// Start the sync loop on a background thread and report when it exits.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
+/// `callback` must remain valid for the lifetime of the client.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_sync_forever_with_status(
+    handle: *mut ManyMatrixClient,
+    callback: SyncStatusCallback,
+) -> FfiResult {
+    // We need a 'static reference for the spawned thread. The caller guarantees
+    // the handle remains valid (they must call manymatrix_free only after stopping sync).
+    let client_ref: &'static CoreClient = &*(handle as *const CoreClient);
+    std::thread::spawn(move || {
+        let result = RUNTIME.block_on(client_ref.sync_forever());
+        let status = match result {
+            Ok(()) => serde_json::json!({
+                "state": "exited",
+                "ok": true,
+            }),
+            Err(error) => serde_json::json!({
+                "state": "exited",
+                "ok": false,
+                "error": error.to_string(),
+            }),
+        };
+        if let Ok(json) = serde_json::to_string(&status) {
+            if let Ok(cstr) = CString::new(json) {
+                callback(cstr.into_raw());
+            }
+        }
     });
     FfiResult::success_void()
 }
