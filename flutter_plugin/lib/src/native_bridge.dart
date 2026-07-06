@@ -1343,8 +1343,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Register a callback for background sync-loop status events.
   ///
   /// The callback receives a JSON string such as
-  /// `{"state":"exited","ok":false,"error":"..."}` when a native sync loop
-  /// exits after being started with [syncForever].
+  /// `{"state":"running","ok":true}` when a native sync loop starts and
+  /// `{"state":"exited","ok":false,"error":"..."}` when it exits after
+  /// being started with [syncForever].
   void onSyncStatus(void Function(String json) callback) {
     _syncStatusCallable?.close();
     final nativeCallable =

@@ -15,6 +15,25 @@ pub(crate) unsafe fn client_from_handle<'a>(handle: *mut ManyMatrixClient) -> &'
     &*(handle as *const CoreClient)
 }
 
+fn sync_status_json(state: &str, ok: bool, error: Option<String>) -> serde_json::Value {
+    let mut status = serde_json::json!({
+        "state": state,
+        "ok": ok,
+    });
+    if let Some(error) = error {
+        status["error"] = serde_json::Value::String(error);
+    }
+    status
+}
+
+fn send_sync_status(callback: SyncStatusCallback, status: serde_json::Value) {
+    if let Ok(json) = serde_json::to_string(&status) {
+        if let Ok(cstr) = CString::new(json) {
+            callback(cstr.into_raw());
+        }
+    }
+}
+
 /// Create a new ManyMatrixClient pointing at the given homeserver URL.
 ///
 /// Returns an opaque handle (pointer) to the client in `FfiResult.data`.
@@ -127,23 +146,13 @@ pub unsafe extern "C" fn manymatrix_sync_forever_with_status(
     // the handle remains valid (they must call manymatrix_free only after stopping sync).
     let client_ref: &'static CoreClient = &*(handle as *const CoreClient);
     std::thread::spawn(move || {
+        send_sync_status(callback, sync_status_json("running", true, None));
         let result = RUNTIME.block_on(client_ref.sync_forever());
         let status = match result {
-            Ok(()) => serde_json::json!({
-                "state": "exited",
-                "ok": true,
-            }),
-            Err(error) => serde_json::json!({
-                "state": "exited",
-                "ok": false,
-                "error": error.to_string(),
-            }),
+            Ok(()) => sync_status_json("exited", true, None),
+            Err(error) => sync_status_json("exited", false, Some(error.to_string())),
         };
-        if let Ok(json) = serde_json::to_string(&status) {
-            if let Ok(cstr) = CString::new(json) {
-                callback(cstr.into_raw());
-            }
-        }
+        send_sync_status(callback, status);
     });
     FfiResult::success_void()
 }
@@ -255,5 +264,28 @@ pub unsafe extern "C" fn manymatrix_is_room_encrypted(
     match RUNTIME.block_on(client.is_room_encrypted(room_id)) {
         Ok(encrypted) => FfiResult::success_string(if encrypted { "true" } else { "false" }),
         Err(e) => FfiResult::error(&e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sync_status_json;
+
+    #[test]
+    fn sync_status_json_omits_error_for_running_state() {
+        let status = sync_status_json("running", true, None);
+
+        assert_eq!(status["state"], "running");
+        assert_eq!(status["ok"], true);
+        assert!(status.get("error").is_none());
+    }
+
+    #[test]
+    fn sync_status_json_includes_error_for_failed_exit() {
+        let status = sync_status_json("exited", false, Some("network dropped".to_owned()));
+
+        assert_eq!(status["state"], "exited");
+        assert_eq!(status["ok"], false);
+        assert_eq!(status["error"], "network dropped");
     }
 }

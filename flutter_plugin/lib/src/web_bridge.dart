@@ -223,7 +223,12 @@ class ManyMatrixBridge {
 
   Future<void> syncForever() async {
     try {
-      await _call('sync.start', {});
+      final result = await _call('sync.start', {});
+      final alreadyRunning = result['already_running'] == true;
+      _onSyncStatusCallback?.call(jsonEncode({
+        'state': alreadyRunning ? 'already_running' : 'running',
+        'ok': true,
+      }));
     } catch (error) {
       _onSyncStatusCallback?.call(jsonEncode({
         'state': 'start_failed',
