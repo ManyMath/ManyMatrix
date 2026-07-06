@@ -40,12 +40,10 @@ class RoomInfoPage extends ConsumerWidget {
           ),
         ),
         error: (error, _) => Center(
-          child: Text(
-            'Could not load members: $error',
-            style: theme.typography.bodySmall.copyWith(
-              color: theme.colors.destructive,
-            ),
-            textAlign: TextAlign.center,
+          child: MAlert(
+            variant: MAlertVariant.destructive,
+            message: 'Could not load members: $error',
+            maxWidth: 420,
           ),
         ),
         data: (userIds) {

@@ -154,12 +154,10 @@ class ChatView extends HookConsumerWidget {
               ),
             ),
             error: (error, _) => Center(
-              child: Text(
-                'Could not load messages: $error',
-                style: theme.typography.bodySmall.copyWith(
-                  color: theme.colors.destructive,
-                ),
-                textAlign: TextAlign.center,
+              child: MAlert(
+                variant: MAlertVariant.destructive,
+                message: 'Could not load messages: $error',
+                maxWidth: 420,
               ),
             ),
             data: (data) {
@@ -224,7 +222,6 @@ class _Composer extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = MTheme.of(context);
     final controller = useMController<String>('', [roomId]);
     final sending = useState(false);
     final sendError = useState<String?>(null);
@@ -286,11 +283,9 @@ class _Composer extends HookConsumerWidget {
           if (sendError.value != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                sendError.value!,
-                style: theme.typography.bodySmall.copyWith(
-                  color: theme.colors.destructive,
-                ),
+              child: MAlert(
+                variant: MAlertVariant.destructive,
+                message: sendError.value!,
               ),
             ),
           Row(

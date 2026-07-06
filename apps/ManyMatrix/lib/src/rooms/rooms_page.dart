@@ -120,7 +120,6 @@ class _RoomListBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = MTheme.of(context);
     final rooms = ref.watch(roomListProvider);
     final selectedRoomId = ref.watch(selectedRoomIdProvider);
 
@@ -129,12 +128,10 @@ class _RoomListBody extends ConsumerWidget {
         child: MCircularProgress.indeterminate(semanticLabel: 'Loading rooms'),
       ),
       error: (error, _) => Center(
-        child: Text(
-          'Could not load rooms: $error',
-          style: theme.typography.bodySmall.copyWith(
-            color: theme.colors.destructive,
-          ),
-          textAlign: TextAlign.center,
+        child: MAlert(
+          variant: MAlertVariant.destructive,
+          message: 'Could not load rooms: $error',
+          maxWidth: 420,
         ),
       ),
       data: (list) {
