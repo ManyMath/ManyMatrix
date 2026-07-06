@@ -21,72 +21,47 @@ class RoomsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = MTheme.of(context);
     final userId = ref.watch(currentUserIdProvider);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= kTwoPaneBreakpoint;
         return MScaffold(
-          header: Row(
-            children: <Widget>[
-              Text('ManyMatrix', style: theme.typography.title),
-              const SizedBox(width: 12),
-              if (userId != null)
-                Expanded(
-                  child: Text(
-                    userId,
-                    style: theme.typography.bodySmall.copyWith(
-                      color: theme.colors.mutedForeground,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                )
-              else
-                const Spacer(),
-              Flexible(
-                child: Wrap(
-                  alignment: WrapAlignment.end,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: <Widget>[
-                    MButton(
-                      variant: MButtonVariant.ghost,
-                      onPressed: () => ref.toggleMThemeMode(themeModeProvider),
-                      semanticLabel: 'Toggle theme',
-                      child: MIcon(
-                        ref.watchMThemeMode(themeModeProvider) ==
-                                MThemeMode.dark
-                            ? MIconData.sun
-                            : MIconData.moon,
-                      ),
-                    ),
-                    MButton(
-                      variant: MButtonVariant.ghost,
-                      onPressed: () => showJoinRoomDialog(context, ref),
-                      child: const Text('Join room'),
-                    ),
-                    MButton(
-                      onPressed: () => showCreateRoomDialog(context, ref),
-                      child: const Text('Create room'),
-                    ),
-                    MButton(
-                      variant: MButtonVariant.ghost,
-                      onPressed: () => showAccountsDialog(context),
-                      child: const Text('Accounts'),
-                    ),
-                    MButton(
-                      variant: MButtonVariant.ghost,
-                      onPressed: () {
-                        ref.read(selectedRoomIdProvider.notifier).state = null;
-                        ref.read(authControllerProvider.notifier).signOut();
-                      },
-                      child: const Text('Logout'),
-                    ),
-                  ],
+          header: MAppHeader(
+            title: 'ManyMatrix',
+            subtitle: userId,
+            actions: <Widget>[
+              MButton(
+                variant: MButtonVariant.ghost,
+                onPressed: () => ref.toggleMThemeMode(themeModeProvider),
+                semanticLabel: 'Toggle theme',
+                child: MIcon(
+                  ref.watchMThemeMode(themeModeProvider) == MThemeMode.dark
+                      ? MIconData.sun
+                      : MIconData.moon,
                 ),
+              ),
+              MButton(
+                variant: MButtonVariant.ghost,
+                onPressed: () => showJoinRoomDialog(context, ref),
+                child: const Text('Join room'),
+              ),
+              MButton(
+                onPressed: () => showCreateRoomDialog(context, ref),
+                child: const Text('Create room'),
+              ),
+              MButton(
+                variant: MButtonVariant.ghost,
+                onPressed: () => showAccountsDialog(context),
+                child: const Text('Accounts'),
+              ),
+              MButton(
+                variant: MButtonVariant.ghost,
+                onPressed: () {
+                  ref.read(selectedRoomIdProvider.notifier).state = null;
+                  ref.read(authControllerProvider.notifier).signOut();
+                },
+                child: const Text('Logout'),
               ),
             ],
           ),
