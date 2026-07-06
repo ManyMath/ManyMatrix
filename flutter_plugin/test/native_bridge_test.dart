@@ -55,4 +55,30 @@ void main() {
     expect(sdk, isA<ManyMatrixSdkException>());
     expect(sdk.details['method'], 'invite');
   });
+
+  test('Matrix SDK error mapper preserves Matrix errcodes', () {
+    final native = manyMatrixExceptionForNativeError(
+      'matrix SDK error: [404 / M_NOT_FOUND] user was not found',
+      method: 'invite',
+    );
+    expect(native, isA<ManyMatrixSdkException>());
+    expect(native.details['errcode'], 'M_NOT_FOUND');
+    expect(native.details['method'], 'invite');
+
+    final web = manyMatrixExceptionForEnvelope(
+      'MatrixSdkError',
+      '[403 / M_FORBIDDEN] invite denied',
+      details: const {'transport': 'web'},
+    );
+    expect(web, isA<ManyMatrixSdkException>());
+    expect(web.details['errcode'], 'M_FORBIDDEN');
+    expect(web.details['transport'], 'web');
+
+    final preserved = manyMatrixExceptionForEnvelope(
+      'MatrixSdkError',
+      '[403 / M_FORBIDDEN] invite denied',
+      details: const {'errcode': 'M_LIMIT_EXCEEDED'},
+    );
+    expect(preserved.details['errcode'], 'M_LIMIT_EXCEEDED');
+  });
 }
