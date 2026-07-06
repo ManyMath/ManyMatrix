@@ -23,35 +23,28 @@ class RoomInfoPage extends ConsumerWidget {
     final members = ref.watch(roomMembersProvider(roomId));
 
     return MScaffold(
-      header: Row(
-        children: <Widget>[
-          MButton(
-            variant: MButtonVariant.ghost,
-            onPressed: () => Navigator.of(context).pop(),
-            semanticLabel: 'Back to chat',
-            child: const Text('Back'),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              roomName,
-              style: theme.typography.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
+      header: MAppHeader(
+        title: roomName,
+        subtitle: 'Members',
+        leading: MButton(
+          variant: MButtonVariant.ghost,
+          onPressed: () => Navigator.of(context).pop(),
+          semanticLabel: 'Back to chat',
+          child: const Text('Back'),
+        ),
       ),
       body: members.when(
         loading: () => const Center(
-          child:
-              MCircularProgress.indeterminate(semanticLabel: 'Loading members'),
+          child: MCircularProgress.indeterminate(
+            semanticLabel: 'Loading members',
+          ),
         ),
         error: (error, _) => Center(
           child: Text(
             'Could not load members: $error',
-            style: theme.typography.bodySmall
-                .copyWith(color: theme.colors.destructive),
+            style: theme.typography.bodySmall.copyWith(
+              color: theme.colors.destructive,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
@@ -60,8 +53,9 @@ class RoomInfoPage extends ConsumerWidget {
             return Center(
               child: Text(
                 'No members found',
-                style: theme.typography.body
-                    .copyWith(color: theme.colors.mutedForeground),
+                style: theme.typography.body.copyWith(
+                  color: theme.colors.mutedForeground,
+                ),
               ),
             );
           }
@@ -97,18 +91,16 @@ class _MemberTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = MTheme.of(context);
-    final initial =
-        userId.replaceFirst(RegExp(r'^@'), '').substring(0, 1).toUpperCase();
+    final initial = userId
+        .replaceFirst(RegExp(r'^@'), '')
+        .substring(0, 1)
+        .toUpperCase();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: <Widget>[
-          MAvatar(
-            size: 32,
-            fallback: Text(initial),
-            semanticLabel: userId,
-          ),
+          MAvatar(size: 32, fallback: Text(initial), semanticLabel: userId),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -166,11 +158,12 @@ class _MemberTile extends ConsumerWidget {
             Text(
               action == _ModerationAction.kick
                   ? 'This removes them from the room. They can rejoin if the '
-                      'room is public or they are re-invited.'
+                        'room is public or they are re-invited.'
                   : 'This removes them from the room and prevents them from '
-                      'rejoining until unbanned.',
-              style: theme.typography.bodySmall
-                  .copyWith(color: theme.colors.mutedForeground),
+                        'rejoining until unbanned.',
+              style: theme.typography.bodySmall.copyWith(
+                color: theme.colors.mutedForeground,
+              ),
             ),
             const SizedBox(height: 16),
             const MLabel('Reason (optional)'),
@@ -209,9 +202,17 @@ class _MemberTile extends ConsumerWidget {
     final service = ref.read(matrixServiceProvider);
     try {
       if (action == _ModerationAction.kick) {
-        await service.kick(roomId, userId, reason: reason.isEmpty ? null : reason);
+        await service.kick(
+          roomId,
+          userId,
+          reason: reason.isEmpty ? null : reason,
+        );
       } else {
-        await service.ban(roomId, userId, reason: reason.isEmpty ? null : reason);
+        await service.ban(
+          roomId,
+          userId,
+          reason: reason.isEmpty ? null : reason,
+        );
       }
       ref.invalidate(roomMembersProvider(roomId));
     } on Object catch (error) {
@@ -228,8 +229,9 @@ class _MemberTile extends ConsumerWidget {
               const SizedBox(height: 8),
               Text(
                 '$error',
-                style: theme.typography.bodySmall
-                    .copyWith(color: theme.colors.destructive),
+                style: theme.typography.bodySmall.copyWith(
+                  color: theme.colors.destructive,
+                ),
               ),
               const SizedBox(height: 16),
               Align(

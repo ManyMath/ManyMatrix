@@ -22,32 +22,22 @@ class ChatPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = MTheme.of(context);
     return MScaffold(
-      header: Row(
-        children: <Widget>[
-          MButton(
-            variant: MButtonVariant.ghost,
-            onPressed: () => Navigator.of(context).pop(),
-            semanticLabel: 'Back to rooms',
-            child: const Text('Back'),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              roomName,
-              style: theme.typography.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+      header: MAppHeader(
+        title: roomName,
+        leading: MButton(
+          variant: MButtonVariant.ghost,
+          onPressed: () => Navigator.of(context).pop(),
+          semanticLabel: 'Back to rooms',
+          child: const Text('Back'),
+        ),
+        actions: <Widget>[
           MButton(
             variant: MButtonVariant.ghost,
             onPressed: () => showInviteDialog(context, ref, roomId: roomId),
             semanticLabel: 'Invite to room',
             child: const Text('Invite'),
           ),
-          const SizedBox(width: 8),
           MButton(
             variant: MButtonVariant.ghost,
             onPressed: () => Navigator.of(context).push(

@@ -42,10 +42,9 @@ class LoginPage extends HookConsumerWidget {
     }
 
     return MScaffold(
-      header: Row(
-        children: <Widget>[
-          Text('ManyMatrix', style: theme.typography.title),
-          const Spacer(),
+      header: MAppHeader(
+        title: 'ManyMatrix',
+        actions: <Widget>[
           MButton(
             variant: MButtonVariant.ghost,
             onPressed: () => ref.toggleMThemeMode(themeModeProvider),
