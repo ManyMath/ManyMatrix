@@ -68,10 +68,11 @@ void main() {
     final web = manyMatrixExceptionForEnvelope(
       'MatrixSdkError',
       '[403 / M_FORBIDDEN] invite denied',
-      details: const {'transport': 'web'},
+      details: const {'transport': 'web', 'status_code': 403},
     );
     expect(web, isA<ManyMatrixSdkException>());
     expect(web.details['errcode'], 'M_FORBIDDEN');
+    expect(web.details['status_code'], 403);
     expect(web.details['transport'], 'web');
 
     final preserved = manyMatrixExceptionForEnvelope(

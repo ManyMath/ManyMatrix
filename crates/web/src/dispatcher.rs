@@ -249,10 +249,11 @@ struct ThumbnailArgs {
 }
 
 fn sdk_err(e: manymatrix_core::Error) -> ErrEnvelope {
+    let details = e.details();
     ErrEnvelope {
         kind: ErrKind::MatrixSdkError,
         message: e.to_string(),
-        details: serde_json::json!({}),
+        details,
     }
 }
 
@@ -793,7 +794,7 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
 
 #[cfg(test)]
 mod tests {
-    use super::sync_status_json;
+    use super::{sdk_err, sync_status_json};
 
     #[test]
     fn sync_status_json_omits_error_for_running_state() {
@@ -811,5 +812,13 @@ mod tests {
         assert_eq!(status["state"], "exited");
         assert_eq!(status["ok"], false);
         assert_eq!(status["error"], "network dropped");
+    }
+
+    #[test]
+    fn sdk_err_uses_core_error_details() {
+        let envelope = sdk_err(manymatrix_core::Error::Other("not ready".to_string()));
+
+        assert!(envelope.details.as_object().unwrap().is_empty());
+        assert_eq!(envelope.message, "not ready");
     }
 }
