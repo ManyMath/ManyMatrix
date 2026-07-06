@@ -21,8 +21,10 @@ pub fn init() {
 /// Register a JS function to receive pushed events from the sync loop.
 ///
 /// The sink is called with `(kind, payload_json)` where `kind` is one of
-/// `"message"`, `"reaction"`, or `"receipt"` and `payload_json` is the
-/// JSON-serialized event. Events flow only after an `events.subscribe` call.
+/// `"message"`, `"reaction"`, `"receipt"`, or `"sync_status"` and
+/// `payload_json` is the JSON-serialized event. Timeline events flow only
+/// after an `events.subscribe` call; sync status exits are emitted by the
+/// running sync loop.
 #[wasm_bindgen]
 pub fn set_event_sink(sink: js_sys::Function) {
     dispatcher::set_event_sink(sink);

@@ -569,7 +569,7 @@ class ManyMatrixBridge {
 
   // === Event push channel ===
   //
-  // The wasm dispatcher forwards sync events through offscreen.js, which
+  // The wasm dispatcher forwards sync and sync-status events through offscreen.js, which
   // broadcasts them as {type: 'manymatrix-event', kind, payload} runtime
   // messages. A single chrome.runtime.onMessage listener dispatches to the
   // registered callbacks by kind.
@@ -584,7 +584,8 @@ class ManyMatrixBridge {
   bool get _hasEventCallbacks =>
       _onMessageCallback != null ||
       _onReactionCallback != null ||
-      _onReceiptCallback != null;
+      _onReceiptCallback != null ||
+      _onSyncStatusCallback != null;
 
   void _handleRuntimeMessage(JSAny? message, JSAny? sender, JSAny? reply) {
     final data = message.dartify();
@@ -599,6 +600,8 @@ class ManyMatrixBridge {
         _onReactionCallback?.call(payload);
       case 'receipt':
         _onReceiptCallback?.call(payload);
+      case 'sync_status':
+        _onSyncStatusCallback?.call(payload);
     }
   }
 
@@ -655,6 +658,7 @@ class ManyMatrixBridge {
 
   void onSyncStatus(void Function(String json) callback) {
     _onSyncStatusCallback = callback;
+    _ensureEventChannel();
   }
 
   void dispose() {

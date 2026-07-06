@@ -46,6 +46,17 @@ fn emit_event(kind: &str, payload: &impl serde::Serialize) {
     });
 }
 
+fn sync_status_json(state: &str, ok: bool, error: Option<String>) -> serde_json::Value {
+    let mut status = serde_json::json!({
+        "state": state,
+        "ok": ok,
+    });
+    if let Some(error) = error {
+        status["error"] = serde_json::Value::String(error);
+    }
+    status
+}
+
 pub fn get_client() -> Result<ManyMatrixClient, ErrEnvelope> {
     CLIENT.with(|cell| {
         cell.borrow().as_ref().cloned().ok_or_else(|| ErrEnvelope {
@@ -346,10 +357,16 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let client = get_client()?;
             SYNC_RUNNING.store(true, Ordering::Relaxed);
             wasm_bindgen_futures::spawn_local(async move {
-                if let Err(e) = client.sync_forever().await {
-                    tracing::error!("sync loop exited: {}", e);
-                }
+                let status = match client.sync_forever().await {
+                    Ok(()) => sync_status_json("exited", true, None),
+                    Err(e) => {
+                        let error = e.to_string();
+                        tracing::error!("sync loop exited: {}", error);
+                        sync_status_json("exited", false, Some(error))
+                    }
+                };
                 SYNC_RUNNING.store(false, Ordering::Relaxed);
+                emit_event("sync_status", &status);
             });
             Ok(serde_json::json!({}))
         }
@@ -595,7 +612,10 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             use base64::Engine as _;
             let args: DownloadMediaArgs = serde_json::from_str(args_json).map_err(serde_err)?;
             let client = get_client()?;
-            let data = client.download_media(&args.mxc_uri).await.map_err(sdk_err)?;
+            let data = client
+                .download_media(&args.mxc_uri)
+                .await
+                .map_err(sdk_err)?;
             let data_base64 = base64::engine::general_purpose::STANDARD.encode(data);
             Ok(serde_json::json!({"data_base64": data_base64}))
         }
@@ -768,5 +788,28 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             message: format!("unknown method: {}", method),
             details: serde_json::json!({}),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sync_status_json;
+
+    #[test]
+    fn sync_status_json_omits_error_for_running_state() {
+        let status = sync_status_json("running", true, None);
+
+        assert_eq!(status["state"], "running");
+        assert_eq!(status["ok"], true);
+        assert!(status.get("error").is_none());
+    }
+
+    #[test]
+    fn sync_status_json_includes_error_for_failed_exit() {
+        let status = sync_status_json("exited", false, Some("network dropped".to_owned()));
+
+        assert_eq!(status["state"], "exited");
+        assert_eq!(status["ok"], false);
+        assert_eq!(status["error"], "network dropped");
     }
 }
