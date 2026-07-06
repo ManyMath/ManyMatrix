@@ -87,13 +87,8 @@ class _TwoPaneBody extends ConsumerWidget {
         Container(width: 1, color: theme.colors.border),
         Expanded(
           child: selectedRoomId == null
-              ? Center(
-                  child: Text(
-                    'Select a room to start chatting',
-                    style: theme.typography.body.copyWith(
-                      color: theme.colors.mutedForeground,
-                    ),
-                  ),
+              ? const Center(
+                  child: MEmptyState(title: 'Select a room to start chatting'),
                 )
               : ChatView(
                   key: ValueKey(selectedRoomId),
@@ -145,21 +140,14 @@ class _RoomListBody extends ConsumerWidget {
       data: (list) {
         if (list.isEmpty) {
           return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  'No rooms yet',
-                  style: theme.typography.body.copyWith(
-                    color: theme.colors.mutedForeground,
-                  ),
-                ),
-                const SizedBox(height: 16),
+            child: MEmptyState(
+              title: 'No rooms yet',
+              description: 'Create a room or join one by room id.',
+              actions: <Widget>[
                 MButton(
                   onPressed: () => showCreateRoomDialog(context, ref),
                   child: const Text('Create room'),
                 ),
-                const SizedBox(height: 8),
                 MButton(
                   variant: MButtonVariant.ghost,
                   onPressed: () => showJoinRoomDialog(context, ref),

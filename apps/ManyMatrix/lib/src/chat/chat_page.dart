@@ -164,12 +164,10 @@ class ChatView extends HookConsumerWidget {
             ),
             data: (data) {
               if (data.newestFirst.isEmpty) {
-                return Center(
-                  child: Text(
-                    'No messages yet — say hi!',
-                    style: theme.typography.body.copyWith(
-                      color: theme.colors.mutedForeground,
-                    ),
+                return const Center(
+                  child: MEmptyState(
+                    title: 'No messages yet',
+                    description: 'Say hi to start the conversation.',
                   ),
                 );
               }
