@@ -37,8 +37,9 @@ class _AccountsDialogContent extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 'No saved accounts yet.',
-                style: theme.typography.bodySmall
-                    .copyWith(color: theme.colors.mutedForeground),
+                style: theme.typography.bodySmall.copyWith(
+                  color: theme.colors.mutedForeground,
+                ),
               ),
             )
           else
@@ -111,8 +112,8 @@ class _AccountRow extends ConsumerWidget {
       onTap: active
           ? null
           : () => ref
-              .read(authControllerProvider.notifier)
-              .switchAccount(account.id),
+                .read(authControllerProvider.notifier)
+                .switchAccount(account.id),
       semanticLabel: 'Switch to ${account.label}',
       trailing: accounts.length > 1 || !active
           ? MButton(
@@ -120,40 +121,19 @@ class _AccountRow extends ConsumerWidget {
               size: MButtonSize.sm,
               semanticLabel: 'Forget ${account.label}',
               onPressed: () async {
-                final bool? confirmed = await showMDialog<bool>(
+                final confirmed = await showMConfirmDialog(
                   context,
-                  builder: (BuildContext ctx) {
-                    final dialogTheme = MTheme.of(ctx);
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text('Forget account?',
-                            style: dialogTheme.typography.headlineSmall),
-                        const SizedBox(height: 8),
-                        Text(account.label, style: dialogTheme.typography.code),
-                        const SizedBox(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: <Widget>[
-                            MButton(
-                              variant: MButtonVariant.ghost,
-                              onPressed: () => Navigator.of(ctx).pop(false),
-                              child: const Text('Cancel'),
-                            ),
-                            const SizedBox(width: 8),
-                            MButton(
-                              variant: MButtonVariant.destructive,
-                              onPressed: () => Navigator.of(ctx).pop(true),
-                              child: const Text('Forget'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    );
-                  },
+                  title: 'Forget account?',
+                  content: Builder(
+                    builder: (BuildContext ctx) => Text(
+                      account.label,
+                      style: MTheme.of(ctx).typography.code,
+                    ),
+                  ),
+                  confirmLabel: 'Forget',
+                  confirmVariant: MButtonVariant.destructive,
                 );
-                if (confirmed == true) {
+                if (confirmed) {
                   if (active) {
                     await ref.read(authControllerProvider.notifier).signOut();
                   } else {

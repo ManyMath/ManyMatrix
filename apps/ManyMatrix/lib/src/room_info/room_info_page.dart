@@ -140,60 +140,35 @@ class _MemberTile extends ConsumerWidget {
     final reasonController = MController<String>('');
     final verb = action == _ModerationAction.kick ? 'Kick' : 'Ban';
 
-    final confirmed = await showMDialog<bool>(
+    final confirmed = await showMConfirmDialog(
       context,
-      builder: (BuildContext ctx) => ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text('$verb "$userId"?', style: theme.typography.title),
-            const SizedBox(height: 8),
-            Text(
-              action == _ModerationAction.kick
-                  ? 'This removes them from the room. They can rejoin if the '
-                        'room is public or they are re-invited.'
-                  : 'This removes them from the room and prevents them from '
-                        'rejoining until unbanned.',
-              style: theme.typography.bodySmall.copyWith(
-                color: theme.colors.mutedForeground,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const MLabel('Reason (optional)'),
-            const SizedBox(height: 8),
-            MTextField(
-              controller: reasonController,
-              placeholder: 'Reason',
-              semanticLabel: 'Reason',
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: <Widget>[
-                MButton(
-                  variant: MButtonVariant.ghost,
-                  onPressed: () => Navigator.of(ctx).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                const SizedBox(width: 8),
-                MButton(
-                  variant: MButtonVariant.destructive,
-                  onPressed: () => Navigator.of(ctx).pop(true),
-                  child: Text(verb),
-                ),
-              ],
-            ),
-          ],
-        ),
+      title: '$verb "$userId"?',
+      message: action == _ModerationAction.kick
+          ? 'This removes them from the room. They can rejoin if the room is '
+                'public or they are re-invited.'
+          : 'This removes them from the room and prevents them from rejoining '
+                'until unbanned.',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          const MLabel('Reason (optional)'),
+          const SizedBox(height: 8),
+          MTextField(
+            controller: reasonController,
+            placeholder: 'Reason',
+            semanticLabel: 'Reason',
+          ),
+        ],
       ),
+      confirmLabel: verb,
+      confirmVariant: MButtonVariant.destructive,
     );
 
-    reasonController.dispose();
-    if (confirmed != true) return;
-
     final reason = reasonController.value.trim();
+    reasonController.dispose();
+    if (!confirmed) return;
+
     final service = ref.read(matrixServiceProvider);
     try {
       if (action == _ModerationAction.kick) {

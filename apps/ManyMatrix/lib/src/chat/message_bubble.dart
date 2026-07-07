@@ -140,45 +140,16 @@ class MessageBubble extends ConsumerWidget {
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final theme = MTheme.of(context);
-    final confirmed = await showMDialog<bool>(
+    final confirmed = await showMConfirmDialog(
       context,
-      builder: (BuildContext ctx) => ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text('Delete this message?', style: theme.typography.title),
-            const SizedBox(height: 8),
-            Text(
-              'This removes the message for everyone in the room. This '
-              'cannot be undone.',
-              style: theme.typography.bodySmall.copyWith(
-                color: theme.colors.mutedForeground,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: <Widget>[
-                MButton(
-                  variant: MButtonVariant.ghost,
-                  onPressed: () => Navigator.of(ctx).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                const SizedBox(width: 8),
-                MButton(
-                  variant: MButtonVariant.destructive,
-                  onPressed: () => Navigator.of(ctx).pop(true),
-                  child: const Text('Delete'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+      title: 'Delete this message?',
+      message:
+          'This removes the message for everyone in the room. This cannot be '
+          'undone.',
+      confirmLabel: 'Delete',
+      confirmVariant: MButtonVariant.destructive,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     if (!context.mounted) return;
 
     final service = ref.read(matrixServiceProvider);
