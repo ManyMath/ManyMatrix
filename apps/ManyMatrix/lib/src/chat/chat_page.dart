@@ -148,11 +148,8 @@ class ChatView extends HookConsumerWidget {
         ],
         Expanded(
           child: timeline.when(
-            loading: () => const Center(
-              child: MCircularProgress.indeterminate(
-                semanticLabel: 'Loading messages',
-              ),
-            ),
+            loading: () =>
+                const Center(child: MLoadingState(message: 'Loading messages')),
             error: (error, _) => Center(
               child: MAlert(
                 variant: MAlertVariant.destructive,

@@ -53,23 +53,11 @@ class _RestoringSplash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = MTheme.of(context);
-    return MScaffold(
+    return const MScaffold(
       body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const MCircularProgress.indeterminate(
-              semanticLabel: 'Restoring session',
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Restoring session…',
-              style: theme.typography.bodySmall.copyWith(
-                color: theme.colors.mutedForeground,
-              ),
-            ),
-          ],
+        child: MLoadingState(
+          message: 'Restoring session...',
+          semanticLabel: 'Restoring session',
         ),
       ),
     );

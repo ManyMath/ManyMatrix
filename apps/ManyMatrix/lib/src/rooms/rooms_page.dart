@@ -124,9 +124,8 @@ class _RoomListBody extends ConsumerWidget {
     final selectedRoomId = ref.watch(selectedRoomIdProvider);
 
     return rooms.when(
-      loading: () => const Center(
-        child: MCircularProgress.indeterminate(semanticLabel: 'Loading rooms'),
-      ),
+      loading: () =>
+          const Center(child: MLoadingState(message: 'Loading rooms')),
       error: (error, _) => Center(
         child: MAlert(
           variant: MAlertVariant.destructive,

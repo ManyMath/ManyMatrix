@@ -34,11 +34,8 @@ class RoomInfoPage extends ConsumerWidget {
         ),
       ),
       body: members.when(
-        loading: () => const Center(
-          child: MCircularProgress.indeterminate(
-            semanticLabel: 'Loading members',
-          ),
-        ),
+        loading: () =>
+            const Center(child: MLoadingState(message: 'Loading members')),
         error: (error, _) => Center(
           child: MAlert(
             variant: MAlertVariant.destructive,
