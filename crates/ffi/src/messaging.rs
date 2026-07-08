@@ -19,7 +19,7 @@ pub unsafe extern "C" fn manymatrix_send_text(
     let body = str_from_ptr(body);
     match RUNTIME.block_on(client.send_text(room_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -41,11 +41,11 @@ pub unsafe extern "C" fn manymatrix_send_custom_event(
     let content_json = str_from_ptr(content_json);
     let content: serde_json::Value = match serde_json::from_str(content_json) {
         Ok(value) => value,
-        Err(e) => return FfiResult::error(&format!("invalid content_json: {e}")),
+        Err(e) => return FfiResult::serde_error(&format!("invalid content_json: {e}")),
     };
     match RUNTIME.block_on(client.send_custom_event(room_id, event_type, content)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -66,7 +66,7 @@ pub unsafe extern "C" fn manymatrix_send_html(
     let html = str_from_ptr(html);
     match RUNTIME.block_on(client.send_html(room_id, body, html)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -85,7 +85,7 @@ pub unsafe extern "C" fn manymatrix_send_notice(
     let body = str_from_ptr(body);
     match RUNTIME.block_on(client.send_notice(room_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -104,7 +104,7 @@ pub unsafe extern "C" fn manymatrix_send_emote(
     let body = str_from_ptr(body);
     match RUNTIME.block_on(client.send_emote(room_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -125,7 +125,7 @@ pub unsafe extern "C" fn manymatrix_edit_message(
     let new_body = str_from_ptr(new_body);
     match RUNTIME.block_on(client.edit_message(room_id, event_id, new_body)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -146,7 +146,7 @@ pub unsafe extern "C" fn manymatrix_reply_to(
     let body = str_from_ptr(body);
     match RUNTIME.block_on(client.reply_to(room_id, event_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -167,7 +167,7 @@ pub unsafe extern "C" fn manymatrix_send_reaction(
     let key = str_from_ptr(key);
     match RUNTIME.block_on(client.send_reaction(room_id, event_id, key)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn manymatrix_redact(
     let reason = optional_str_from_ptr(reason);
     match RUNTIME.block_on(client.redact(room_id, event_id, reason)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -209,7 +209,7 @@ pub unsafe extern "C" fn manymatrix_send_thread_reply(
     let body = str_from_ptr(body);
     match RUNTIME.block_on(client.send_thread_reply(room_id, thread_root_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -228,7 +228,7 @@ pub unsafe extern "C" fn manymatrix_send_read_receipt(
     let event_id = str_from_ptr(event_id);
     match RUNTIME.block_on(client.send_read_receipt(room_id, event_id)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -248,7 +248,7 @@ pub unsafe extern "C" fn manymatrix_send_typing(
     let room_id = str_from_ptr(room_id);
     match RUNTIME.block_on(client.send_typing(room_id, typing)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -272,8 +272,8 @@ pub unsafe extern "C" fn manymatrix_get_messages(
     match RUNTIME.block_on(client.get_messages(room_id, from_token, limit)) {
         Ok(paginated) => match serde_json::to_string(&paginated) {
             Ok(json) => FfiResult::success_string(&json),
-            Err(e) => FfiResult::error(&e.to_string()),
+            Err(e) => FfiResult::error_from(&e),
         },
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }

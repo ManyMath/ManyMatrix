@@ -82,4 +82,18 @@ void main() {
     );
     expect(preserved.details['errcode'], 'M_LIMIT_EXCEEDED');
   });
+
+  test('native error mapper parses structured FFI error envelopes', () {
+    final native = manyMatrixExceptionForNativeError(
+      '{"manymatrix_ffi_error":1,"kind":"MatrixSdkError","message":"[403 / M_FORBIDDEN] invite denied","details":{"status_code":403,"errcode":"M_FORBIDDEN"}}',
+      method: 'invite',
+    );
+
+    expect(native, isA<ManyMatrixSdkException>());
+    expect(native.message, '[403 / M_FORBIDDEN] invite denied');
+    expect(native.details['transport'], 'native_ffi');
+    expect(native.details['method'], 'invite');
+    expect(native.details['status_code'], 403);
+    expect(native.details['errcode'], 'M_FORBIDDEN');
+  });
 }

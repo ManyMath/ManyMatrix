@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class ManyMatrixException implements Exception {
   final String kind;
   final String message;
@@ -46,6 +48,23 @@ Map<String, dynamic> _sdkDetailsWithErrcode(
   return resolved;
 }
 
+Map<String, dynamic> _stringKeyedMap(Object? value) {
+  if (value is! Map) return {};
+  return value.map((key, value) => MapEntry('$key', value));
+}
+
+Map<String, dynamic>? _nativeFfiEnvelope(String message) {
+  try {
+    final decoded = jsonDecode(message);
+    if (decoded is! Map) return null;
+    final envelope = _stringKeyedMap(decoded);
+    if (envelope['manymatrix_ffi_error'] != 1) return null;
+    return envelope;
+  } on FormatException {
+    return null;
+  }
+}
+
 ManyMatrixException manyMatrixExceptionForEnvelope(
   String kind,
   String message, {
@@ -72,6 +91,21 @@ ManyMatrixException manyMatrixExceptionForNativeError(
   String message, {
   String? method,
 }) {
+  final envelope = _nativeFfiEnvelope(message);
+  if (envelope != null) {
+    final envelopeMessage = envelope['message'] as String? ?? message;
+    final details = <String, dynamic>{
+      ..._stringKeyedMap(envelope['details']),
+      'transport': 'native_ffi',
+      if (method != null) 'method': method,
+    };
+    return manyMatrixExceptionForEnvelope(
+      envelope['kind'] as String? ?? 'MatrixSdkError',
+      envelopeMessage,
+      details: details,
+    );
+  }
+
   final lower = message.toLowerCase();
   final details = <String, dynamic>{
     'transport': 'native_ffi',

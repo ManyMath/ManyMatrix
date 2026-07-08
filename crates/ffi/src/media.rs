@@ -27,7 +27,7 @@ pub unsafe extern "C" fn manymatrix_upload_media(
     let bytes = std::slice::from_raw_parts(data, data_len).to_vec();
     match RUNTIME.block_on(client.upload_media(room_id, filename, mime_type, bytes)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -53,7 +53,7 @@ pub unsafe extern "C" fn manymatrix_download_media(
             let buf = Box::new(FfiBuffer { data: ptr, len });
             FfiResult::success(Box::into_raw(buf) as *mut c_void)
         }
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn manymatrix_get_thumbnail(
             let buf = Box::new(FfiBuffer { data: ptr, len });
             FfiResult::success(Box::into_raw(buf) as *mut c_void)
         }
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -116,6 +116,6 @@ pub unsafe extern "C" fn manymatrix_register_pusher(
         lang,
     )) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }

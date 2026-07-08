@@ -36,7 +36,7 @@ pub unsafe extern "C" fn manymatrix_create_room(
     };
     match RUNTIME.block_on(client.create_room(options)) {
         Ok(room_id) => FfiResult::success_string(&room_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -55,7 +55,7 @@ pub unsafe extern "C" fn manymatrix_join_room(
     let id = str_from_ptr(room_id_or_alias);
     match RUNTIME.block_on(client.join_room(id)) {
         Ok(room_id) => FfiResult::success_string(&room_id),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn manymatrix_invite(
     let user_id = str_from_ptr(user_id);
     match RUNTIME.block_on(client.invite(room_id, user_id)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -98,7 +98,7 @@ pub unsafe extern "C" fn manymatrix_set_custom_event_power_levels(
     let config_json = str_from_ptr(config_json);
     let config: CustomEventPowerLevelsConfig = match serde_json::from_str(config_json) {
         Ok(config) => config,
-        Err(e) => return FfiResult::error(&format!("invalid config_json: {e}")),
+        Err(e) => return FfiResult::serde_error(&format!("invalid config_json: {e}")),
     };
     match RUNTIME.block_on(client.set_custom_event_power_levels(
         room_id,
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn manymatrix_set_custom_event_power_levels(
         config.user_power_levels.into_iter().collect(),
     )) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -124,7 +124,7 @@ pub unsafe extern "C" fn manymatrix_leave_room(
     let room_id = str_from_ptr(room_id);
     match RUNTIME.block_on(client.leave_room(room_id)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -145,7 +145,7 @@ pub unsafe extern "C" fn manymatrix_kick(
     let reason = optional_str_from_ptr(reason);
     match RUNTIME.block_on(client.kick(room_id, user_id, reason)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -166,7 +166,7 @@ pub unsafe extern "C" fn manymatrix_ban(
     let reason = optional_str_from_ptr(reason);
     match RUNTIME.block_on(client.ban(room_id, user_id, reason)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -184,7 +184,7 @@ pub unsafe extern "C" fn manymatrix_room_name(
     match client.room_name(room_id) {
         Ok(Some(name)) => FfiResult::success_string(&name),
         Ok(None) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn manymatrix_room_topic(
     match client.room_topic(room_id) {
         Ok(Some(topic)) => FfiResult::success_string(&topic),
         Ok(None) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -220,7 +220,7 @@ pub unsafe extern "C" fn manymatrix_room_avatar_url(
     match client.room_avatar_url(room_id) {
         Ok(Some(url)) => FfiResult::success_string(&url),
         Ok(None) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -238,8 +238,8 @@ pub unsafe extern "C" fn manymatrix_room_members(
     match RUNTIME.block_on(client.room_members(room_id)) {
         Ok(members) => match serde_json::to_string(&members) {
             Ok(json) => FfiResult::success_string(&json),
-            Err(e) => FfiResult::error(&e.to_string()),
+            Err(e) => FfiResult::error_from(&e),
         },
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }

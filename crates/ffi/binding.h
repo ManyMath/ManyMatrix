@@ -70,9 +70,9 @@ typedef void (*ReceiptCallback)(char*);
 typedef void (*CustomEventCallback)(char*);
 
 /**
- * Callback type for sync-loop status events. Receives JSON such as
- * `{"state":"exited","ok":false,"error":"..."}`. Same ownership contract as
- * [`MessageCallback`].
+ * Callback type for sync-loop status events. Failed exits include the legacy
+ * `error` string plus structured `errorKind` and `errorDetails` fields. Same
+ * ownership contract as [`MessageCallback`].
  */
 typedef void (*SyncStatusCallback)(char*);
 

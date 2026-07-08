@@ -3,7 +3,7 @@ use std::path::Path;
 
 use manymatrix_core::ManyMatrixClient as CoreClient;
 
-use crate::types::{FfiResult, SyncStatusCallback};
+use crate::types::{FfiErrorSource, FfiResult, SyncStatusCallback};
 use crate::{str_from_ptr, RUNTIME};
 
 /// Opaque FFI handle for the core Matrix client.
@@ -23,6 +23,13 @@ fn sync_status_json(state: &str, ok: bool, error: Option<String>) -> serde_json:
     if let Some(error) = error {
         status["error"] = serde_json::Value::String(error);
     }
+    status
+}
+
+fn failed_sync_status_json(error: &manymatrix_core::Error) -> serde_json::Value {
+    let mut status = sync_status_json("exited", false, Some(error.to_string()));
+    status["errorKind"] = serde_json::Value::String(error.ffi_kind().to_string());
+    status["errorDetails"] = error.ffi_details();
     status
 }
 
@@ -53,7 +60,7 @@ pub unsafe extern "C" fn manymatrix_new(
             let handle = Box::into_raw(Box::new(client)) as *mut ManyMatrixClient;
             FfiResult::success(handle as *mut c_void)
         }
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -76,9 +83,9 @@ pub unsafe extern "C" fn manymatrix_login(
     match RUNTIME.block_on(client.login(username, password)) {
         Ok(session) => match serde_json::to_string(&session) {
             Ok(json) => FfiResult::success_string(&json),
-            Err(e) => FfiResult::error(&e.to_string()),
+            Err(e) => FfiResult::error_from(&e),
         },
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -96,11 +103,11 @@ pub unsafe extern "C" fn manymatrix_restore(
     let json = str_from_ptr(session_json);
     let session: manymatrix_core::StoredSession = match serde_json::from_str(json) {
         Ok(s) => s,
-        Err(e) => return FfiResult::error(&e.to_string()),
+        Err(e) => return FfiResult::error_from(&e),
     };
     match RUNTIME.block_on(client.restore(&session)) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -113,7 +120,7 @@ pub unsafe extern "C" fn manymatrix_sync_once(handle: *mut ManyMatrixClient) -> 
     let client = client_from_handle(handle);
     match RUNTIME.block_on(client.sync_once()) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -150,7 +157,7 @@ pub unsafe extern "C" fn manymatrix_sync_forever_with_status(
         let result = RUNTIME.block_on(client_ref.sync_forever());
         let status = match result {
             Ok(()) => sync_status_json("exited", true, None),
-            Err(error) => sync_status_json("exited", false, Some(error.to_string())),
+            Err(error) => failed_sync_status_json(&error),
         };
         send_sync_status(callback, status);
     });
@@ -167,7 +174,7 @@ pub unsafe extern "C" fn manymatrix_joined_rooms(handle: *mut ManyMatrixClient) 
     let rooms = RUNTIME.block_on(client.joined_rooms());
     match serde_json::to_string(&rooms) {
         Ok(json) => FfiResult::success_string(&json),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -183,9 +190,9 @@ pub unsafe extern "C" fn manymatrix_server_capabilities(
     match RUNTIME.block_on(client.server_capabilities()) {
         Ok(capabilities) => match serde_json::to_string(&capabilities) {
             Ok(json) => FfiResult::success_string(&json),
-            Err(e) => FfiResult::error(&e.to_string()),
+            Err(e) => FfiResult::error_from(&e),
         },
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -198,7 +205,7 @@ pub unsafe extern "C" fn manymatrix_logout(handle: *mut ManyMatrixClient) -> Ffi
     let client = client_from_handle(handle);
     match RUNTIME.block_on(client.logout()) {
         Ok(()) => FfiResult::success_void(),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
@@ -243,7 +250,7 @@ pub unsafe extern "C" fn manymatrix_whoami(handle: *mut ManyMatrixClient) -> Ffi
     let client = client_from_handle(handle);
     match client.current_user_id() {
         Some(id) => FfiResult::success_string(&id),
-        None => FfiResult::error("not logged in"),
+        None => FfiResult::storage_error("not logged in"),
     }
 }
 
@@ -263,13 +270,13 @@ pub unsafe extern "C" fn manymatrix_is_room_encrypted(
     let room_id = str_from_ptr(room_id);
     match RUNTIME.block_on(client.is_room_encrypted(room_id)) {
         Ok(encrypted) => FfiResult::success_string(if encrypted { "true" } else { "false" }),
-        Err(e) => FfiResult::error(&e.to_string()),
+        Err(e) => FfiResult::error_from(&e),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::sync_status_json;
+    use super::{failed_sync_status_json, sync_status_json};
 
     #[test]
     fn sync_status_json_omits_error_for_running_state() {
@@ -287,5 +294,17 @@ mod tests {
         assert_eq!(status["state"], "exited");
         assert_eq!(status["ok"], false);
         assert_eq!(status["error"], "network dropped");
+    }
+
+    #[test]
+    fn failed_sync_status_json_includes_structured_error_fields() {
+        let error = manymatrix_core::Error::IdParse("bad room id".to_string());
+        let status = failed_sync_status_json(&error);
+
+        assert_eq!(status["state"], "exited");
+        assert_eq!(status["ok"], false);
+        assert_eq!(status["error"], "ID parse error: bad room id");
+        assert_eq!(status["errorKind"], "SerdeError");
+        assert!(status["errorDetails"].as_object().unwrap().is_empty());
     }
 }
