@@ -74,11 +74,7 @@ class _CreateRoomDialogBody extends HookConsumerWidget {
         ),
         if (error.value != null) ...<Widget>[
           const SizedBox(height: 12),
-          Text(
-            error.value!,
-            style: theme.typography.bodySmall
-                .copyWith(color: theme.colors.destructive),
-          ),
+          MAlert(variant: MAlertVariant.destructive, message: error.value!),
         ],
         const SizedBox(height: 24),
         Row(
@@ -151,8 +147,9 @@ class _JoinRoomDialogBody extends HookConsumerWidget {
         const SizedBox(height: 8),
         Text(
           'Enter a room ID (!abc:example.org) or alias (#room:example.org).',
-          style: theme.typography.bodySmall
-              .copyWith(color: theme.colors.mutedForeground),
+          style: theme.typography.bodySmall.copyWith(
+            color: theme.colors.mutedForeground,
+          ),
         ),
         const SizedBox(height: 16),
         const MLabel('Room ID or alias'),
@@ -166,11 +163,7 @@ class _JoinRoomDialogBody extends HookConsumerWidget {
         ),
         if (error.value != null) ...<Widget>[
           const SizedBox(height: 12),
-          Text(
-            error.value!,
-            style: theme.typography.bodySmall
-                .copyWith(color: theme.colors.destructive),
-          ),
+          MAlert(variant: MAlertVariant.destructive, message: error.value!),
         ],
         const SizedBox(height: 24),
         Row(
@@ -178,8 +171,9 @@ class _JoinRoomDialogBody extends HookConsumerWidget {
           children: <Widget>[
             MButton(
               variant: MButtonVariant.ghost,
-              onPressed:
-                  joining.value ? null : () => Navigator.of(context).pop(),
+              onPressed: joining.value
+                  ? null
+                  : () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
             const SizedBox(width: 8),

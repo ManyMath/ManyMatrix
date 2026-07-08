@@ -197,12 +197,7 @@ class _MemberTile extends ConsumerWidget {
             children: <Widget>[
               Text('$verb failed', style: theme.typography.title),
               const SizedBox(height: 8),
-              Text(
-                '$error',
-                style: theme.typography.bodySmall.copyWith(
-                  color: theme.colors.destructive,
-                ),
-              ),
+              MAlert(variant: MAlertVariant.destructive, message: '$error'),
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerRight,

@@ -137,12 +137,7 @@ class LoginPage extends HookConsumerWidget {
         ),
         if (error != null) ...<Widget>[
           const SizedBox(height: 12),
-          Text(
-            error,
-            style: theme.typography.bodySmall.copyWith(
-              color: theme.colors.destructive,
-            ),
-          ),
+          MAlert(variant: MAlertVariant.destructive, message: error),
         ],
         const SizedBox(height: 24),
         MButton(

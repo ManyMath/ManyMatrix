@@ -56,8 +56,9 @@ class _InviteDialogBody extends HookConsumerWidget {
         const SizedBox(height: 8),
         Text(
           'Enter the Matrix user ID to invite (@user:example.org).',
-          style: theme.typography.bodySmall
-              .copyWith(color: theme.colors.mutedForeground),
+          style: theme.typography.bodySmall.copyWith(
+            color: theme.colors.mutedForeground,
+          ),
         ),
         const SizedBox(height: 16),
         const MLabel('User ID'),
@@ -71,11 +72,7 @@ class _InviteDialogBody extends HookConsumerWidget {
         ),
         if (error.value != null) ...<Widget>[
           const SizedBox(height: 12),
-          Text(
-            error.value!,
-            style: theme.typography.bodySmall
-                .copyWith(color: theme.colors.destructive),
-          ),
+          MAlert(variant: MAlertVariant.destructive, message: error.value!),
         ],
         const SizedBox(height: 24),
         Row(
@@ -83,8 +80,9 @@ class _InviteDialogBody extends HookConsumerWidget {
           children: <Widget>[
             MButton(
               variant: MButtonVariant.ghost,
-              onPressed:
-                  inviting.value ? null : () => Navigator.of(context).pop(),
+              onPressed: inviting.value
+                  ? null
+                  : () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
             const SizedBox(width: 8),
