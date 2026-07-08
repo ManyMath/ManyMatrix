@@ -38,6 +38,18 @@ void main() {
     );
   });
 
+  test('ManyMatrixBridge exposes room power-level snapshot API', () {
+    void acceptsPowerLevelReader(
+      Future<String?> Function(ManyMatrixBridge) read,
+    ) {
+      expect(read, isA<Future<String?> Function(ManyMatrixBridge)>());
+    }
+
+    acceptsPowerLevelReader(
+      (bridge) => bridge.roomPowerLevels('!room:example.org'),
+    );
+  });
+
   test('native error mapper returns structured exception types', () {
     final serde = manyMatrixExceptionForNativeError(
       'invalid content_json: expected value',

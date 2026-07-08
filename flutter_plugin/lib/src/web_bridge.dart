@@ -337,6 +337,11 @@ class ManyMatrixBridge {
     return result['members_json'] as String?;
   }
 
+  Future<String?> roomPowerLevels(String roomId) async {
+    final result = await _call('rooms.power_levels', {'room_id': roomId});
+    return result['power_levels_json'] as String?;
+  }
+
   Future<bool> isRoomEncrypted(String roomId) async {
     final result = await _call('e2ee.is_encrypted', {'room_id': roomId});
     return result['encrypted'] as bool;

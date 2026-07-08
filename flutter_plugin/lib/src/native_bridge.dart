@@ -163,6 +163,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execWithHandleAndOneString(bindings, method, args);
       case 'room_members':
         return _execWithHandleAndOneString(bindings, method, args);
+      case 'room_power_levels':
+        return _execWithHandleAndOneString(bindings, method, args);
       case 'send_text':
         return _execWithHandleAndTwoStrings(bindings, method, args);
       case 'send_html':
@@ -343,6 +345,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
           result = bindings.manymatrix_room_avatar_url(handle, s1.cast());
         case 'room_members':
           result = bindings.manymatrix_room_members(handle, s1.cast());
+        case 'room_power_levels':
+          result = bindings.manymatrix_room_power_levels(handle, s1.cast());
         case 'is_room_encrypted':
           result = bindings.manymatrix_is_room_encrypted(handle, s1.cast());
         case 'enable_encryption':
@@ -976,6 +980,11 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Get the list of joined member user IDs for a room (JSON array string).
   Future<String?> roomMembers(String roomId) async {
     return await _call('room_members', {'s1': roomId}) as String?;
+  }
+
+  /// Get a normalized room power-level snapshot as a JSON object string.
+  Future<String?> roomPowerLevels(String roomId) async {
+    return await _call('room_power_levels', {'s1': roomId}) as String?;
   }
 
   /// Check whether a room has encryption enabled.

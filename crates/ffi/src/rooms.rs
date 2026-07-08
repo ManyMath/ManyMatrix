@@ -111,6 +111,26 @@ pub unsafe extern "C" fn manymatrix_set_custom_event_power_levels(
     }
 }
 
+/// Return the room power-level snapshot as a JSON string.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_room_power_levels(
+    handle: *mut ManyMatrixClient,
+    room_id: *const c_char,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let room_id = str_from_ptr(room_id);
+    match RUNTIME.block_on(client.room_power_levels(room_id)) {
+        Ok(snapshot) => match serde_json::to_string(&snapshot) {
+            Ok(json) => FfiResult::success_string(&json),
+            Err(e) => FfiResult::serde_error(&format!("invalid power-level snapshot: {e}")),
+        },
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
 /// Leave a room.
 ///
 /// # Safety

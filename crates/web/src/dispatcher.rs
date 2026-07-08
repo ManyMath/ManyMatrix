@@ -426,6 +426,17 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({}))
         }
+        "rooms.power_levels" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let snapshot = client
+                .room_power_levels(&args.room_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({
+                "power_levels_json": serde_json::to_string(&snapshot).map_err(serde_err)?
+            }))
+        }
         "rooms.leave" => {
             let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
             let client = get_client()?;

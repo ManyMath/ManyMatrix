@@ -1585,6 +1585,29 @@ class ManyMatrixBindings {
   late final _manymatrix_room_members = _manymatrix_room_membersPtr.asFunction<
       FfiResult Function(
           ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
+
+  /// Return the room power-level snapshot as a JSON string.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_room_power_levels(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+  ) {
+    return _manymatrix_room_power_levels(
+      handle,
+      room_id,
+    );
+  }
+
+  late final _manymatrix_room_power_levelsPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>)>>('manymatrix_room_power_levels');
+  late final _manymatrix_room_power_levels =
+      _manymatrix_room_power_levelsPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
 }
 
 final class __atomic_wide_counter extends ffi.Union {

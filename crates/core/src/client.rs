@@ -234,6 +234,42 @@ impl ManyMatrixClient {
         Ok(())
     }
 
+    /// Return the current `m.room.power_levels` state for a room in a consumer-friendly JSON
+    /// snapshot, including the logged-in user's effective power level.
+    ///
+    /// The raw Matrix state is preserved under `raw`, while common thresholds are normalized with
+    /// Matrix spec defaults so callers can preflight operations such as invites without re-encoding
+    /// the power-level rules.
+    pub async fn room_power_levels(&self, room_id: &str) -> Result<serde_json::Value, Error> {
+        let room = self.get_room_parsed(room_id)?;
+        let power_levels = self.fetch_room_power_levels(&room).await?;
+        let raw = serde_json::to_value(&power_levels)?;
+        let current_user_id = self
+            .client
+            .user_id()
+            .ok_or_else(|| Error::Other("no logged-in user".into()))?
+            .to_string();
+        let users_default = power_level_field(&raw, "users_default", 0);
+        let current_user_power_level =
+            user_power_level(&raw, &current_user_id).unwrap_or(users_default);
+
+        Ok(serde_json::json!({
+            "roomId": room.room_id().to_string(),
+            "currentUserId": current_user_id,
+            "currentUserPowerLevel": current_user_power_level,
+            "invite": power_level_field(&raw, "invite", 0),
+            "kick": power_level_field(&raw, "kick", 50),
+            "ban": power_level_field(&raw, "ban", 50),
+            "redact": power_level_field(&raw, "redact", 50),
+            "eventsDefault": power_level_field(&raw, "events_default", 0),
+            "stateDefault": power_level_field(&raw, "state_default", 50),
+            "usersDefault": users_default,
+            "events": power_level_map(&raw, "events"),
+            "users": power_level_map(&raw, "users"),
+            "raw": raw,
+        }))
+    }
+
     async fn fetch_room_power_levels(
         &self,
         room: &Room,
@@ -1204,6 +1240,33 @@ fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
     Ok(MediaSource::Plain(uri))
 }
 
+fn power_level_field(raw: &serde_json::Value, field: &str, default: i64) -> i64 {
+    raw.get(field)
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(default)
+}
+
+fn user_power_level(raw: &serde_json::Value, user_id: &str) -> Option<i64> {
+    raw.get("users")
+        .and_then(|users| users.get(user_id))
+        .and_then(serde_json::Value::as_i64)
+}
+
+fn power_level_map(raw: &serde_json::Value, field: &str) -> serde_json::Value {
+    let Some(map) = raw.get(field).and_then(serde_json::Value::as_object) else {
+        return serde_json::json!({});
+    };
+    serde_json::Value::Object(
+        map.iter()
+            .filter_map(|(key, value)| {
+                value
+                    .as_i64()
+                    .map(|level| (key.clone(), serde_json::json!(level)))
+            })
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1234,6 +1297,25 @@ mod tests {
 
         assert_eq!(request.visibility, Visibility::Public);
         assert_eq!(request.preset, Some(RoomPreset::PublicChat));
+    }
+
+    #[test]
+    fn room_power_level_helpers_apply_matrix_defaults() {
+        let raw = serde_json::json!({
+            "invite": 50,
+            "users": {"@alice:local": 100},
+            "events": {"io.manymath.playback": 50}
+        });
+
+        assert_eq!(power_level_field(&raw, "invite", 0), 50);
+        assert_eq!(power_level_field(&raw, "kick", 50), 50);
+        assert_eq!(power_level_field(&raw, "users_default", 0), 0);
+        assert_eq!(user_power_level(&raw, "@alice:local"), Some(100));
+        assert_eq!(user_power_level(&raw, "@bob:local"), None);
+        assert_eq!(
+            power_level_map(&raw, "events"),
+            serde_json::json!({"io.manymath.playback": 50})
+        );
     }
 }
 

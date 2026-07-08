@@ -689,6 +689,16 @@ struct FfiResult manymatrix_set_custom_event_power_levels(struct ManyMatrixClien
                                                           const char *config_json);
 
 /**
+ * Return the room power-level snapshot as a JSON string.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+
+struct FfiResult manymatrix_room_power_levels(struct ManyMatrixClient *handle,
+                                              const char *room_id);
+
+/**
  * Leave a room.
  *
  * # Safety
