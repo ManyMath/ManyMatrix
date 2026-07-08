@@ -20,7 +20,6 @@ class _CreateRoomDialogBody extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = MTheme.of(context);
     final name = useState('');
     final topic = useState('');
     final creating = useState(false);
@@ -47,52 +46,46 @@ class _CreateRoomDialogBody extends HookConsumerWidget {
       }
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text('Create room', style: theme.typography.headlineSmall),
-        const SizedBox(height: 16),
-        const MLabel('Name'),
-        const SizedBox(height: 8),
-        MTextField(
-          placeholder: 'Room name',
-          semanticLabel: 'Room name',
-          enabled: !creating.value,
-          onChanged: (value) => name.value = value,
-          onSubmitted: (_) => submit(),
-        ),
-        const SizedBox(height: 16),
-        const MLabel('Topic (optional)'),
-        const SizedBox(height: 8),
-        MTextField(
-          placeholder: 'Topic',
-          semanticLabel: 'Room topic',
-          enabled: !creating.value,
-          onChanged: (value) => topic.value = value,
-          onSubmitted: (_) => submit(),
-        ),
-        if (error.value != null) ...<Widget>[
-          const SizedBox(height: 12),
-          MAlert(variant: MAlertVariant.destructive, message: error.value!),
-        ],
-        const SizedBox(height: 24),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: <Widget>[
-            MButton(
-              variant: MButtonVariant.ghost,
-              onPressed: creating.value
-                  ? null
-                  : () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            const SizedBox(width: 8),
-            MButton(
-              onPressed: creating.value ? null : submit,
-              child: Text(creating.value ? 'Creating…' : 'Create'),
-            ),
+    return MDialogContent(
+      title: 'Create room',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          const MLabel('Name'),
+          const SizedBox(height: 8),
+          MTextField(
+            placeholder: 'Room name',
+            semanticLabel: 'Room name',
+            enabled: !creating.value,
+            onChanged: (value) => name.value = value,
+            onSubmitted: (_) => submit(),
+          ),
+          const SizedBox(height: 16),
+          const MLabel('Topic (optional)'),
+          const SizedBox(height: 8),
+          MTextField(
+            placeholder: 'Topic',
+            semanticLabel: 'Room topic',
+            enabled: !creating.value,
+            onChanged: (value) => topic.value = value,
+            onSubmitted: (_) => submit(),
+          ),
+          if (error.value != null) ...<Widget>[
+            const SizedBox(height: 12),
+            MAlert(variant: MAlertVariant.destructive, message: error.value!),
           ],
+        ],
+      ),
+      actions: <Widget>[
+        MButton(
+          variant: MButtonVariant.ghost,
+          onPressed: creating.value ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        MButton(
+          onPressed: creating.value ? null : submit,
+          child: Text(creating.value ? 'Creating…' : 'Create'),
         ),
       ],
     );
@@ -115,7 +108,6 @@ class _JoinRoomDialogBody extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = MTheme.of(context);
     final roomIdOrAlias = useState('');
     final joining = useState(false);
     final error = useState<String?>(null);
@@ -139,49 +131,38 @@ class _JoinRoomDialogBody extends HookConsumerWidget {
       }
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text('Join room', style: theme.typography.headlineSmall),
-        const SizedBox(height: 8),
-        Text(
+    return MDialogContent(
+      title: 'Join room',
+      description:
           'Enter a room ID (!abc:example.org) or alias (#room:example.org).',
-          style: theme.typography.bodySmall.copyWith(
-            color: theme.colors.mutedForeground,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          const MLabel('Room ID or alias'),
+          const SizedBox(height: 8),
+          MTextField(
+            placeholder: '#room:example.org',
+            semanticLabel: 'Room ID or alias',
+            enabled: !joining.value,
+            onChanged: (value) => roomIdOrAlias.value = value,
+            onSubmitted: (_) => submit(),
           ),
-        ),
-        const SizedBox(height: 16),
-        const MLabel('Room ID or alias'),
-        const SizedBox(height: 8),
-        MTextField(
-          placeholder: '#room:example.org',
-          semanticLabel: 'Room ID or alias',
-          enabled: !joining.value,
-          onChanged: (value) => roomIdOrAlias.value = value,
-          onSubmitted: (_) => submit(),
-        ),
-        if (error.value != null) ...<Widget>[
-          const SizedBox(height: 12),
-          MAlert(variant: MAlertVariant.destructive, message: error.value!),
-        ],
-        const SizedBox(height: 24),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: <Widget>[
-            MButton(
-              variant: MButtonVariant.ghost,
-              onPressed: joining.value
-                  ? null
-                  : () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            const SizedBox(width: 8),
-            MButton(
-              onPressed: joining.value ? null : submit,
-              child: Text(joining.value ? 'Joining…' : 'Join'),
-            ),
+          if (error.value != null) ...<Widget>[
+            const SizedBox(height: 12),
+            MAlert(variant: MAlertVariant.destructive, message: error.value!),
           ],
+        ],
+      ),
+      actions: <Widget>[
+        MButton(
+          variant: MButtonVariant.ghost,
+          onPressed: joining.value ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        MButton(
+          onPressed: joining.value ? null : submit,
+          child: Text(joining.value ? 'Joining…' : 'Join'),
         ),
       ],
     );

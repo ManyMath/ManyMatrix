@@ -136,7 +136,6 @@ class _MemberTile extends ConsumerWidget {
     WidgetRef ref, {
     required _ModerationAction action,
   }) async {
-    final theme = MTheme.of(context);
     final reasonController = MController<String>('');
     final verb = action == _ModerationAction.kick ? 'Kick' : 'Ban';
 
@@ -189,25 +188,19 @@ class _MemberTile extends ConsumerWidget {
       if (!context.mounted) return;
       await showMDialog<void>(
         context,
-        builder: (BuildContext ctx) => ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text('$verb failed', style: theme.typography.title),
-              const SizedBox(height: 8),
-              MAlert(variant: MAlertVariant.destructive, message: '$error'),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: MButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('OK'),
-                ),
-              ),
-            ],
+        builder: (BuildContext ctx) => MDialogContent(
+          title: '$verb failed',
+          maxWidth: 380,
+          content: MAlert(
+            variant: MAlertVariant.destructive,
+            message: '$error',
           ),
+          actions: <Widget>[
+            MButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
         ),
       );
     }

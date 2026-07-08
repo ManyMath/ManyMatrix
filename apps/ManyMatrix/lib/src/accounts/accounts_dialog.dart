@@ -24,14 +24,13 @@ class _AccountsDialogContent extends ConsumerWidget {
     final accounts = ref.watch(accountsProvider);
     final activeId = ref.watch(activeAccountIdProvider);
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 420),
-      child: Column(
+    return MDialogContent(
+      title: 'Accounts',
+      maxWidth: 420,
+      content: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text('Accounts', style: theme.typography.headlineSmall),
-          const SizedBox(height: 12),
           if (accounts.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -46,24 +45,23 @@ class _AccountsDialogContent extends ConsumerWidget {
             for (final SavedAccount a in accounts)
               _AccountRow(account: a, active: a.id == activeId),
           const SizedBox(height: 8),
-          MButton(
-            variant: MButtonVariant.outline,
-            onPressed: () => _addAccount(context),
-            child: const Text('Add account'),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: <Widget>[
-              MButton(
-                variant: MButtonVariant.ghost,
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
-              ),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MButton(
+              variant: MButtonVariant.outline,
+              onPressed: () => _addAccount(context),
+              child: const Text('Add account'),
+            ),
           ),
         ],
       ),
+      actions: <Widget>[
+        MButton(
+          variant: MButtonVariant.ghost,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 
