@@ -8,9 +8,13 @@ use matrix_sdk::config::SyncSettings;
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
 use matrix_sdk::room::MessagesOptions;
+use matrix_sdk::ruma::api::client::membership::joined_members::v3::Request as JoinedMembersRequest;
 use matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType;
-use matrix_sdk::ruma::api::client::room::create_room::v3::Request as CreateRoomRequest;
+use matrix_sdk::ruma::api::client::room::create_room::v3::{
+    Request as CreateRoomRequest, RoomPreset,
+};
 use matrix_sdk::ruma::api::client::room::Visibility;
+use matrix_sdk::ruma::api::client::state::get_state_event_for_key::v3::Request as GetStateEventRequest;
 use matrix_sdk::ruma::events::reaction::ReactionEventContent;
 use matrix_sdk::ruma::events::receipt::{ReceiptEventContent, ReceiptThread};
 use matrix_sdk::ruma::events::relation::Annotation;
@@ -22,11 +26,11 @@ use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevelsEventContent;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::{
     AnyMessageLikeEvent, AnySyncMessageLikeEvent, AnyTimelineEvent, MessageLikeEvent,
-    OriginalSyncMessageLikeEvent, SyncEphemeralRoomEvent, TimelineEventType,
+    OriginalSyncMessageLikeEvent, StateEventType, SyncEphemeralRoomEvent, TimelineEventType,
 };
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{DeviceId, EventId, MxcUri, RoomId, RoomOrAliasId, UInt, UserId};
-use matrix_sdk::{Client, Room, RoomMemberships, SendOutsideWasm, SyncOutsideWasm};
+use matrix_sdk::{Client, Room, SendOutsideWasm, SyncOutsideWasm};
 use tracing::info;
 
 use crate::session::StoredSession;
@@ -207,10 +211,7 @@ impl ManyMatrixClient {
         let required_power_level = required_power_level
             .try_into()
             .map_err(|err| Error::Other(format!("invalid required power level: {err}")))?;
-        let mut power_levels = room
-            .power_levels()
-            .await
-            .map_err(|err| Error::Other(format!("could not load room power levels: {err}")))?;
+        let mut power_levels = self.fetch_room_power_levels(&room).await?;
         power_levels.events.insert(
             TimelineEventType::from(event_type.to_owned()),
             required_power_level,
@@ -229,10 +230,21 @@ impl ManyMatrixClient {
             }
         }
 
-        let content = RoomPowerLevelsEventContent::try_from(power_levels)
-            .map_err(|err| Error::Other(format!("invalid room power levels: {err}")))?;
-        room.send_state_event(content).await?;
+        room.send_state_event(power_levels).await?;
         Ok(())
+    }
+
+    async fn fetch_room_power_levels(
+        &self,
+        room: &Room,
+    ) -> Result<RoomPowerLevelsEventContent, Error> {
+        let request = GetStateEventRequest::new(
+            room.room_id().to_owned(),
+            StateEventType::RoomPowerLevels,
+            String::new(),
+        );
+        let response = self.client.send(request).await?;
+        Ok(serde_json::from_str(response.event_or_content.get())?)
     }
 
     /// List joined rooms.
@@ -360,26 +372,7 @@ impl ManyMatrixClient {
 
     /// Create a new room with the given options.
     pub async fn create_room(&self, options: CreateRoomOptions) -> Result<String, Error> {
-        let mut request = CreateRoomRequest::new();
-        request.name = options.name;
-        request.topic = options.topic;
-
-        // Parse invite user IDs from strings
-        request.invite = options
-            .invite
-            .iter()
-            .map(|id| {
-                <&UserId>::try_from(id.as_str())
-                    .map(|u| u.to_owned())
-                    .map_err(|e| Error::Other(format!("invalid user ID '{}': {}", id, e)))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        request.visibility = match options.visibility {
-            RoomVisibility::Public => Visibility::Public,
-            RoomVisibility::Private => Visibility::Private,
-        };
-
+        let request = create_room_request_from_options(options)?;
         let room = self.client.create_room(request).await?;
         Ok(room.room_id().to_string())
     }
@@ -613,8 +606,15 @@ impl ManyMatrixClient {
     /// Get the list of joined member user IDs for a room.
     pub async fn room_members(&self, room_id: &str) -> Result<Vec<String>, Error> {
         let room = self.get_room_parsed(room_id)?;
-        let members = room.members(RoomMemberships::JOIN).await?;
-        Ok(members.iter().map(|m| m.user_id().to_string()).collect())
+        let response = self
+            .client
+            .send(JoinedMembersRequest::new(room.room_id().to_owned()))
+            .await?;
+        Ok(response
+            .joined
+            .keys()
+            .map(|user_id| user_id.to_string())
+            .collect())
     }
 
     /// Probe Matrix version and capability support for this homeserver.
@@ -1106,8 +1106,8 @@ impl ManyMatrixClient {
     {
         let callback = Arc::new(callback);
         let wanted_type = event_type.to_owned();
-        self.client.add_event_handler(
-            move |ev: Raw<AnySyncMessageLikeEvent>, room: Room| {
+        self.client
+            .add_event_handler(move |ev: Raw<AnySyncMessageLikeEvent>, room: Room| {
                 let callback = callback.clone();
                 let wanted_type = wanted_type.clone();
                 async move {
@@ -1118,8 +1118,7 @@ impl ManyMatrixClient {
                     let event_id: Option<String> = ev.get_field("event_id").ok().flatten();
                     let sender: Option<String> = ev.get_field("sender").ok().flatten();
                     let timestamp: Option<u64> = ev.get_field("origin_server_ts").ok().flatten();
-                    let content: Option<serde_json::Value> =
-                        ev.get_field("content").ok().flatten();
+                    let content: Option<serde_json::Value> = ev.get_field("content").ok().flatten();
                     let (Some(event_id), Some(sender), Some(timestamp), Some(content)) =
                         (event_id, sender, timestamp, content)
                     else {
@@ -1134,8 +1133,7 @@ impl ManyMatrixClient {
                         timestamp,
                     });
                 }
-            },
-        );
+            });
     }
 }
 
@@ -1171,11 +1169,72 @@ fn key_backup_encryption_settings() -> EncryptionSettings {
     }
 }
 
+fn create_room_request_from_options(
+    options: CreateRoomOptions,
+) -> Result<CreateRoomRequest, Error> {
+    let mut request = CreateRoomRequest::new();
+    request.name = options.name;
+    request.topic = options.topic;
+
+    // Parse invite user IDs from strings.
+    request.invite = options
+        .invite
+        .iter()
+        .map(|id| {
+            <&UserId>::try_from(id.as_str())
+                .map(|u| u.to_owned())
+                .map_err(|e| Error::Other(format!("invalid user ID '{}': {}", id, e)))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let (visibility, preset) = match options.visibility {
+        RoomVisibility::Public => (Visibility::Public, RoomPreset::PublicChat),
+        RoomVisibility::Private => (Visibility::Private, RoomPreset::PrivateChat),
+    };
+    request.visibility = visibility;
+    request.preset = Some(preset);
+
+    Ok(request)
+}
+
 fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
     let uri = <&MxcUri>::try_from(mxc_uri)
         .map_err(|e| Error::IdParse(format!("invalid MXC URI: {e}")))?
         .to_owned();
     Ok(MediaSource::Plain(uri))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_room_request_uses_private_chat_preset_for_private_visibility() {
+        let request = create_room_request_from_options(CreateRoomOptions {
+            name: Some("Private session".to_owned()),
+            topic: None,
+            invite: vec![],
+            visibility: RoomVisibility::Private,
+        })
+        .expect("request");
+
+        assert_eq!(request.visibility, Visibility::Private);
+        assert_eq!(request.preset, Some(RoomPreset::PrivateChat));
+    }
+
+    #[test]
+    fn create_room_request_uses_public_chat_preset_for_public_visibility() {
+        let request = create_room_request_from_options(CreateRoomOptions {
+            name: Some("Public session".to_owned()),
+            topic: None,
+            invite: vec![],
+            visibility: RoomVisibility::Public,
+        })
+        .expect("request");
+
+        assert_eq!(request.visibility, Visibility::Public);
+        assert_eq!(request.preset, Some(RoomPreset::PublicChat));
+    }
 }
 
 #[cfg(target_family = "wasm")]
