@@ -342,6 +342,18 @@ class ManyMatrixBridge {
     return result['power_levels_json'] as String?;
   }
 
+  Future<void> setRoomInvitePowerLevel(
+    String roomId, {
+    required int requiredPowerLevel,
+    Map<String, int> userPowerLevels = const {},
+  }) async {
+    await _call('rooms.set_invite_power_level', {
+      'room_id': roomId,
+      'required_power_level': requiredPowerLevel,
+      'user_power_levels': userPowerLevels,
+    });
+  }
+
   Future<bool> isRoomEncrypted(String roomId) async {
     final result = await _call('e2ee.is_encrypted', {'room_id': roomId});
     return result['encrypted'] as bool;

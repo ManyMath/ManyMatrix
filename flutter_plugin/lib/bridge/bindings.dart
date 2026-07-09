@@ -1608,6 +1608,35 @@ class ManyMatrixBindings {
       _manymatrix_room_power_levelsPtr.asFunction<
           FfiResult Function(
               ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
+
+  /// Configure the room power level required to invite users.
+  ///
+  /// `config_json` must be a JSON object with `requiredPowerLevel` and optional
+  /// `userPowerLevels` map of Matrix user ID to power level.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_set_room_invite_power_level(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+    ffi.Pointer<ffi.Char> config_json,
+  ) {
+    return _manymatrix_set_room_invite_power_level(
+      handle,
+      room_id,
+      config_json,
+    );
+  }
+
+  late final _manymatrix_set_room_invite_power_levelPtr = _lookup<
+          ffi.NativeFunction<
+              FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+                  ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>>(
+      'manymatrix_set_room_invite_power_level');
+  late final _manymatrix_set_room_invite_power_level =
+      _manymatrix_set_room_invite_power_levelPtr.asFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>();
 }
 
 final class __atomic_wide_counter extends ffi.Union {

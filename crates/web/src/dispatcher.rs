@@ -178,6 +178,14 @@ struct CustomEventPowerLevelsArgs {
 }
 
 #[derive(Deserialize)]
+struct RoomInvitePowerLevelArgs {
+    room_id: String,
+    required_power_level: i64,
+    #[serde(default)]
+    user_power_levels: std::collections::BTreeMap<String, i64>,
+}
+
+#[derive(Deserialize)]
 struct RoomIdArgs {
     room_id: String,
 }
@@ -436,6 +444,20 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             Ok(serde_json::json!({
                 "power_levels_json": serde_json::to_string(&snapshot).map_err(serde_err)?
             }))
+        }
+        "rooms.set_invite_power_level" => {
+            let args: RoomInvitePowerLevelArgs =
+                serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .set_room_invite_power_level(
+                    &args.room_id,
+                    args.required_power_level,
+                    args.user_power_levels.into_iter().collect(),
+                )
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
         }
         "rooms.leave" => {
             let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;

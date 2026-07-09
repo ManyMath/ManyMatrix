@@ -15,6 +15,14 @@ struct CustomEventPowerLevelsConfig {
     user_power_levels: std::collections::BTreeMap<String, i64>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RoomInvitePowerLevelConfig {
+    required_power_level: i64,
+    #[serde(default)]
+    user_power_levels: std::collections::BTreeMap<String, i64>,
+}
+
 /// Create a new room with the given name and topic.
 ///
 /// Returns the room ID string in `FfiResult.data`.
@@ -127,6 +135,36 @@ pub unsafe extern "C" fn manymatrix_room_power_levels(
             Ok(json) => FfiResult::success_string(&json),
             Err(e) => FfiResult::serde_error(&format!("invalid power-level snapshot: {e}")),
         },
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
+/// Configure the room power level required to invite users.
+///
+/// `config_json` must be a JSON object with `requiredPowerLevel` and optional
+/// `userPowerLevels` map of Matrix user ID to power level.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_set_room_invite_power_level(
+    handle: *mut ManyMatrixClient,
+    room_id: *const c_char,
+    config_json: *const c_char,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let room_id = str_from_ptr(room_id);
+    let config_json = str_from_ptr(config_json);
+    let config: RoomInvitePowerLevelConfig = match serde_json::from_str(config_json) {
+        Ok(config) => config,
+        Err(e) => return FfiResult::serde_error(&format!("invalid config_json: {e}")),
+    };
+    match RUNTIME.block_on(client.set_room_invite_power_level(
+        room_id,
+        config.required_power_level,
+        config.user_power_levels.into_iter().collect(),
+    )) {
+        Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
     }
 }

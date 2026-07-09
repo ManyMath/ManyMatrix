@@ -699,6 +699,20 @@ struct FfiResult manymatrix_room_power_levels(struct ManyMatrixClient *handle,
                                               const char *room_id);
 
 /**
+ * Configure the room power level required to invite users.
+ *
+ * `config_json` must be a JSON object with `requiredPowerLevel` and optional
+ * `userPowerLevels` map of Matrix user ID to power level.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+
+struct FfiResult manymatrix_set_room_invite_power_level(struct ManyMatrixClient *handle,
+                                                        const char *room_id,
+                                                        const char *config_json);
+
+/**
  * Leave a room.
  *
  * # Safety

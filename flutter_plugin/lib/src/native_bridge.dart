@@ -165,6 +165,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execWithHandleAndOneString(bindings, method, args);
       case 'room_power_levels':
         return _execWithHandleAndOneString(bindings, method, args);
+      case 'set_room_invite_power_level':
+        return _execWithHandleAndTwoStrings(bindings, method, args);
       case 'send_text':
         return _execWithHandleAndTwoStrings(bindings, method, args);
       case 'send_html':
@@ -376,6 +378,12 @@ class ManyMatrixBridge implements ffi.Finalizable {
       switch (method) {
         case 'invite':
           result = bindings.manymatrix_invite(handle, s1.cast(), s2.cast());
+        case 'set_room_invite_power_level':
+          result = bindings.manymatrix_set_room_invite_power_level(
+            handle,
+            s1.cast(),
+            s2.cast(),
+          );
         case 'send_text':
           result = bindings.manymatrix_send_text(handle, s1.cast(), s2.cast());
         case 'send_notice':
@@ -985,6 +993,21 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Get a normalized room power-level snapshot as a JSON object string.
   Future<String?> roomPowerLevels(String roomId) async {
     return await _call('room_power_levels', {'s1': roomId}) as String?;
+  }
+
+  /// Configure the room power level required to invite users.
+  Future<void> setRoomInvitePowerLevel(
+    String roomId, {
+    required int requiredPowerLevel,
+    Map<String, int> userPowerLevels = const {},
+  }) async {
+    await _call('set_room_invite_power_level', {
+      's1': roomId,
+      's2': jsonEncode({
+        'requiredPowerLevel': requiredPowerLevel,
+        'userPowerLevels': userPowerLevels,
+      }),
+    });
   }
 
   /// Check whether a room has encryption enabled.

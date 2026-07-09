@@ -50,6 +50,22 @@ void main() {
     );
   });
 
+  test('ManyMatrixBridge exposes room invite power-level API', () {
+    void acceptsInvitePowerConfigurator(
+      Future<void> Function(ManyMatrixBridge) configure,
+    ) {
+      expect(configure, isA<Future<void> Function(ManyMatrixBridge)>());
+    }
+
+    acceptsInvitePowerConfigurator(
+      (bridge) => bridge.setRoomInvitePowerLevel(
+        '!room:example.org',
+        requiredPowerLevel: 50,
+        userPowerLevels: const {'@leader:example.org': 50},
+      ),
+    );
+  });
+
   test('native error mapper returns structured exception types', () {
     final serde = manyMatrixExceptionForNativeError(
       'invalid content_json: expected value',

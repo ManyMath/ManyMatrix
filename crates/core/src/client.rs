@@ -216,19 +216,27 @@ impl ManyMatrixClient {
             TimelineEventType::from(event_type.to_owned()),
             required_power_level,
         );
+        apply_user_power_levels(&mut power_levels, user_power_levels)?;
 
-        for (user_id, power_level) in user_power_levels {
-            let user_id = <&UserId>::try_from(user_id.as_str())
-                .map_err(|err| Error::Other(format!("invalid user ID '{user_id}': {err}")))?;
-            let power_level = power_level
-                .try_into()
-                .map_err(|err| Error::Other(format!("invalid user power level: {err}")))?;
-            if power_level == power_levels.users_default {
-                power_levels.users.remove(user_id);
-            } else {
-                power_levels.users.insert(user_id.to_owned(), power_level);
-            }
-        }
+        room.send_state_event(power_levels).await?;
+        Ok(())
+    }
+
+    /// Updates `m.room.power_levels.invite` so inviting users requires a specific room power
+    /// level, optionally adjusting explicit user power levels in the same state event.
+    pub async fn set_room_invite_power_level(
+        &self,
+        room_id: &str,
+        required_power_level: i64,
+        user_power_levels: Vec<(String, i64)>,
+    ) -> Result<(), Error> {
+        let room = self.get_room_parsed(room_id)?;
+        let required_power_level = required_power_level
+            .try_into()
+            .map_err(|err| Error::Other(format!("invalid required power level: {err}")))?;
+        let mut power_levels = self.fetch_room_power_levels(&room).await?;
+        power_levels.invite = required_power_level;
+        apply_user_power_levels(&mut power_levels, user_power_levels)?;
 
         room.send_state_event(power_levels).await?;
         Ok(())
@@ -1265,6 +1273,25 @@ fn power_level_map(raw: &serde_json::Value, field: &str) -> serde_json::Value {
             })
             .collect(),
     )
+}
+
+fn apply_user_power_levels(
+    power_levels: &mut RoomPowerLevelsEventContent,
+    user_power_levels: Vec<(String, i64)>,
+) -> Result<(), Error> {
+    for (user_id, power_level) in user_power_levels {
+        let user_id = <&UserId>::try_from(user_id.as_str())
+            .map_err(|err| Error::Other(format!("invalid user ID '{user_id}': {err}")))?;
+        let power_level = power_level
+            .try_into()
+            .map_err(|err| Error::Other(format!("invalid user power level: {err}")))?;
+        if power_level == power_levels.users_default {
+            power_levels.users.remove(user_id);
+        } else {
+            power_levels.users.insert(user_id.to_owned(), power_level);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
