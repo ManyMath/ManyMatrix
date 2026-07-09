@@ -109,16 +109,11 @@ class ChatView extends HookConsumerWidget {
         if (showRoomHeader) ...<Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    roomName ?? roomId,
-                    style: theme.typography.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+            child: MSectionHeader(
+              title: roomName ?? roomId,
+              titleStyle: theme.typography.title,
+              titleMaxLines: 1,
+              actions: <Widget>[
                 MButton(
                   variant: MButtonVariant.ghost,
                   onPressed: () =>
@@ -126,7 +121,6 @@ class ChatView extends HookConsumerWidget {
                   semanticLabel: 'Invite to room',
                   child: const Text('Invite'),
                 ),
-                const SizedBox(width: 8),
                 MButton(
                   variant: MButtonVariant.ghost,
                   onPressed: () => Navigator.of(context).push(

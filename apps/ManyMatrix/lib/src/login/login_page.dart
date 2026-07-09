@@ -17,7 +17,6 @@ class LoginPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = MTheme.of(context);
     final homeserver = useState('');
     final username = useState('');
     final password = useState('');
@@ -67,7 +66,6 @@ class LoginPage extends HookConsumerWidget {
                 padding: const EdgeInsets.all(24),
                 child: matrixRuntimeSupported
                     ? _buildForm(
-                        theme: theme,
                         homeserver: homeserver,
                         username: username,
                         password: password,
@@ -75,7 +73,7 @@ class LoginPage extends HookConsumerWidget {
                         error: error,
                         onSubmit: submit,
                       )
-                    : _buildWebGate(theme),
+                    : _buildWebGate(),
               ),
             ),
           ),
@@ -85,7 +83,6 @@ class LoginPage extends HookConsumerWidget {
   }
 
   Widget _buildForm({
-    required MThemeData theme,
     required ValueNotifier<String> homeserver,
     required ValueNotifier<String> username,
     required ValueNotifier<String> password,
@@ -97,13 +94,9 @@ class LoginPage extends HookConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text('Sign in to Matrix', style: theme.typography.headlineSmall),
-        const SizedBox(height: 8),
-        Text(
-          'Connect to your homeserver to get started.',
-          style: theme.typography.bodySmall.copyWith(
-            color: theme.colors.mutedForeground,
-          ),
+        const MSectionHeader(
+          title: 'Sign in to Matrix',
+          description: 'Connect to your homeserver to get started.',
         ),
         const SizedBox(height: 24),
         const MLabel('Homeserver'),
@@ -162,22 +155,16 @@ class LoginPage extends HookConsumerWidget {
     );
   }
 
-  Widget _buildWebGate(MThemeData theme) {
+  Widget _buildWebGate() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text(
-          'Matrix on web coming soon',
-          style: theme.typography.headlineSmall,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          matrixRuntimeUnsupportedReason ??
+        MSectionHeader(
+          title: 'Matrix on web coming soon',
+          description:
+              matrixRuntimeUnsupportedReason ??
               'This platform cannot run the Matrix bridge yet.',
-          style: theme.typography.bodySmall.copyWith(
-            color: theme.colors.mutedForeground,
-          ),
         ),
       ],
     );
