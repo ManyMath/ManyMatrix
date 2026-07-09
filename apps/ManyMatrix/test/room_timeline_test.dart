@@ -262,6 +262,17 @@ class _FakeMatrixService implements MatrixService {
   Future<String> sendText(String roomId, String body) async => r'$local';
 
   @override
+  Future<String> replyTo(String roomId, String eventId, String body) async =>
+      r'$reply';
+
+  @override
+  Future<String> sendThreadReply(
+    String roomId,
+    String threadRootId,
+    String body,
+  ) async => r'$thread';
+
+  @override
   Future<void> sendTyping(String roomId, bool typing) async {}
 
   @override

@@ -60,6 +60,14 @@ abstract class MatrixService {
 
   Future<String> sendText(String roomId, String body);
 
+  Future<String> replyTo(String roomId, String eventId, String body);
+
+  Future<String> sendThreadReply(
+    String roomId,
+    String threadRootId,
+    String body,
+  );
+
   Future<void> sendTyping(String roomId, bool typing);
 
   Future<void> sendReadReceipt(String roomId, String eventId);
@@ -247,6 +255,17 @@ class BridgeMatrixService implements MatrixService {
   @override
   Future<String> sendText(String roomId, String body) =>
       _requireClient.sendText(roomId, body);
+
+  @override
+  Future<String> replyTo(String roomId, String eventId, String body) =>
+      _requireClient.replyTo(roomId, eventId, body);
+
+  @override
+  Future<String> sendThreadReply(
+    String roomId,
+    String threadRootId,
+    String body,
+  ) => _requireClient.sendThreadReply(roomId, threadRootId, body);
 
   @override
   Future<void> sendTyping(String roomId, bool typing) =>

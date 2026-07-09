@@ -77,6 +77,7 @@ class ChatView extends HookConsumerWidget {
     final timeline = ref.watch(roomTimelineProvider(roomId));
     final currentUserId = ref.watch(currentUserIdProvider);
     final scrollController = useScrollController();
+    final composeTarget = useState<_ComposeTarget?>(null);
 
     // Load older history when the user scrolls near the (visual) top --
     // with a reversed list that is the max scroll extent.
@@ -193,6 +194,10 @@ class ChatView extends HookConsumerWidget {
                               )
                               .toList()
                         : const <ReceiptEvent>[],
+                    onReply: () =>
+                        composeTarget.value = _ComposeTarget.reply(message),
+                    onThreadReply: () =>
+                        composeTarget.value = _ComposeTarget.thread(message),
                   );
                 },
               );
@@ -200,16 +205,60 @@ class ChatView extends HookConsumerWidget {
           ),
         ),
         Container(height: 1, color: theme.colors.border),
-        _Composer(roomId: roomId),
+        _Composer(
+          roomId: roomId,
+          target: composeTarget.value,
+          onClearTarget: () => composeTarget.value = null,
+        ),
       ],
     );
   }
 }
 
+enum _ComposeTargetKind { reply, thread }
+
+class _ComposeTarget {
+  const _ComposeTarget._({required this.kind, required this.message});
+
+  const _ComposeTarget.reply(MessageEvent message)
+    : this._(kind: _ComposeTargetKind.reply, message: message);
+
+  const _ComposeTarget.thread(MessageEvent message)
+    : this._(kind: _ComposeTargetKind.thread, message: message);
+
+  final _ComposeTargetKind kind;
+  final MessageEvent message;
+
+  String get threadRootId => message.threadRoot ?? message.eventId;
+
+  String get modeLabel => switch (kind) {
+    _ComposeTargetKind.reply => 'Replying to',
+    _ComposeTargetKind.thread => 'Thread reply to',
+  };
+
+  String get sendFailureLabel => switch (kind) {
+    _ComposeTargetKind.reply => 'Reply failed',
+    _ComposeTargetKind.thread => 'Thread reply failed',
+  };
+
+  String get preview {
+    final compact = message.body.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final text = compact.isEmpty ? message.msgtype : compact;
+    if (text.length <= 80) return text;
+    return '${text.substring(0, 77)}...';
+  }
+}
+
 class _Composer extends HookConsumerWidget {
-  const _Composer({required this.roomId});
+  const _Composer({
+    required this.roomId,
+    required this.target,
+    required this.onClearTarget,
+  });
 
   final String roomId;
+  final _ComposeTarget? target;
+  final VoidCallback onClearTarget;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -239,11 +288,25 @@ class _Composer extends HookConsumerWidget {
       sending.value = true;
       sendError.value = null;
       final service = ref.read(matrixServiceProvider);
+      final composeTarget = target;
       try {
-        final eventId = await service.sendText(roomId, body);
+        final eventId = switch (composeTarget?.kind) {
+          _ComposeTargetKind.reply => await service.replyTo(
+            roomId,
+            composeTarget!.message.eventId,
+            body,
+          ),
+          _ComposeTargetKind.thread => await service.sendThreadReply(
+            roomId,
+            composeTarget!.threadRootId,
+            body,
+          ),
+          null => await service.sendText(roomId, body),
+        };
         typingTimer.value?.cancel();
         unawaited(service.sendTyping(roomId, false).catchError((_) {}));
         controller.value = '';
+        onClearTarget();
         final sender = service.currentUserId;
         if (sender != null) {
           ref
@@ -256,11 +319,16 @@ class _Composer extends HookConsumerWidget {
                   body: body,
                   msgtype: 'm.text',
                   timestamp: DateTime.now().millisecondsSinceEpoch,
+                  inReplyTo: composeTarget?.message.eventId,
+                  threadRoot: composeTarget?.kind == _ComposeTargetKind.thread
+                      ? composeTarget?.threadRootId
+                      : null,
                 ),
               );
         }
       } on Object catch (error) {
-        sendError.value = 'Send failed: $error';
+        sendError.value =
+            '${composeTarget?.sendFailureLabel ?? 'Send failed'}: $error';
       } finally {
         sending.value = false;
       }
@@ -271,6 +339,14 @@ class _Composer extends HookConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (target != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _ComposeTargetBanner(
+                target: target!,
+                onClear: onClearTarget,
+              ),
+            ),
           if (sendError.value != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -284,7 +360,7 @@ class _Composer extends HookConsumerWidget {
               Expanded(
                 child: MTextField(
                   controller: controller,
-                  placeholder: 'Message…',
+                  placeholder: target == null ? 'Message…' : 'Write a reply…',
                   semanticLabel: 'Message',
                   enabled: !sending.value,
                   onChanged: onChanged,
@@ -299,6 +375,66 @@ class _Composer extends HookConsumerWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ComposeTargetBanner extends StatelessWidget {
+  const _ComposeTargetBanner({required this.target, required this.onClear});
+
+  final _ComposeTarget target;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MTheme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colors.muted,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    '${target.modeLabel} ${target.message.sender}',
+                    style: theme.typography.label.copyWith(
+                      color: theme.colors.foreground,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    target.preview,
+                    style: theme.typography.caption.copyWith(
+                      color: theme.colors.mutedForeground,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            MButton(
+              variant: MButtonVariant.ghost,
+              size: MButtonSize.sm,
+              style: const MButtonStyleDelta(minHeight: 40),
+              onPressed: onClear,
+              semanticLabel: 'Cancel compose target',
+              child: const MIcon(MIconData.close, size: 16),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -17,6 +17,8 @@ class MessageBubble extends ConsumerWidget {
     required this.isMine,
     this.reactions = const <ReactionEvent>[],
     this.receipts = const <ReceiptEvent>[],
+    this.onReply,
+    this.onThreadReply,
     super.key,
   });
 
@@ -24,6 +26,8 @@ class MessageBubble extends ConsumerWidget {
   final bool isMine;
   final List<ReactionEvent> reactions;
   final List<ReceiptEvent> receipts;
+  final VoidCallback? onReply;
+  final VoidCallback? onThreadReply;
 
   static String formatTimestamp(int millisecondsSinceEpoch) {
     final time = DateTime.fromMillisecondsSinceEpoch(
@@ -49,6 +53,24 @@ class MessageBubble extends ConsumerWidget {
     final reactionCounts = _reactionCounts(reactions);
     final readReceiptSummary = _readReceiptSummary(receipts);
     final hasMetadata = reactionCounts.isNotEmpty || readReceiptSummary != null;
+    final actions = <Widget>[
+      if (onReply != null)
+        MButton(
+          variant: MButtonVariant.ghost,
+          size: MButtonSize.sm,
+          style: const MButtonStyleDelta(minHeight: 40),
+          onPressed: onReply,
+          child: const Text('Reply'),
+        ),
+      if (onThreadReply != null)
+        MButton(
+          variant: MButtonVariant.ghost,
+          size: MButtonSize.sm,
+          style: const MButtonStyleDelta(minHeight: 40),
+          onPressed: onThreadReply,
+          child: const Text('Thread'),
+        ),
+    ];
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -160,6 +182,16 @@ class MessageBubble extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                     ],
+                  ),
+                ),
+              if (actions.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: MActionRow(
+                    alignment: isMine ? WrapAlignment.end : WrapAlignment.start,
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: actions,
                   ),
                 ),
             ],
