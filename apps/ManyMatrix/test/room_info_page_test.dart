@@ -9,16 +9,19 @@ import 'package:manymatrix_app/src/matrix/bridge_service.dart';
 import 'package:manymatrix_app/src/matrix/providers.dart';
 import 'package:manymatrix_app/src/room_info/room_info_page.dart';
 
-/// Minimal fake -- room_info_page.dart only calls kick/ban through
-/// matrixServiceProvider; everything else throws if touched.
+/// Minimal fake for RoomInfoPage's MatrixService calls.
 class _FakeModerationService implements MatrixService {
-  _FakeModerationService();
+  _FakeModerationService({this.roomEncrypted = false});
 
   final List<({String userId, String? reason})> kicked =
       <({String userId, String? reason})>[];
   final List<({String userId, String? reason})> banned =
       <({String userId, String? reason})>[];
   bool failNext = false;
+  bool roomEncrypted;
+  bool failEncryptionStatus = false;
+  bool failEnableEncryption = false;
+  int enableEncryptionCalls = 0;
 
   @override
   Future<void> kick(String roomId, String userId, {String? reason}) async {
@@ -90,6 +93,20 @@ class _FakeModerationService implements MatrixService {
   Future<void> sendReadReceipt(String roomId, String eventId) async {}
   @override
   Future<List<String>> roomMembers(String roomId) async => const <String>[];
+
+  @override
+  Future<bool> isRoomEncrypted(String roomId) async {
+    if (failEncryptionStatus) throw Exception('M_UNKNOWN');
+    return roomEncrypted;
+  }
+
+  @override
+  Future<void> enableEncryption(String roomId) async {
+    enableEncryptionCalls += 1;
+    if (failEnableEncryption) throw Exception('M_FORBIDDEN');
+    roomEncrypted = true;
+  }
+
   @override
   Future<void> redact(String roomId, String eventId, {String? reason}) async {}
   @override
@@ -117,6 +134,87 @@ Widget _app(
 }
 
 void main() {
+  group('RoomInfoPage encryption status', () {
+    testWidgets('shows encrypted rooms as encrypted', (tester) async {
+      final service = _FakeModerationService(roomEncrypted: true);
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
+      await tester.pump();
+
+      expect(find.text('Encryption'), findsOneWidget);
+      expect(find.text('Encrypted'), findsOneWidget);
+      expect(find.widgetWithText(MButton, 'Enable encryption'), findsNothing);
+    });
+
+    testWidgets('enables encryption after confirmation', (tester) async {
+      final service = _FakeModerationService();
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
+      await tester.pump();
+
+      expect(find.text('Off'), findsOneWidget);
+      await tester.tap(find.widgetWithText(MButton, 'Enable encryption'));
+      await tester.pump();
+      expect(find.text('Enable encryption?'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(MButton, 'Enable encryption').last);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(service.enableEncryptionCalls, 1);
+      expect(find.text('Encrypted'), findsOneWidget);
+      expect(find.widgetWithText(MButton, 'Enable encryption'), findsNothing);
+    });
+
+    testWidgets('shows an inline error when checking encryption fails', (
+      tester,
+    ) async {
+      final service = _FakeModerationService()..failEncryptionStatus = true;
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
+      await tester.pump();
+
+      expect(find.text('Error'), findsOneWidget);
+      expect(find.textContaining('Could not check encryption'), findsOneWidget);
+      expect(find.widgetWithText(MButton, 'Retry'), findsOneWidget);
+    });
+
+    testWidgets('shows an inline error when enabling encryption fails', (
+      tester,
+    ) async {
+      final service = _FakeModerationService()..failEnableEncryption = true;
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(MButton, 'Enable encryption'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(MButton, 'Enable encryption').last);
+      await tester.pump();
+      await tester.pump();
+
+      expect(service.enableEncryptionCalls, 1);
+      expect(
+        find.textContaining('Could not enable encryption'),
+        findsOneWidget,
+      );
+      expect(find.text('Off'), findsOneWidget);
+    });
+  });
+
   group('RoomInfoPage member list', () {
     testWidgets('lists members and hides kick/ban for the current user', (
       tester,

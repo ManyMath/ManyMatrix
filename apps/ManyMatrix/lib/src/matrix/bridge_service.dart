@@ -77,6 +77,12 @@ abstract class MatrixService {
   /// The joined member user IDs for a room.
   Future<List<String>> roomMembers(String roomId);
 
+  /// Whether end-to-end encryption is enabled for [roomId].
+  Future<bool> isRoomEncrypted(String roomId);
+
+  /// Enables end-to-end encryption for [roomId].
+  Future<void> enableEncryption(String roomId);
+
   /// Removes [userId] from [roomId], optionally recording a reason.
   Future<void> kick(String roomId, String userId, {String? reason});
 
@@ -288,6 +294,14 @@ class BridgeMatrixService implements MatrixService {
     final decoded = jsonDecode(json) as List<dynamic>;
     return decoded.cast<String>();
   }
+
+  @override
+  Future<bool> isRoomEncrypted(String roomId) =>
+      _requireClient.isRoomEncrypted(roomId);
+
+  @override
+  Future<void> enableEncryption(String roomId) =>
+      _requireClient.enableEncryption(roomId);
 
   @override
   Future<void> kick(String roomId, String userId, {String? reason}) =>

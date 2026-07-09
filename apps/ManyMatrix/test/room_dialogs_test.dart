@@ -132,6 +132,12 @@ class FakeMatrixService implements MatrixService {
   Future<List<String>> roomMembers(String roomId) async => const <String>[];
 
   @override
+  Future<bool> isRoomEncrypted(String roomId) async => false;
+
+  @override
+  Future<void> enableEncryption(String roomId) async {}
+
+  @override
   Future<void> kick(String roomId, String userId, {String? reason}) async {}
 
   @override

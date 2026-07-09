@@ -167,3 +167,9 @@ final roomMembersProvider =
     FutureProvider.family<List<String>, String>((ref, roomId) {
   return ref.watch(matrixServiceProvider).roomMembers(roomId);
 });
+
+/// End-to-end encryption status for a room, fetched on demand.
+final roomEncryptionProvider =
+    FutureProvider.family<bool, String>((ref, roomId) {
+  return ref.watch(matrixServiceProvider).isRoomEncrypted(roomId);
+});
