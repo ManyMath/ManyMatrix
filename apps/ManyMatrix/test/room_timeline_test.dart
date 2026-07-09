@@ -138,6 +138,67 @@ void main() {
     expect(timeline.receiptsFor('event-1'), isEmpty);
     expect(timeline.receiptsFor('event-2').single.userId, '@bob:example.org');
   });
+
+  test('initial load folds replacement events into originals', () async {
+    final service = _FakeMatrixService(
+      initialMessages: <MessageEvent>[
+        _message('event-1', body: 'Original', timestamp: 1),
+        _message(
+          'edit-1',
+          body: 'Edited',
+          timestamp: 2,
+          replacesEventId: 'event-1',
+        ),
+      ],
+    );
+    final container = _container(service);
+    addTearDown(container.dispose);
+    final provider = roomTimelineProvider(_roomId);
+    final subscription = container.listen(provider, (_, __) {});
+    addTearDown(subscription.close);
+
+    final timeline = await container.read(provider.future);
+
+    expect(timeline.newestFirst, hasLength(1));
+    expect(timeline.newestFirst.single.eventId, 'event-1');
+    expect(timeline.newestFirst.single.body, 'Edited');
+    expect(timeline.newestFirst.single.editedAt, 2);
+  });
+
+  test('live replacement events update the original message', () async {
+    final service = _FakeMatrixService(
+      initialMessages: <MessageEvent>[
+        _message('event-1', body: 'Original', timestamp: 1),
+      ],
+    );
+    final container = _container(service);
+    addTearDown(container.dispose);
+    final provider = roomTimelineProvider(_roomId);
+    final subscription = container.listen(provider, (_, __) {});
+    addTearDown(subscription.close);
+
+    await container.read(provider.future);
+    await Future<void>.delayed(Duration.zero);
+    service.emit(
+      _message(
+        'edit-1',
+        body: 'Edited',
+        timestamp: 2,
+        replacesEventId: 'event-1',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final timeline = container.read(provider).value!;
+    expect(timeline.newestFirst, hasLength(1));
+    expect(timeline.newestFirst.single.eventId, 'event-1');
+    expect(timeline.newestFirst.single.body, 'Edited');
+    expect(timeline.newestFirst.single.editedAt, 2);
+    expect(service.readReceipts.map((r) => r.eventId), <String>[
+      'event-1',
+      'edit-1',
+    ]);
+  });
 }
 
 const _roomId = '!room:example.org';
@@ -148,14 +209,21 @@ ProviderContainer _container(_FakeMatrixService service) {
   );
 }
 
-MessageEvent _message(String eventId, {int timestamp = 0}) {
+MessageEvent _message(
+  String eventId, {
+  String? body,
+  String sender = '@alice:example.org',
+  int timestamp = 0,
+  String? replacesEventId,
+}) {
   return MessageEvent(
     eventId: eventId,
     roomId: _roomId,
-    sender: '@alice:example.org',
-    body: eventId,
+    sender: sender,
+    body: body ?? eventId,
     msgtype: 'm.text',
     timestamp: timestamp,
+    replacesEventId: replacesEventId,
   );
 }
 
@@ -260,6 +328,13 @@ class _FakeMatrixService implements MatrixService {
 
   @override
   Future<String> sendText(String roomId, String body) async => r'$local';
+
+  @override
+  Future<void> editMessage(
+    String roomId,
+    String eventId,
+    String newBody,
+  ) async {}
 
   @override
   Future<String> replyTo(String roomId, String eventId, String body) async =>

@@ -97,6 +97,8 @@ void main() {
         'timestamp': 1234567890,
         'in_reply_to': '\$parent',
         'thread_root': '\$thread',
+        'replaces_event_id': '\$original',
+        'edited_at': 1234567900,
       };
       final msg = MessageEvent.fromJson(json);
       expect(msg.eventId, '\$event1');
@@ -107,6 +109,8 @@ void main() {
       expect(msg.timestamp, 1234567890);
       expect(msg.inReplyTo, '\$parent');
       expect(msg.threadRoot, '\$thread');
+      expect(msg.replacesEventId, '\$original');
+      expect(msg.editedAt, 1234567900);
     });
 
     test('fromJson with null optional fields', () {
@@ -120,11 +124,15 @@ void main() {
         'timestamp': 1234567890,
         'in_reply_to': null,
         'thread_root': null,
+        'replaces_event_id': null,
+        'edited_at': null,
       };
       final msg = MessageEvent.fromJson(json);
       expect(msg.formattedBody, isNull);
       expect(msg.inReplyTo, isNull);
       expect(msg.threadRoot, isNull);
+      expect(msg.replacesEventId, isNull);
+      expect(msg.editedAt, isNull);
     });
 
     test('toJson round-trip', () {
@@ -135,12 +143,14 @@ void main() {
         body: 'Test',
         msgtype: 'm.text',
         timestamp: 500,
+        editedAt: 600,
       );
       final json = original.toJson();
       final restored = MessageEvent.fromJson(json);
       expect(restored.eventId, original.eventId);
       expect(restored.body, original.body);
       expect(restored.formattedBody, isNull);
+      expect(restored.editedAt, 600);
     });
   });
 

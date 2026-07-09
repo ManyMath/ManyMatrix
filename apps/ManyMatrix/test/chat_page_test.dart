@@ -69,6 +69,36 @@ void main() {
     expect(find.text(r'Reply to $reply-1'), findsOneWidget);
     expect(find.text(r'Thread $root-event'), findsNWidgets(2));
   });
+
+  testWidgets('edits own text messages from the composer', (tester) async {
+    final service = _FakeMatrixService(
+      initialMessages: <MessageEvent>[
+        _message(r'$event-1', sender: '@alice:example.org', body: 'Original'),
+      ],
+    );
+
+    await _pumpChat(tester, service);
+    await tester.tap(find.text('Edit'));
+    await tester.pump();
+
+    expect(find.text('Editing @alice:example.org'), findsOneWidget);
+
+    await tester.enterText(find.byType(EditableText), 'Edited body');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(service.editCalls, <_EditCall>[
+      const _EditCall(
+        roomId: _roomId,
+        eventId: r'$event-1',
+        newBody: 'Edited body',
+      ),
+    ]);
+    expect(find.text('Editing @alice:example.org'), findsNothing);
+    expect(find.text('Original'), findsNothing);
+    expect(find.text('Edited body'), findsOneWidget);
+    expect(find.textContaining('edited'), findsOneWidget);
+  });
 }
 
 const _roomId = '!room:example.org';
@@ -107,6 +137,7 @@ class _FakeMatrixService implements MatrixService {
   _FakeMatrixService({required this.initialMessages});
 
   final List<MessageEvent> initialMessages;
+  final List<_EditCall> editCalls = <_EditCall>[];
   final List<_ReplyCall> replyCalls = <_ReplyCall>[];
   final List<_ThreadCall> threadCalls = <_ThreadCall>[];
 
@@ -163,6 +194,17 @@ class _FakeMatrixService implements MatrixService {
   Future<String> sendText(String roomId, String body) async => r'$local';
 
   @override
+  Future<void> editMessage(
+    String roomId,
+    String eventId,
+    String newBody,
+  ) async {
+    editCalls.add(
+      _EditCall(roomId: roomId, eventId: eventId, newBody: newBody),
+    );
+  }
+
+  @override
   Future<String> replyTo(String roomId, String eventId, String body) async {
     replyCalls.add(_ReplyCall(roomId: roomId, eventId: eventId, body: body));
     return r'$reply-local';
@@ -203,6 +245,34 @@ class _FakeMatrixService implements MatrixService {
     _messages.close();
     _reactions.close();
     _receipts.close();
+  }
+}
+
+class _EditCall {
+  const _EditCall({
+    required this.roomId,
+    required this.eventId,
+    required this.newBody,
+  });
+
+  final String roomId;
+  final String eventId;
+  final String newBody;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _EditCall &&
+        other.roomId == roomId &&
+        other.eventId == eventId &&
+        other.newBody == newBody;
+  }
+
+  @override
+  int get hashCode => Object.hash(roomId, eventId, newBody);
+
+  @override
+  String toString() {
+    return '_EditCall(roomId: $roomId, eventId: $eventId, newBody: $newBody)';
   }
 }
 

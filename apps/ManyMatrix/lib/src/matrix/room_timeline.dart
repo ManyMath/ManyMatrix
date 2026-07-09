@@ -86,7 +86,7 @@ class RoomTimelineController
     final page = await service.getMessages(roomId, limit: _pageSize);
     // getMessages returns oldest -> newest; the UI wants newest at index 0.
     final timeline = RoomTimeline(
-      newestFirst: page.messages.reversed.toList(),
+      newestFirst: _newestFirstWithReplacements(page.messages),
       endToken: page.endToken,
       reactionsByEventId: _reactionSnapshot(),
       receiptsByEventId: _receiptSnapshot(),
@@ -99,9 +99,33 @@ class RoomTimelineController
   /// deduplicated by event ID if it arrives later.
   void addLocalEcho(MessageEvent event) => _appendLive(event);
 
+  void applyLocalEdit({
+    required String eventId,
+    required String body,
+    required int editedAt,
+  }) {
+    final timeline = state.valueOrNull;
+    if (timeline == null) return;
+    final index = timeline.newestFirst.indexWhere(
+      (message) => message.eventId == eventId,
+    );
+    if (index == -1) return;
+    final current = timeline.newestFirst[index];
+    final next = <MessageEvent>[...timeline.newestFirst];
+    next[index] = _editedMessage(current, body: body, editedAt: editedAt);
+    state = AsyncData(timeline.copyWith(newestFirst: next));
+  }
+
   void _appendLive(MessageEvent event) {
     final timeline = state.valueOrNull;
     if (timeline == null) return;
+    if (event.replacesEventId != null) {
+      final replaced = _applyReplacement(timeline.newestFirst, event);
+      if (identical(replaced, timeline.newestFirst)) return;
+      state = AsyncData(timeline.copyWith(newestFirst: replaced));
+      _sendReadReceipt(event);
+      return;
+    }
     if (timeline.newestFirst.any((m) => m.eventId == event.eventId)) return;
     state = AsyncData(
       timeline.copyWith(newestFirst: [event, ...timeline.newestFirst]),
@@ -120,9 +144,9 @@ class RoomTimelineController
           .getMessages(arg, fromToken: timeline.endToken, limit: _pageSize);
       final current = state.valueOrNull ?? timeline;
       final known = current.newestFirst.map((m) => m.eventId).toSet();
-      final older = page.messages.reversed
-          .where((m) => !known.contains(m.eventId))
-          .toList();
+      final older = _newestFirstWithReplacements(
+        page.messages,
+      ).where((m) => !known.contains(m.eventId)).toList();
       state = AsyncData(
         current.copyWith(
           newestFirst: [...current.newestFirst, ...older],
@@ -211,6 +235,78 @@ class RoomTimelineController
           .catchError((_) {}),
     );
   }
+}
+
+List<MessageEvent> _newestFirstWithReplacements(
+  List<MessageEvent> oldestFirst,
+) {
+  final messages = <MessageEvent>[];
+  final indexByEventId = <String, int>{};
+  for (final event in oldestFirst) {
+    final targetEventId = event.replacesEventId;
+    if (targetEventId != null) {
+      final index = indexByEventId[targetEventId];
+      if (index != null) {
+        messages[index] = _messageWithReplacement(messages[index], event);
+      }
+      continue;
+    }
+    indexByEventId[event.eventId] = messages.length;
+    messages.add(event);
+  }
+  return messages.reversed.toList();
+}
+
+List<MessageEvent> _applyReplacement(
+  List<MessageEvent> newestFirst,
+  MessageEvent replacement,
+) {
+  final targetEventId = replacement.replacesEventId;
+  if (targetEventId == null) return newestFirst;
+  final index = newestFirst.indexWhere(
+    (message) => message.eventId == targetEventId,
+  );
+  if (index == -1) return newestFirst;
+  final next = <MessageEvent>[...newestFirst];
+  next[index] = _messageWithReplacement(next[index], replacement);
+  return next;
+}
+
+MessageEvent _messageWithReplacement(
+  MessageEvent original,
+  MessageEvent replacement,
+) {
+  if (original.sender != replacement.sender) return original;
+  return MessageEvent(
+    eventId: original.eventId,
+    roomId: original.roomId,
+    sender: original.sender,
+    body: replacement.body,
+    formattedBody: replacement.formattedBody,
+    msgtype: replacement.msgtype,
+    timestamp: original.timestamp,
+    inReplyTo: original.inReplyTo,
+    threadRoot: original.threadRoot,
+    editedAt: replacement.timestamp,
+  );
+}
+
+MessageEvent _editedMessage(
+  MessageEvent original, {
+  required String body,
+  required int editedAt,
+}) {
+  return MessageEvent(
+    eventId: original.eventId,
+    roomId: original.roomId,
+    sender: original.sender,
+    body: body,
+    msgtype: 'm.text',
+    timestamp: original.timestamp,
+    inReplyTo: original.inReplyTo,
+    threadRoot: original.threadRoot,
+    editedAt: editedAt,
+  );
 }
 
 final roomTimelineProvider = AsyncNotifierProvider.autoDispose

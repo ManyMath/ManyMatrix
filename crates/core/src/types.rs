@@ -136,6 +136,8 @@ pub struct MessageEvent {
     pub timestamp: u64,
     pub in_reply_to: Option<String>,
     pub thread_root: Option<String>,
+    pub replaces_event_id: Option<String>,
+    pub edited_at: Option<u64>,
     pub mxc_uri: Option<String>,
     pub filename: Option<String>,
     pub file_size: Option<u64>,

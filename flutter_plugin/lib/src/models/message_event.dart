@@ -9,6 +9,8 @@ class MessageEvent {
   final int timestamp;
   final String? inReplyTo;
   final String? threadRoot;
+  final String? replacesEventId;
+  final int? editedAt;
 
   MessageEvent({
     required this.eventId,
@@ -20,29 +22,35 @@ class MessageEvent {
     required this.timestamp,
     this.inReplyTo,
     this.threadRoot,
+    this.replacesEventId,
+    this.editedAt,
   });
 
   factory MessageEvent.fromJson(Map<String, dynamic> json) => MessageEvent(
-    eventId: json['event_id'] as String,
-    roomId: json['room_id'] as String,
-    sender: json['sender'] as String,
-    body: json['body'] as String,
-    formattedBody: json['formatted_body'] as String?,
-    msgtype: json['msgtype'] as String,
-    timestamp: json['timestamp'] as int,
-    inReplyTo: json['in_reply_to'] as String?,
-    threadRoot: json['thread_root'] as String?,
-  );
+        eventId: json['event_id'] as String,
+        roomId: json['room_id'] as String,
+        sender: json['sender'] as String,
+        body: json['body'] as String,
+        formattedBody: json['formatted_body'] as String?,
+        msgtype: json['msgtype'] as String,
+        timestamp: json['timestamp'] as int,
+        inReplyTo: json['in_reply_to'] as String?,
+        threadRoot: json['thread_root'] as String?,
+        replacesEventId: json['replaces_event_id'] as String?,
+        editedAt: json['edited_at'] as int?,
+      );
 
   Map<String, dynamic> toJson() => {
-    'event_id': eventId,
-    'room_id': roomId,
-    'sender': sender,
-    'body': body,
-    'formatted_body': formattedBody,
-    'msgtype': msgtype,
-    'timestamp': timestamp,
-    'in_reply_to': inReplyTo,
-    'thread_root': threadRoot,
-  };
+        'event_id': eventId,
+        'room_id': roomId,
+        'sender': sender,
+        'body': body,
+        'formatted_body': formattedBody,
+        'msgtype': msgtype,
+        'timestamp': timestamp,
+        'in_reply_to': inReplyTo,
+        'thread_root': threadRoot,
+        'replaces_event_id': replacesEventId,
+        'edited_at': editedAt,
+      };
 }

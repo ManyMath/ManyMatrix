@@ -19,7 +19,7 @@ use matrix_sdk::ruma::events::reaction::ReactionEventContent;
 use matrix_sdk::ruma::events::receipt::{ReceiptEventContent, ReceiptThread};
 use matrix_sdk::ruma::events::relation::Annotation;
 use matrix_sdk::ruma::events::room::message::{
-    AddMentions, ForwardThread, ReplyWithinThread, RoomMessageEventContent,
+    AddMentions, ForwardThread, MessageType, Relation, ReplyWithinThread, RoomMessageEventContent,
     RoomMessageEventContentWithoutRelation, SyncRoomMessageEvent,
 };
 use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevelsEventContent;
@@ -367,42 +367,56 @@ impl ManyMatrixClient {
             .filter_map(|timeline_event| {
                 let event: serde_json::Value =
                     timeline_event.raw().deserialize_as_unchecked().ok()?;
+                let content = &event["content"];
+                let relates_to = &content["m.relates_to"];
+                let replacement_content = &content["m.new_content"];
+                let replaces_event_id = (relates_to["rel_type"].as_str() == Some("m.replace")
+                    && replacement_content.is_object())
+                .then(|| relates_to["event_id"].as_str().map(|s| s.to_owned()))
+                .flatten();
+                let message_content = if replaces_event_id.is_some() {
+                    replacement_content
+                } else {
+                    content
+                };
                 Some(MessageEvent {
                     event_id: event["event_id"].as_str()?.to_owned(),
                     room_id: room_id.to_owned(),
                     sender: event["sender"].as_str()?.to_owned(),
-                    body: event["content"]["body"]
+                    body: message_content["body"]
                         .as_str()
                         .unwrap_or_default()
                         .to_owned(),
-                    formatted_body: event["content"]["formatted_body"]
+                    formatted_body: message_content["formatted_body"]
                         .as_str()
                         .map(|s| s.to_owned()),
-                    msgtype: event["content"]["msgtype"]
+                    msgtype: message_content["msgtype"]
                         .as_str()
                         .unwrap_or_default()
                         .to_owned(),
                     timestamp: event["origin_server_ts"].as_u64().unwrap_or(0),
-                    in_reply_to: event["content"]["m.relates_to"]["m.in_reply_to"]["event_id"]
+                    in_reply_to: relates_to["m.in_reply_to"]["event_id"]
                         .as_str()
                         .map(|s| s.to_owned()),
-                    thread_root: event["content"]["m.relates_to"]["event_id"]
+                    thread_root: (relates_to["rel_type"].as_str() == Some("m.thread"))
+                        .then(|| relates_to["event_id"].as_str().map(|s| s.to_owned()))
+                        .flatten(),
+                    replaces_event_id,
+                    edited_at: None,
+                    mxc_uri: message_content["url"].as_str().map(|s| s.to_owned()),
+                    filename: message_content["filename"]
                         .as_str()
-                        .map(|s| s.to_owned()),
-                    mxc_uri: event["content"]["url"].as_str().map(|s| s.to_owned()),
-                    filename: event["content"]["filename"]
-                        .as_str()
-                        .or_else(|| event["content"]["body"].as_str())
+                        .or_else(|| message_content["body"].as_str())
                         .map(|s| s.to_owned())
                         .and_then(|f| {
-                            let msgtype = event["content"]["msgtype"].as_str().unwrap_or_default();
+                            let msgtype = message_content["msgtype"].as_str().unwrap_or_default();
                             if ["m.image", "m.file", "m.video", "m.audio"].contains(&msgtype) {
                                 Some(f)
                             } else {
                                 None
                             }
                         }),
-                    file_size: event["content"]["info"]["size"].as_u64(),
+                    file_size: message_content["info"]["size"].as_u64(),
                 })
             })
             .collect();
@@ -1004,68 +1018,37 @@ impl ManyMatrixClient {
                 let callback = callback.clone();
                 async move {
                     if let SyncRoomMessageEvent::Original(msg) = ev {
-                        let msgtype = msg.content.msgtype().to_owned();
-                        let body = msg.content.body().to_owned();
-                        let formatted_body = match &msg.content.msgtype {
-                            matrix_sdk::ruma::events::room::message::MessageType::Text(t) => {
-                                t.formatted.as_ref().map(|f| f.body.clone())
+                        let replacement = msg.content.relates_to.as_ref().and_then(|rel| {
+                            if let Relation::Replacement(replacement) = rel {
+                                Some(replacement)
+                            } else {
+                                None
                             }
-                            matrix_sdk::ruma::events::room::message::MessageType::Notice(n) => {
-                                n.formatted.as_ref().map(|f| f.body.clone())
-                            }
-                            matrix_sdk::ruma::events::room::message::MessageType::Emote(e) => {
-                                e.formatted.as_ref().map(|f| f.body.clone())
-                            }
-                            _ => None,
-                        };
+                        });
+                        let content_msgtype = replacement
+                            .map(|replacement| &replacement.new_content.msgtype)
+                            .unwrap_or(&msg.content.msgtype);
+                        let msgtype = content_msgtype.msgtype().to_owned();
+                        let body = content_msgtype.body().to_owned();
+                        let formatted_body = formatted_body_for_msgtype(content_msgtype);
                         let in_reply_to = msg.content.relates_to.as_ref().and_then(|rel| {
-                            if let matrix_sdk::ruma::events::room::message::Relation::Reply {
-                                in_reply_to,
-                            } = rel
-                            {
+                            if let Relation::Reply { in_reply_to } = rel {
                                 Some(in_reply_to.event_id.to_string())
                             } else {
                                 None
                             }
                         });
-                        let (mxc_uri, filename, file_size) = match &msg.content.msgtype {
-                            matrix_sdk::ruma::events::room::message::MessageType::Image(img) => {
-                                let uri = match &img.source {
-                                    MediaSource::Plain(url) => Some(url.to_string()),
-                                    MediaSource::Encrypted(_) => None,
-                                };
-                                let size = img.info.as_ref().and_then(|i| i.size).map(u64::from);
-                                (uri, Some(img.body.clone()), size)
+                        let thread_root = msg.content.relates_to.as_ref().and_then(|rel| {
+                            if let Relation::Thread(thread) = rel {
+                                Some(thread.event_id.to_string())
+                            } else {
+                                None
                             }
-                            matrix_sdk::ruma::events::room::message::MessageType::File(f) => {
-                                let uri = match &f.source {
-                                    MediaSource::Plain(url) => Some(url.to_string()),
-                                    MediaSource::Encrypted(_) => None,
-                                };
-                                let size = f.info.as_ref().and_then(|i| i.size).map(u64::from);
-                                (
-                                    uri,
-                                    f.filename.clone().or_else(|| Some(f.body.clone())),
-                                    size,
-                                )
-                            }
-                            matrix_sdk::ruma::events::room::message::MessageType::Video(v) => {
-                                let uri = match &v.source {
-                                    MediaSource::Plain(url) => Some(url.to_string()),
-                                    MediaSource::Encrypted(_) => None,
-                                };
-                                let size = v.info.as_ref().and_then(|i| i.size).map(u64::from);
-                                (uri, Some(v.body.clone()), size)
-                            }
-                            matrix_sdk::ruma::events::room::message::MessageType::Audio(a) => {
-                                let uri = match &a.source {
-                                    MediaSource::Plain(url) => Some(url.to_string()),
-                                    MediaSource::Encrypted(_) => None,
-                                };
-                                (uri, Some(a.body.clone()), None)
-                            }
-                            _ => (None, None, None),
-                        };
+                        });
+                        let replaces_event_id =
+                            replacement.map(|replacement| replacement.event_id.to_string());
+                        let (mxc_uri, filename, file_size) =
+                            media_details_for_msgtype(content_msgtype);
                         let message = MessageEvent {
                             event_id: msg.event_id.to_string(),
                             room_id: room.room_id().to_string(),
@@ -1075,7 +1058,9 @@ impl ManyMatrixClient {
                             msgtype,
                             timestamp: msg.origin_server_ts.get().into(),
                             in_reply_to,
-                            thread_root: None,
+                            thread_root,
+                            replaces_event_id,
+                            edited_at: None,
                             mxc_uri,
                             filename,
                             file_size,
@@ -1246,6 +1231,58 @@ fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
         .map_err(|e| Error::IdParse(format!("invalid MXC URI: {e}")))?
         .to_owned();
     Ok(MediaSource::Plain(uri))
+}
+
+fn formatted_body_for_msgtype(msgtype: &MessageType) -> Option<String> {
+    match msgtype {
+        MessageType::Text(t) => t.formatted.as_ref().map(|f| f.body.clone()),
+        MessageType::Notice(n) => n.formatted.as_ref().map(|f| f.body.clone()),
+        MessageType::Emote(e) => e.formatted.as_ref().map(|f| f.body.clone()),
+        _ => None,
+    }
+}
+
+fn media_details_for_msgtype(
+    msgtype: &MessageType,
+) -> (Option<String>, Option<String>, Option<u64>) {
+    match msgtype {
+        MessageType::Image(img) => {
+            let uri = match &img.source {
+                MediaSource::Plain(url) => Some(url.to_string()),
+                MediaSource::Encrypted(_) => None,
+            };
+            let size = img.info.as_ref().and_then(|i| i.size).map(u64::from);
+            (uri, Some(img.body.clone()), size)
+        }
+        MessageType::File(f) => {
+            let uri = match &f.source {
+                MediaSource::Plain(url) => Some(url.to_string()),
+                MediaSource::Encrypted(_) => None,
+            };
+            let size = f.info.as_ref().and_then(|i| i.size).map(u64::from);
+            (
+                uri,
+                f.filename.clone().or_else(|| Some(f.body.clone())),
+                size,
+            )
+        }
+        MessageType::Video(v) => {
+            let uri = match &v.source {
+                MediaSource::Plain(url) => Some(url.to_string()),
+                MediaSource::Encrypted(_) => None,
+            };
+            let size = v.info.as_ref().and_then(|i| i.size).map(u64::from);
+            (uri, Some(v.body.clone()), size)
+        }
+        MessageType::Audio(a) => {
+            let uri = match &a.source {
+                MediaSource::Plain(url) => Some(url.to_string()),
+                MediaSource::Encrypted(_) => None,
+            };
+            (uri, Some(a.body.clone()), None)
+        }
+        _ => (None, None, None),
+    }
 }
 
 fn power_level_field(raw: &serde_json::Value, field: &str, default: i64) -> i64 {

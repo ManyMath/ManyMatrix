@@ -18,6 +18,7 @@ class MessageBubble extends ConsumerWidget {
     this.reactions = const <ReactionEvent>[],
     this.receipts = const <ReceiptEvent>[],
     this.onReply,
+    this.onEdit,
     this.onThreadReply,
     super.key,
   });
@@ -27,6 +28,7 @@ class MessageBubble extends ConsumerWidget {
   final List<ReactionEvent> reactions;
   final List<ReceiptEvent> receipts;
   final VoidCallback? onReply;
+  final VoidCallback? onEdit;
   final VoidCallback? onThreadReply;
 
   static String formatTimestamp(int millisecondsSinceEpoch) {
@@ -62,6 +64,14 @@ class MessageBubble extends ConsumerWidget {
           onPressed: onReply,
           child: const Text('Reply'),
         ),
+      if (onEdit != null)
+        MButton(
+          variant: MButtonVariant.ghost,
+          size: MButtonSize.sm,
+          style: const MButtonStyleDelta(minHeight: 40),
+          onPressed: onEdit,
+          child: const Text('Edit'),
+        ),
       if (onThreadReply != null)
         MButton(
           variant: MButtonVariant.ghost,
@@ -87,7 +97,8 @@ class MessageBubble extends ConsumerWidget {
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Text(
                   '${isMine ? 'You' : message.sender}'
-                  '  ${formatTimestamp(message.timestamp)}',
+                  '  ${formatTimestamp(message.timestamp)}'
+                  '${message.editedAt == null ? '' : ' edited'}',
                   style: theme.typography.caption.copyWith(
                     color: theme.colors.mutedForeground,
                   ),

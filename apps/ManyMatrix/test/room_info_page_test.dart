@@ -70,6 +70,12 @@ class _FakeModerationService implements MatrixService {
   @override
   Future<String> sendText(String roomId, String body) async => r'$local';
   @override
+  Future<void> editMessage(
+    String roomId,
+    String eventId,
+    String newBody,
+  ) async {}
+  @override
   Future<String> replyTo(String roomId, String eventId, String body) async =>
       r'$reply';
   @override

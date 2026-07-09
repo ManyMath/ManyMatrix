@@ -17,6 +17,8 @@ Map<String, dynamic> _eventJson({
   'timestamp': 1700000000000,
   'in_reply_to': null,
   'thread_root': null,
+  'replaces_event_id': null,
+  'edited_at': null,
 };
 
 Map<String, dynamic> _reactionJson({
@@ -54,6 +56,20 @@ void main() {
       expect(event.body, 'hello');
       expect(event.msgtype, 'm.text');
       expect(event.timestamp, 1700000000000);
+    });
+
+    test('parses replacement metadata', () {
+      final event = tryParseMessageEvent(
+        jsonEncode(
+          _eventJson()
+            ..['replaces_event_id'] = r'$original'
+            ..['edited_at'] = 1700000000100,
+        ),
+      );
+
+      expect(event, isNotNull);
+      expect(event!.replacesEventId, r'$original');
+      expect(event.editedAt, 1700000000100);
     });
 
     test('returns null for malformed JSON', () {

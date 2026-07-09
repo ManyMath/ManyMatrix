@@ -196,6 +196,10 @@ class ChatView extends HookConsumerWidget {
                         : const <ReceiptEvent>[],
                     onReply: () =>
                         composeTarget.value = _ComposeTarget.reply(message),
+                    onEdit: isMine && message.msgtype == 'm.text'
+                        ? () =>
+                              composeTarget.value = _ComposeTarget.edit(message)
+                        : null,
                     onThreadReply: () =>
                         composeTarget.value = _ComposeTarget.thread(message),
                   );
@@ -215,13 +219,16 @@ class ChatView extends HookConsumerWidget {
   }
 }
 
-enum _ComposeTargetKind { reply, thread }
+enum _ComposeTargetKind { reply, edit, thread }
 
 class _ComposeTarget {
   const _ComposeTarget._({required this.kind, required this.message});
 
   const _ComposeTarget.reply(MessageEvent message)
     : this._(kind: _ComposeTargetKind.reply, message: message);
+
+  const _ComposeTarget.edit(MessageEvent message)
+    : this._(kind: _ComposeTargetKind.edit, message: message);
 
   const _ComposeTarget.thread(MessageEvent message)
     : this._(kind: _ComposeTargetKind.thread, message: message);
@@ -233,11 +240,13 @@ class _ComposeTarget {
 
   String get modeLabel => switch (kind) {
     _ComposeTargetKind.reply => 'Replying to',
+    _ComposeTargetKind.edit => 'Editing',
     _ComposeTargetKind.thread => 'Thread reply to',
   };
 
   String get sendFailureLabel => switch (kind) {
     _ComposeTargetKind.reply => 'Reply failed',
+    _ComposeTargetKind.edit => 'Edit failed',
     _ComposeTargetKind.thread => 'Thread reply failed',
   };
 
@@ -266,11 +275,27 @@ class _Composer extends HookConsumerWidget {
     final sending = useState(false);
     final sendError = useState<String?>(null);
     final typingTimer = useRef<Timer?>(null);
+    final targetKey = target == null
+        ? null
+        : '${target!.kind.name}:${target!.message.eventId}';
     useEffect(
       () =>
           () => typingTimer.value?.cancel(),
       const [],
     );
+    useEffect(() {
+      if (target?.kind == _ComposeTargetKind.edit) {
+        controller.value = target!.message.body;
+      }
+      return null;
+    }, [targetKey]);
+
+    void clearTarget() {
+      if (target?.kind == _ComposeTargetKind.edit) {
+        controller.value = '';
+      }
+      onClearTarget();
+    }
 
     void onChanged(String text) {
       if (text.isEmpty) return;
@@ -290,12 +315,33 @@ class _Composer extends HookConsumerWidget {
       final service = ref.read(matrixServiceProvider);
       final composeTarget = target;
       try {
+        if (composeTarget?.kind == _ComposeTargetKind.edit) {
+          await service.editMessage(
+            roomId,
+            composeTarget!.message.eventId,
+            body,
+          );
+          final editedAt = DateTime.now().millisecondsSinceEpoch;
+          ref
+              .read(roomTimelineProvider(roomId).notifier)
+              .applyLocalEdit(
+                eventId: composeTarget.message.eventId,
+                body: body,
+                editedAt: editedAt,
+              );
+          typingTimer.value?.cancel();
+          unawaited(service.sendTyping(roomId, false).catchError((_) {}));
+          controller.value = '';
+          onClearTarget();
+          return;
+        }
         final eventId = switch (composeTarget?.kind) {
           _ComposeTargetKind.reply => await service.replyTo(
             roomId,
             composeTarget!.message.eventId,
             body,
           ),
+          _ComposeTargetKind.edit => throw StateError('edit handled earlier'),
           _ComposeTargetKind.thread => await service.sendThreadReply(
             roomId,
             composeTarget!.threadRootId,
@@ -344,7 +390,7 @@ class _Composer extends HookConsumerWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: _ComposeTargetBanner(
                 target: target!,
-                onClear: onClearTarget,
+                onClear: clearTarget,
               ),
             ),
           if (sendError.value != null)
@@ -360,7 +406,12 @@ class _Composer extends HookConsumerWidget {
               Expanded(
                 child: MTextField(
                   controller: controller,
-                  placeholder: target == null ? 'Message…' : 'Write a reply…',
+                  placeholder: switch (target?.kind) {
+                    _ComposeTargetKind.edit => 'Edit message...',
+                    _ComposeTargetKind.reply ||
+                    _ComposeTargetKind.thread => 'Write a reply...',
+                    null => 'Message…',
+                  },
                   semanticLabel: 'Message',
                   enabled: !sending.value,
                   onChanged: onChanged,
@@ -370,7 +421,11 @@ class _Composer extends HookConsumerWidget {
               const SizedBox(width: 8),
               MButton(
                 onPressed: sending.value ? null : send,
-                child: Text(sending.value ? 'Sending…' : 'Send'),
+                child: Text(
+                  target?.kind == _ComposeTargetKind.edit
+                      ? (sending.value ? 'Saving…' : 'Save')
+                      : (sending.value ? 'Sending…' : 'Send'),
+                ),
               ),
             ],
           ),

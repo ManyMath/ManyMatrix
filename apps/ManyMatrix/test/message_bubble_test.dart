@@ -109,4 +109,29 @@ void main() {
     expect(find.text('Image attachment'), findsOneWidget);
     expect(find.text('photo.png'), findsOneWidget);
   });
+
+  testWidgets('marks edited messages', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MWidgetsApp(
+          debugShowCheckedModeBanner: false,
+          home: MessageBubble(
+            message: MessageEvent(
+              eventId: 'event-1',
+              roomId: '!room:example.org',
+              sender: '@alice:example.org',
+              body: 'Edited text',
+              msgtype: 'm.text',
+              timestamp: 1700000000000,
+              editedAt: 1700000001000,
+            ),
+            isMine: true,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Edited text'), findsOneWidget);
+    expect(find.textContaining('edited'), findsOneWidget);
+  });
 }

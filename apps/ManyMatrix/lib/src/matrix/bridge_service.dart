@@ -60,6 +60,8 @@ abstract class MatrixService {
 
   Future<String> sendText(String roomId, String body);
 
+  Future<void> editMessage(String roomId, String eventId, String newBody);
+
   Future<String> replyTo(String roomId, String eventId, String body);
 
   Future<String> sendThreadReply(
@@ -255,6 +257,10 @@ class BridgeMatrixService implements MatrixService {
   @override
   Future<String> sendText(String roomId, String body) =>
       _requireClient.sendText(roomId, body);
+
+  @override
+  Future<void> editMessage(String roomId, String eventId, String newBody) =>
+      _requireClient.editMessage(roomId, eventId, newBody);
 
   @override
   Future<String> replyTo(String roomId, String eventId, String body) =>
