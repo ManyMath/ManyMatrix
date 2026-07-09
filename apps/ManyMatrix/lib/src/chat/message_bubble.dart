@@ -41,9 +41,11 @@ class MessageBubble extends ConsumerWidget {
     final foreground = isMine
         ? theme.colors.primaryForeground
         : theme.colors.foreground;
+    final messageText = _displayBody(message);
     final body = message.msgtype == 'm.emote'
-        ? '* ${message.sender.split(':').first} ${message.body}'
-        : message.body;
+        ? '* ${message.sender.split(':').first} $messageText'
+        : messageText;
+    final kindLabel = _messageKindLabel(message.msgtype);
     final reactionCounts = _reactionCounts(reactions);
     final readReceiptSummary = _readReceiptSummary(receipts);
     final hasMetadata = reactionCounts.isNotEmpty || readReceiptSummary != null;
@@ -95,11 +97,40 @@ class MessageBubble extends ConsumerWidget {
                         color: background,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        body,
-                        style: theme.typography.body.copyWith(
-                          color: foreground,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          if (message.inReplyTo != null) ...<Widget>[
+                            _MessageContextLine(
+                              text:
+                                  'Reply to ${_shortEventId(message.inReplyTo!)}',
+                              color: foreground,
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                          if (message.threadRoot != null) ...<Widget>[
+                            _MessageContextLine(
+                              text:
+                                  'Thread ${_shortEventId(message.threadRoot!)}',
+                              color: foreground,
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                          if (kindLabel != null) ...<Widget>[
+                            _MessageContextLine(
+                              text: kindLabel,
+                              color: foreground,
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                          Text(
+                            body,
+                            style: theme.typography.body.copyWith(
+                              color: foreground,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -177,6 +208,68 @@ class MessageBubble extends ConsumerWidget {
   }
 }
 
+String _displayBody(MessageEvent message) {
+  final formattedBody = message.formattedBody;
+  if (formattedBody != null && formattedBody.trim().isNotEmpty) {
+    final plainText = _matrixHtmlToPlainText(formattedBody);
+    if (plainText.isNotEmpty) return plainText;
+  }
+  return message.body;
+}
+
+String _matrixHtmlToPlainText(String html) {
+  final withLineBreaks = html
+      .replaceAll(RegExp(r'<\s*br\s*/?\s*>', caseSensitive: false), '\n')
+      .replaceAll(
+        RegExp(r'</\s*(p|div|li|blockquote|h[1-6])\s*>', caseSensitive: false),
+        '\n',
+      );
+  final withoutTags = withLineBreaks.replaceAll(RegExp(r'<[^>]+>'), '');
+  final decoded = _decodeHtmlEntities(withoutTags);
+  return decoded
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .join('\n');
+}
+
+String _decodeHtmlEntities(String text) {
+  return text
+      .replaceAllMapped(RegExp(r'&#(x?[0-9a-fA-F]+);'), (match) {
+        final value = match.group(1)!;
+        final radix = value.startsWith('x') ? 16 : 10;
+        final digits = value.startsWith('x') ? value.substring(1) : value;
+        final codePoint = int.tryParse(digits, radix: radix);
+        if (codePoint == null || codePoint < 0 || codePoint > 0x10ffff) {
+          return match.group(0)!;
+        }
+        return String.fromCharCode(codePoint);
+      })
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll('&apos;', "'")
+      .replaceAll('&amp;', '&');
+}
+
+String? _messageKindLabel(String msgtype) {
+  return switch (msgtype) {
+    'm.image' => 'Image attachment',
+    'm.file' => 'File attachment',
+    'm.video' => 'Video attachment',
+    'm.audio' => 'Audio attachment',
+    'm.notice' => 'Notice',
+    'm.text' || 'm.emote' => null,
+    _ => msgtype,
+  };
+}
+
+String _shortEventId(String eventId) {
+  if (eventId.length <= 16) return eventId;
+  return '${eventId.substring(0, 16)}...';
+}
+
 Map<String, int> _reactionCounts(List<ReactionEvent> reactions) {
   final counts = <String, int>{};
   for (final reaction in reactions) {
@@ -194,6 +287,24 @@ String? _readReceiptSummary(List<ReceiptEvent> receipts) {
   if (readers.isEmpty) return null;
   if (readers.length == 1) return 'Read by ${readers.single}';
   return 'Read by ${readers.length} people';
+}
+
+class _MessageContextLine extends StatelessWidget {
+  const _MessageContextLine({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MTheme.of(context);
+    return Text(
+      text,
+      style: theme.typography.caption.copyWith(color: color),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
 }
 
 class _ReactionCountChip extends StatelessWidget {
