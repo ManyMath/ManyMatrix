@@ -29,6 +29,7 @@ class _InviteDialogBody extends HookConsumerWidget {
     final userId = useState('');
     final inviting = useState(false);
     final error = useState<String?>(null);
+    final userIdFocus = useFocusNode();
 
     Future<void> submit() async {
       if (inviting.value) return;
@@ -54,14 +55,18 @@ class _InviteDialogBody extends HookConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          const MLabel('User ID'),
-          const SizedBox(height: 8),
-          MTextField(
-            placeholder: '@user:example.org',
-            semanticLabel: 'User ID',
+          MField(
+            label: 'User ID',
+            focusNode: userIdFocus,
             enabled: !inviting.value,
-            onChanged: (value) => userId.value = value,
-            onSubmitted: (_) => submit(),
+            child: MTextField(
+              focusNode: userIdFocus,
+              placeholder: '@user:example.org',
+              semanticLabel: 'User ID',
+              enabled: !inviting.value,
+              onChanged: (value) => userId.value = value,
+              onSubmitted: (_) => submit(),
+            ),
           ),
           if (error.value != null) ...<Widget>[
             const SizedBox(height: 12),

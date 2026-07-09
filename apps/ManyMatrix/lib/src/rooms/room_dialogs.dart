@@ -24,6 +24,8 @@ class _CreateRoomDialogBody extends HookConsumerWidget {
     final topic = useState('');
     final creating = useState(false);
     final error = useState<String?>(null);
+    final nameFocus = useFocusNode();
+    final topicFocus = useFocusNode();
 
     Future<void> submit() async {
       if (creating.value) return;
@@ -52,24 +54,32 @@ class _CreateRoomDialogBody extends HookConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          const MLabel('Name'),
-          const SizedBox(height: 8),
-          MTextField(
-            placeholder: 'Room name',
-            semanticLabel: 'Room name',
+          MField(
+            label: 'Name',
+            focusNode: nameFocus,
             enabled: !creating.value,
-            onChanged: (value) => name.value = value,
-            onSubmitted: (_) => submit(),
+            child: MTextField(
+              focusNode: nameFocus,
+              placeholder: 'Room name',
+              semanticLabel: 'Room name',
+              enabled: !creating.value,
+              onChanged: (value) => name.value = value,
+              onSubmitted: (_) => submit(),
+            ),
           ),
           const SizedBox(height: 16),
-          const MLabel('Topic (optional)'),
-          const SizedBox(height: 8),
-          MTextField(
-            placeholder: 'Topic',
-            semanticLabel: 'Room topic',
+          MField(
+            label: 'Topic (optional)',
+            focusNode: topicFocus,
             enabled: !creating.value,
-            onChanged: (value) => topic.value = value,
-            onSubmitted: (_) => submit(),
+            child: MTextField(
+              focusNode: topicFocus,
+              placeholder: 'Topic',
+              semanticLabel: 'Room topic',
+              enabled: !creating.value,
+              onChanged: (value) => topic.value = value,
+              onSubmitted: (_) => submit(),
+            ),
           ),
           if (error.value != null) ...<Widget>[
             const SizedBox(height: 12),
@@ -111,6 +121,7 @@ class _JoinRoomDialogBody extends HookConsumerWidget {
     final roomIdOrAlias = useState('');
     final joining = useState(false);
     final error = useState<String?>(null);
+    final targetFocus = useFocusNode();
 
     Future<void> submit() async {
       if (joining.value) return;
@@ -139,14 +150,18 @@ class _JoinRoomDialogBody extends HookConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          const MLabel('Room ID or alias'),
-          const SizedBox(height: 8),
-          MTextField(
-            placeholder: '#room:example.org',
-            semanticLabel: 'Room ID or alias',
+          MField(
+            label: 'Room ID or alias',
+            focusNode: targetFocus,
             enabled: !joining.value,
-            onChanged: (value) => roomIdOrAlias.value = value,
-            onSubmitted: (_) => submit(),
+            child: MTextField(
+              focusNode: targetFocus,
+              placeholder: '#room:example.org',
+              semanticLabel: 'Room ID or alias',
+              enabled: !joining.value,
+              onChanged: (value) => roomIdOrAlias.value = value,
+              onSubmitted: (_) => submit(),
+            ),
           ),
           if (error.value != null) ...<Widget>[
             const SizedBox(height: 12),

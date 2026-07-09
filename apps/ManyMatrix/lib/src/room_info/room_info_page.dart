@@ -137,6 +137,7 @@ class _MemberTile extends ConsumerWidget {
     required _ModerationAction action,
   }) async {
     final reasonController = MController<String>('');
+    final reasonFocus = FocusNode();
     final verb = action == _ModerationAction.kick ? 'Kick' : 'Ban';
 
     final confirmed = await showMConfirmDialog(
@@ -151,12 +152,15 @@ class _MemberTile extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          const MLabel('Reason (optional)'),
-          const SizedBox(height: 8),
-          MTextField(
-            controller: reasonController,
-            placeholder: 'Reason',
-            semanticLabel: 'Reason',
+          MField(
+            label: 'Reason (optional)',
+            focusNode: reasonFocus,
+            child: MTextField(
+              focusNode: reasonFocus,
+              controller: reasonController,
+              placeholder: 'Reason',
+              semanticLabel: 'Reason',
+            ),
           ),
         ],
       ),
@@ -166,6 +170,7 @@ class _MemberTile extends ConsumerWidget {
 
     final reason = reasonController.value.trim();
     reasonController.dispose();
+    reasonFocus.dispose();
     if (!confirmed) return;
 
     final service = ref.read(matrixServiceProvider);
