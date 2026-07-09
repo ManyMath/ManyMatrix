@@ -330,6 +330,16 @@ class _FakeMatrixService implements MatrixService {
   Future<String> sendText(String roomId, String body) async => r'$local';
 
   @override
+  Future<String> sendHtml(String roomId, String body, String html) async =>
+      r'$html';
+
+  @override
+  Future<String> sendNotice(String roomId, String body) async => r'$notice';
+
+  @override
+  Future<String> sendEmote(String roomId, String body) async => r'$emote';
+
+  @override
   Future<void> editMessage(
     String roomId,
     String eventId,

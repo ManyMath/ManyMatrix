@@ -221,6 +221,18 @@ class ChatView extends HookConsumerWidget {
 
 enum _ComposeTargetKind { reply, edit, thread }
 
+enum _ComposerMode {
+  text('Text', 'm.text'),
+  notice('Notice', 'm.notice'),
+  emote('Emote', 'm.emote'),
+  html('HTML', 'm.text');
+
+  const _ComposerMode(this.label, this.msgtype);
+
+  final String label;
+  final String msgtype;
+}
+
 class _ComposeTarget {
   const _ComposeTarget._({required this.kind, required this.message});
 
@@ -272,6 +284,8 @@ class _Composer extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = useMController<String>('', [roomId]);
+    final htmlController = useMController<String>('', [roomId]);
+    final mode = useState(_ComposerMode.text);
     final sending = useState(false);
     final sendError = useState<String?>(null);
     final typingTimer = useRef<Timer?>(null);
@@ -310,6 +324,12 @@ class _Composer extends HookConsumerWidget {
     Future<void> send() async {
       final body = controller.value.trim();
       if (body.isEmpty || sending.value) return;
+      final composeMode = target == null ? mode.value : _ComposerMode.text;
+      final htmlBody = htmlController.value.trim();
+      if (composeMode == _ComposerMode.html && htmlBody.isEmpty) {
+        sendError.value = 'Send failed: HTML body is required';
+        return;
+      }
       sending.value = true;
       sendError.value = null;
       final service = ref.read(matrixServiceProvider);
@@ -347,11 +367,21 @@ class _Composer extends HookConsumerWidget {
             composeTarget!.threadRootId,
             body,
           ),
-          null => await service.sendText(roomId, body),
+          null => switch (composeMode) {
+            _ComposerMode.text => await service.sendText(roomId, body),
+            _ComposerMode.notice => await service.sendNotice(roomId, body),
+            _ComposerMode.emote => await service.sendEmote(roomId, body),
+            _ComposerMode.html => await service.sendHtml(
+              roomId,
+              body,
+              htmlBody,
+            ),
+          },
         };
         typingTimer.value?.cancel();
         unawaited(service.sendTyping(roomId, false).catchError((_) {}));
         controller.value = '';
+        htmlController.value = '';
         onClearTarget();
         final sender = service.currentUserId;
         if (sender != null) {
@@ -363,7 +393,10 @@ class _Composer extends HookConsumerWidget {
                   roomId: roomId,
                   sender: sender,
                   body: body,
-                  msgtype: 'm.text',
+                  formattedBody: composeMode == _ComposerMode.html
+                      ? htmlBody
+                      : null,
+                  msgtype: composeMode.msgtype,
                   timestamp: DateTime.now().millisecondsSinceEpoch,
                   inReplyTo: composeTarget?.message.eventId,
                   threadRoot: composeTarget?.kind == _ComposeTargetKind.thread
@@ -401,6 +434,35 @@ class _Composer extends HookConsumerWidget {
                 message: sendError.value!,
               ),
             ),
+          if (target == null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: MSegmentedControl<_ComposerMode>(
+                  value: mode.value,
+                  enabled: !sending.value,
+                  onChanged: (value) => mode.value = value,
+                  items: <MSegmentedItem<_ComposerMode>>[
+                    for (final mode in _ComposerMode.values)
+                      MSegmentedItem<_ComposerMode>(
+                        value: mode,
+                        label: mode.label,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          if (target == null && mode.value == _ComposerMode.html)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: MTextField(
+                controller: htmlController,
+                placeholder: 'HTML markup…',
+                semanticLabel: 'HTML message body',
+                enabled: !sending.value,
+              ),
+            ),
           Row(
             children: <Widget>[
               Expanded(
@@ -410,9 +472,14 @@ class _Composer extends HookConsumerWidget {
                     _ComposeTargetKind.edit => 'Edit message...',
                     _ComposeTargetKind.reply ||
                     _ComposeTargetKind.thread => 'Write a reply...',
-                    null => 'Message…',
+                    null =>
+                      mode.value == _ComposerMode.html
+                          ? 'Plain-text fallback...'
+                          : 'Message...',
                   },
-                  semanticLabel: 'Message',
+                  semanticLabel: mode.value == _ComposerMode.html
+                      ? 'Plain-text message fallback'
+                      : 'Message',
                   enabled: !sending.value,
                   onChanged: onChanged,
                   onSubmitted: (_) => send(),

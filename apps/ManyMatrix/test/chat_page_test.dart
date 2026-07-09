@@ -99,6 +99,69 @@ void main() {
     expect(find.text('Edited body'), findsOneWidget);
     expect(find.textContaining('edited'), findsOneWidget);
   });
+
+  testWidgets('sends notice messages from the composer mode control', (
+    tester,
+  ) async {
+    final service = _FakeMatrixService(initialMessages: const <MessageEvent>[]);
+
+    await _pumpChat(tester, service);
+    await tester.tap(find.text('Notice'));
+    await tester.pump();
+    await tester.enterText(find.byType(EditableText), 'Maintenance soon');
+    await tester.tap(find.text('Send'));
+    await tester.pumpAndSettle();
+
+    expect(service.noticeCalls, <_MessageCall>[
+      const _MessageCall(roomId: _roomId, body: 'Maintenance soon'),
+    ]);
+    expect(find.text('Notice'), findsWidgets);
+    expect(find.text('Maintenance soon'), findsOneWidget);
+  });
+
+  testWidgets('sends emote messages from the composer mode control', (
+    tester,
+  ) async {
+    final service = _FakeMatrixService(initialMessages: const <MessageEvent>[]);
+
+    await _pumpChat(tester, service);
+    await tester.tap(find.text('Emote'));
+    await tester.pump();
+    await tester.enterText(find.byType(EditableText), 'waves');
+    await tester.tap(find.text('Send'));
+    await tester.pumpAndSettle();
+
+    expect(service.emoteCalls, <_MessageCall>[
+      const _MessageCall(roomId: _roomId, body: 'waves'),
+    ]);
+    expect(find.text('* @alice waves'), findsOneWidget);
+  });
+
+  testWidgets('sends formatted HTML with a plain-text fallback', (
+    tester,
+  ) async {
+    final service = _FakeMatrixService(initialMessages: const <MessageEvent>[]);
+
+    await _pumpChat(tester, service);
+    await tester.tap(find.text('HTML'));
+    await tester.pump();
+    await tester.enterText(
+      find.byType(EditableText).first,
+      '<strong>Bold</strong>',
+    );
+    await tester.enterText(find.byType(EditableText).last, 'Bold');
+    await tester.tap(find.text('Send'));
+    await tester.pumpAndSettle();
+
+    expect(service.htmlCalls, <_HtmlCall>[
+      const _HtmlCall(
+        roomId: _roomId,
+        body: 'Bold',
+        html: '<strong>Bold</strong>',
+      ),
+    ]);
+    expect(find.text('Bold'), findsOneWidget);
+  });
 }
 
 const _roomId = '!room:example.org';
@@ -138,6 +201,9 @@ class _FakeMatrixService implements MatrixService {
 
   final List<MessageEvent> initialMessages;
   final List<_EditCall> editCalls = <_EditCall>[];
+  final List<_HtmlCall> htmlCalls = <_HtmlCall>[];
+  final List<_MessageCall> noticeCalls = <_MessageCall>[];
+  final List<_MessageCall> emoteCalls = <_MessageCall>[];
   final List<_ReplyCall> replyCalls = <_ReplyCall>[];
   final List<_ThreadCall> threadCalls = <_ThreadCall>[];
 
@@ -192,6 +258,24 @@ class _FakeMatrixService implements MatrixService {
 
   @override
   Future<String> sendText(String roomId, String body) async => r'$local';
+
+  @override
+  Future<String> sendHtml(String roomId, String body, String html) async {
+    htmlCalls.add(_HtmlCall(roomId: roomId, body: body, html: html));
+    return r'$html-local';
+  }
+
+  @override
+  Future<String> sendNotice(String roomId, String body) async {
+    noticeCalls.add(_MessageCall(roomId: roomId, body: body));
+    return r'$notice-local';
+  }
+
+  @override
+  Future<String> sendEmote(String roomId, String body) async {
+    emoteCalls.add(_MessageCall(roomId: roomId, body: body));
+    return r'$emote-local';
+  }
 
   @override
   Future<void> editMessage(
@@ -251,6 +335,56 @@ class _FakeMatrixService implements MatrixService {
     _messages.close();
     _reactions.close();
     _receipts.close();
+  }
+}
+
+class _MessageCall {
+  const _MessageCall({required this.roomId, required this.body});
+
+  final String roomId;
+  final String body;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _MessageCall &&
+        other.roomId == roomId &&
+        other.body == body;
+  }
+
+  @override
+  int get hashCode => Object.hash(roomId, body);
+
+  @override
+  String toString() {
+    return '_MessageCall(roomId: $roomId, body: $body)';
+  }
+}
+
+class _HtmlCall {
+  const _HtmlCall({
+    required this.roomId,
+    required this.body,
+    required this.html,
+  });
+
+  final String roomId;
+  final String body;
+  final String html;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _HtmlCall &&
+        other.roomId == roomId &&
+        other.body == body &&
+        other.html == html;
+  }
+
+  @override
+  int get hashCode => Object.hash(roomId, body, html);
+
+  @override
+  String toString() {
+    return '_HtmlCall(roomId: $roomId, body: $body, html: $html)';
   }
 }
 
