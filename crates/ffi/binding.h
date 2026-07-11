@@ -231,6 +231,14 @@ struct FfiResult manymatrix_sync_forever_with_status(struct ManyMatrixClient *ha
                                                      SyncStatusCallback callback);
 
 /**
+ * Stop the background sync loop if it is running.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer for this call.
+ */
+ struct FfiResult manymatrix_stop_sync(struct ManyMatrixClient *handle);
+
+/**
  * Get the list of joined rooms as a JSON array of RoomSummary objects.
  *
  * # Safety

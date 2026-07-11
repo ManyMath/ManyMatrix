@@ -13,6 +13,7 @@ thread_local! {
 }
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
+static SYNC_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 // Event handlers attach to a specific client instance, so a new client
 // (login/restore) needs a fresh events.subscribe call.
 static EVENTS_SUBSCRIBED: AtomicBool = AtomicBool::new(false);
@@ -371,19 +372,27 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             }
             let client = get_client()?;
             SYNC_RUNNING.store(true, Ordering::Relaxed);
+            SYNC_STOP_REQUESTED.store(false, Ordering::Relaxed);
             wasm_bindgen_futures::spawn_local(async move {
-                let status = match client.sync_forever().await {
-                    Ok(()) => sync_status_json("exited", true, None),
-                    Err(e) => {
+                let status = loop {
+                    if SYNC_STOP_REQUESTED.load(Ordering::Relaxed) {
+                        break sync_status_json("exited", true, None);
+                    }
+                    if let Err(e) = client.sync_once_with_timeout(Duration::from_secs(30)).await {
                         let error = e.to_string();
                         tracing::error!("sync loop exited: {}", error);
-                        sync_status_json("exited", false, Some(error))
+                        break sync_status_json("exited", false, Some(error));
                     }
                 };
                 SYNC_RUNNING.store(false, Ordering::Relaxed);
                 emit_event("sync_status", &status);
             });
             Ok(serde_json::json!({}))
+        }
+        "sync.stop" => {
+            let was_running = SYNC_RUNNING.load(Ordering::Relaxed);
+            SYNC_STOP_REQUESTED.store(true, Ordering::Relaxed);
+            Ok(serde_json::json!({"was_running": was_running}))
         }
         "sync.once" => {
             let args: SyncOnceArgs = serde_json::from_str(args_json).map_err(serde_err)?;

@@ -335,6 +335,25 @@ class ManyMatrixBindings {
           FfiResult Function(
               ffi.Pointer<ManyMatrixClient>, SyncStatusCallback)>();
 
+  /// Stop the background sync loop if it is running.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer for this call.
+  FfiResult manymatrix_stop_sync(
+    ffi.Pointer<ManyMatrixClient> handle,
+  ) {
+    return _manymatrix_stop_sync(
+      handle,
+    );
+  }
+
+  late final _manymatrix_stop_syncPtr = _lookup<
+          ffi
+          .NativeFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>>(
+      'manymatrix_stop_sync');
+  late final _manymatrix_stop_sync = _manymatrix_stop_syncPtr
+      .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
+
   /// Get the list of joined rooms as a JSON array of RoomSummary objects.
   ///
   /// # Safety

@@ -244,6 +244,10 @@ class ManyMatrixBridge {
     }
   }
 
+  Future<void> stopSync() async {
+    await _call('sync.stop', {});
+  }
+
   Future<List<RoomSummary>> joinedRooms() async {
     final result = await _call('rooms.list', {});
     final list = jsonDecode(result['rooms_json'] as String) as List<dynamic>;

@@ -225,6 +225,17 @@ pub unsafe extern "C" fn manymatrix_sync_forever_with_status(
     FfiResult::success_void()
 }
 
+/// Stop the background sync loop if it is running.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer for this call.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_stop_sync(handle: *mut ManyMatrixClient) -> FfiResult {
+    let ffi_client = ffi_client_from_handle(handle);
+    ffi_client.stop_sync_thread();
+    FfiResult::success_void()
+}
+
 /// Get the list of joined rooms as a JSON array of RoomSummary objects.
 ///
 /// # Safety

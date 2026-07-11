@@ -133,6 +133,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execSyncOnceWithTimeout(bindings, args);
       case 'sync_forever':
         return _execHandleOnly(bindings, method, args);
+      case 'stop_sync':
+        return _execHandleOnly(bindings, method, args);
       case 'joined_rooms':
         return _execHandleOnly(bindings, method, args);
       case 'server_capabilities':
@@ -266,6 +268,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         result = bindings.manymatrix_sync_once(handle);
       case 'sync_forever':
         result = bindings.manymatrix_sync_forever(handle);
+      case 'stop_sync':
+        result = bindings.manymatrix_stop_sync(handle);
       case 'joined_rooms':
         result = bindings.manymatrix_joined_rooms(handle);
       case 'server_capabilities':
@@ -909,6 +913,11 @@ class ManyMatrixBridge implements ffi.Finalizable {
       syncStatusCallable.nativeFunction,
     );
     _checkResult(_mainBindings, result, method: 'sync_forever');
+  }
+
+  /// Stop the continuous sync loop if one is running.
+  Future<void> stopSync() async {
+    await _call('stop_sync', {});
   }
 
   /// Get the list of joined rooms as parsed RoomSummary objects.

@@ -33,6 +33,16 @@ void main() {
     );
   });
 
+  test('ManyMatrixBridge exposes explicit sync stop API', () {
+    void acceptsSyncStop(
+      Future<void> Function(ManyMatrixBridge) stop,
+    ) {
+      expect(stop, isA<Future<void> Function(ManyMatrixBridge)>());
+    }
+
+    acceptsSyncStop((bridge) => bridge.stopSync());
+  });
+
   test('ManyMatrixBridge exposes custom event power-level API', () {
     void acceptsPowerLevelConfigurator(
       Future<void> Function(ManyMatrixBridge) configure,

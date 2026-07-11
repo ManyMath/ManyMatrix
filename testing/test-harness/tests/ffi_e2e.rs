@@ -73,6 +73,11 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
         let r = manymatrix_ffi::manymatrix_sync_once_with_timeout(h, 1_000);
         assert_ok(&r);
 
+        let r = manymatrix_ffi::manymatrix_sync_forever(h);
+        assert_ok(&r);
+        let r = manymatrix_ffi::manymatrix_stop_sync(h);
+        assert_ok(&r);
+
         let r = manymatrix_ffi::manymatrix_server_capabilities(h);
         let capabilities = read_string(&r);
         assert!(
