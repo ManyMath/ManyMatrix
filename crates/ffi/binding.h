@@ -177,6 +177,22 @@ void manymatrix_on_custom_event(struct ManyMatrixClient *handle,
  struct FfiResult manymatrix_new(const char *homeserver_url, const char *store_path);
 
 /**
+ * Create a new ManyMatrixClient with an optional custom root CA PEM bundle.
+ *
+ * Returns an opaque handle (pointer) to the client in `FfiResult.data`.
+ * The caller must eventually free the handle with `manymatrix_free`.
+ *
+ * # Safety
+ * `homeserver_url` and `store_path` must be valid, NUL-terminated UTF-8 strings.
+ * `custom_ca_certificate_path` may be null; otherwise it must be a valid,
+ * NUL-terminated UTF-8 string containing a PEM bundle path.
+ */
+
+struct FfiResult manymatrix_new_with_custom_ca(const char *homeserver_url,
+                                               const char *store_path,
+                                               const char *custom_ca_certificate_path);
+
+/**
  * Login with username and password.
  *
  * Returns a JSON-serialized `StoredSession` string in `FfiResult.data`.

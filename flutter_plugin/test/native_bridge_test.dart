@@ -8,6 +8,20 @@ void main() {
     expect(ManyMatrixBridge, isNotNull);
   });
 
+  test('ManyMatrixBridge create accepts optional custom CA path', () {
+    void acceptsCreate(
+      Future<ManyMatrixBridge> Function(
+        String,
+        String, {
+        String? customCaCertificatePath,
+      }) create,
+    ) {
+      expect(create, isA<Function>());
+    }
+
+    acceptsCreate(ManyMatrixBridge.create);
+  });
+
   test('ManyMatrixBridge exposes sync status callback API', () {
     void acceptsSyncStatusRegistrar(
       void Function(ManyMatrixBridge, void Function(String)) registrar,

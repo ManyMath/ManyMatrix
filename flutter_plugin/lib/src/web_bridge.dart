@@ -76,8 +76,19 @@ class ManyMatrixBridge {
 
   static Future<ManyMatrixBridge> create(
     String homeserverUrl,
-    String storePath,
-  ) async {
+    String storePath, {
+    String? customCaCertificatePath,
+  }) async {
+    if (customCaCertificatePath != null && customCaCertificatePath.isNotEmpty) {
+      throw ManyMatrixException(
+        'ConfigurationError',
+        'Custom CA certificate paths are supported only by the native ManyMatrix bridge',
+        {
+          'transport': 'web',
+          'option': 'customCaCertificatePath',
+        },
+      );
+    }
     return ManyMatrixBridge._(homeserverUrl, storePath);
   }
 

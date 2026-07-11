@@ -7,10 +7,10 @@ use std::sync::{
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use manymatrix_core::ManyMatrixClient as CoreClient;
+use manymatrix_core::{ClientOptions, ManyMatrixClient as CoreClient};
 
 use crate::types::{FfiErrorSource, FfiResult, SessionUpdateCallback, SyncStatusCallback};
-use crate::{str_from_ptr, RUNTIME};
+use crate::{optional_str_from_ptr, str_from_ptr, RUNTIME};
 
 /// Opaque FFI handle for the core Matrix client.
 pub struct ManyMatrixClient {
@@ -101,6 +101,38 @@ pub unsafe extern "C" fn manymatrix_new(
     let url = str_from_ptr(homeserver_url);
     let path = str_from_ptr(store_path);
     match RUNTIME.block_on(CoreClient::new(url, Path::new(path))) {
+        Ok(client) => {
+            let handle = Box::into_raw(Box::new(ManyMatrixClient::new(client)));
+            FfiResult::success(handle as *mut c_void)
+        }
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
+/// Create a new ManyMatrixClient with an optional custom root CA PEM bundle.
+///
+/// Returns an opaque handle (pointer) to the client in `FfiResult.data`.
+/// The caller must eventually free the handle with `manymatrix_free`.
+///
+/// # Safety
+/// `homeserver_url` and `store_path` must be valid, NUL-terminated UTF-8 strings.
+/// `custom_ca_certificate_path` may be null; otherwise it must be a valid,
+/// NUL-terminated UTF-8 string containing a PEM bundle path.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_new_with_custom_ca(
+    homeserver_url: *const c_char,
+    store_path: *const c_char,
+    custom_ca_certificate_path: *const c_char,
+) -> FfiResult {
+    let url = str_from_ptr(homeserver_url);
+    let path = str_from_ptr(store_path);
+    let custom_ca_certificate_path =
+        optional_str_from_ptr(custom_ca_certificate_path).filter(|value| !value.is_empty());
+    let mut options = ClientOptions::default();
+    if let Some(path) = custom_ca_certificate_path {
+        options = options.with_custom_root_certificate_path(path);
+    }
+    match RUNTIME.block_on(CoreClient::new_with_options(url, Path::new(path), options)) {
         Ok(client) => {
             let handle = Box::into_raw(Box::new(ManyMatrixClient::new(client)));
             FfiResult::success(handle as *mut c_void)
@@ -401,7 +433,9 @@ pub unsafe extern "C" fn manymatrix_is_room_encrypted(
 
 #[cfg(test)]
 mod tests {
-    use super::{failed_sync_status_json, sync_status_json};
+    use super::{failed_sync_status_json, manymatrix_new_with_custom_ca, sync_status_json};
+    use crate::ffi_free_result;
+    use std::ffi::{CStr, CString};
 
     #[test]
     fn sync_status_json_omits_error_for_running_state() {
@@ -431,5 +465,30 @@ mod tests {
         assert_eq!(status["error"], "ID parse error: bad room id");
         assert_eq!(status["errorKind"], "SerdeError");
         assert!(status["errorDetails"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn custom_ca_constructor_reports_certificate_path_errors_before_network() {
+        let url = CString::new("http://127.0.0.1:9").unwrap();
+        let store_path = std::env::temp_dir()
+            .join(format!("manymatrix-custom-ca-ffi-{}", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        let store_path = CString::new(store_path).unwrap();
+        let missing_ca = CString::new(
+            std::env::temp_dir()
+                .join(format!("manymatrix-missing-ca-ffi-{}.pem", std::process::id()))
+                .to_string_lossy()
+                .into_owned(),
+        )
+        .unwrap();
+
+        let result = unsafe {
+            manymatrix_new_with_custom_ca(url.as_ptr(), store_path.as_ptr(), missing_ca.as_ptr())
+        };
+        assert!(!result.ok);
+        let error = unsafe { CStr::from_ptr(result.error_msg).to_string_lossy().into_owned() };
+        assert!(error.contains("could not read custom root certificate"));
+        ffi_free_result(result);
     }
 }

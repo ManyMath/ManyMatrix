@@ -250,14 +250,27 @@ class ManyMatrixBridge implements ffi.Finalizable {
       ManyMatrixBindings bindings, Map<String, dynamic> args) {
     final url = (args['homeserver_url'] as String).toNativeUtf8();
     final path = (args['store_path'] as String).toNativeUtf8();
+    final customCaCertificatePath =
+        args['custom_ca_certificate_path'] as String?;
+    final customCa = customCaCertificatePath == null ||
+            customCaCertificatePath.isEmpty
+        ? null
+        : customCaCertificatePath.toNativeUtf8();
     try {
-      final result = bindings.manymatrix_new(url.cast(), path.cast());
+      final result = customCa == null
+          ? bindings.manymatrix_new(url.cast(), path.cast())
+          : bindings.manymatrix_new_with_custom_ca(
+              url.cast(),
+              path.cast(),
+              customCa.cast(),
+            );
       _checkResult(bindings, result);
       final address = result.data.address;
       return address;
     } finally {
       calloc.free(url);
       calloc.free(path);
+      if (customCa != null) calloc.free(customCa);
     }
   }
 
@@ -867,13 +880,19 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Create a new ManyMatrixClient connected to the given homeserver.
   static Future<ManyMatrixBridge> create(
     String homeserverUrl,
-    String storePath,
-  ) async {
+    String storePath, {
+    String? customCaCertificatePath,
+  }) async {
     assert(_initialized, 'ManyMatrixBridge.initialize() must be called first');
     final replyPort = ReceivePort();
     _workerPort.send(_FfiRequest(
       'client_new',
-      {'homeserver_url': homeserverUrl, 'store_path': storePath},
+      {
+        'homeserver_url': homeserverUrl,
+        'store_path': storePath,
+        if (customCaCertificatePath != null)
+          'custom_ca_certificate_path': customCaCertificatePath,
+      },
       replyPort.sendPort,
     ));
     final response = await replyPort.first as _FfiResponse;

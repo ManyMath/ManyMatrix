@@ -3,6 +3,8 @@ mod error;
 mod session;
 mod types;
 
+#[cfg(not(target_family = "wasm"))]
+pub use client::ClientOptions;
 pub use client::ManyMatrixClient;
 pub use error::Error;
 pub use session::StoredSession;

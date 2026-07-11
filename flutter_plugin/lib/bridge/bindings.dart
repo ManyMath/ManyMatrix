@@ -199,6 +199,36 @@ class ManyMatrixBindings {
   late final _manymatrix_new = _manymatrix_newPtr.asFunction<
       FfiResult Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>();
 
+  /// Create a new ManyMatrixClient with an optional custom root CA PEM bundle.
+  ///
+  /// Returns an opaque handle (pointer) to the client in `FfiResult.data`.
+  /// The caller must eventually free the handle with `manymatrix_free`.
+  ///
+  /// # Safety
+  /// `homeserver_url` and `store_path` must be valid, NUL-terminated UTF-8 strings.
+  /// `custom_ca_certificate_path` may be null; otherwise it must be a valid,
+  /// NUL-terminated UTF-8 string containing a PEM bundle path.
+  FfiResult manymatrix_new_with_custom_ca(
+    ffi.Pointer<ffi.Char> homeserver_url,
+    ffi.Pointer<ffi.Char> store_path,
+    ffi.Pointer<ffi.Char> custom_ca_certificate_path,
+  ) {
+    return _manymatrix_new_with_custom_ca(
+      homeserver_url,
+      store_path,
+      custom_ca_certificate_path,
+    );
+  }
+
+  late final _manymatrix_new_with_custom_caPtr = _lookup<
+          ffi.NativeFunction<
+              FfiResult Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>,
+                  ffi.Pointer<ffi.Char>)>>('manymatrix_new_with_custom_ca');
+  late final _manymatrix_new_with_custom_ca =
+      _manymatrix_new_with_custom_caPtr.asFunction<
+          FfiResult Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>();
+
   /// Login with username and password.
   ///
   /// Returns a JSON-serialized `StoredSession` string in `FfiResult.data`.

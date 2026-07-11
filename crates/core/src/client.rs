@@ -48,7 +48,62 @@ const BACKGROUND_SYNC_TIMEOUT: Duration = Duration::from_secs(30);
 const BACKGROUND_SYNC_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[cfg(not(target_family = "wasm"))]
+#[derive(Clone, Debug, Default)]
+pub struct ClientOptions {
+    pub custom_root_certificate_paths: Vec<PathBuf>,
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl ClientOptions {
+    pub fn with_custom_root_certificate_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.custom_root_certificate_paths.push(path.into());
+        self
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
 use std::path::Path;
+
+#[cfg(not(target_family = "wasm"))]
+fn custom_root_certificates_from_paths(
+    paths: &[PathBuf],
+) -> Result<Vec<matrix_sdk::reqwest::Certificate>, Error> {
+    let mut certificates = Vec::new();
+    for path in paths {
+        if path.as_os_str().is_empty() {
+            return Err(Error::Other(
+                "custom root certificate path cannot be empty".to_owned(),
+            ));
+        }
+        let bytes = std::fs::read(path).map_err(|error| {
+            Error::Other(format!(
+                "could not read custom root certificate '{}': {error}",
+                path.display()
+            ))
+        })?;
+        if bytes.is_empty() {
+            return Err(Error::Other(format!(
+                "custom root certificate file is empty: {}",
+                path.display()
+            )));
+        }
+        let mut parsed =
+            matrix_sdk::reqwest::Certificate::from_pem_bundle(&bytes).map_err(|error| {
+                Error::Other(format!(
+                    "could not parse custom root certificate PEM bundle '{}': {error}",
+                    path.display()
+                ))
+            })?;
+        if parsed.is_empty() {
+            return Err(Error::Other(format!(
+                "custom root certificate PEM bundle did not contain certificates: {}",
+                path.display()
+            )));
+        }
+        certificates.append(&mut parsed);
+    }
+    Ok(certificates)
+}
 
 async fn wait_for_background_sync_cancelled(cancelled: &AtomicBool) {
     while !cancelled.load(Ordering::SeqCst) {
@@ -1355,14 +1410,27 @@ impl ManyMatrixClient {
 impl ManyMatrixClient {
     /// Build a new client pointing at `homeserver_url`, storing state under `store_path`.
     pub async fn new(homeserver_url: &str, store_path: impl AsRef<Path>) -> Result<Self, Error> {
+        Self::new_with_options(homeserver_url, store_path, ClientOptions::default()).await
+    }
+
+    /// Build a new client with explicit native transport options.
+    pub async fn new_with_options(
+        homeserver_url: &str,
+        store_path: impl AsRef<Path>,
+        options: ClientOptions,
+    ) -> Result<Self, Error> {
         let store_path = store_path.as_ref();
-        let client = Client::builder()
+        let mut builder = Client::builder()
             .homeserver_url(homeserver_url)
             .sqlite_store(store_path, None)
             .handle_refresh_tokens()
-            .with_encryption_settings(key_backup_encryption_settings())
-            .build()
-            .await?;
+            .with_encryption_settings(key_backup_encryption_settings());
+        let custom_root_certificates =
+            custom_root_certificates_from_paths(&options.custom_root_certificate_paths)?;
+        if !custom_root_certificates.is_empty() {
+            builder = builder.add_root_certificates(custom_root_certificates);
+        }
+        let client = builder.build().await?;
         let latest_session_json = Arc::new(StdMutex::new(None));
         let session_update_callback = Arc::new(StdMutex::new(None));
         let homeserver = homeserver_url.to_owned();
@@ -1557,6 +1625,38 @@ fn apply_user_power_levels(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn custom_root_certificate_paths_are_validated_before_client_build() {
+        let empty_path_error =
+            custom_root_certificates_from_paths(&[PathBuf::from("")]).unwrap_err();
+        assert!(empty_path_error
+            .to_string()
+            .contains("custom root certificate path cannot be empty"));
+
+        let missing = std::env::temp_dir().join(format!(
+            "manymatrix-missing-ca-{}-{}.pem",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let missing_error = custom_root_certificates_from_paths(&[missing]).unwrap_err();
+        assert!(missing_error
+            .to_string()
+            .contains("could not read custom root certificate"));
+
+        let empty = std::env::temp_dir().join(format!(
+            "manymatrix-empty-ca-{}-{}.pem",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&empty, []).unwrap();
+        let empty_file_error = custom_root_certificates_from_paths(&[empty.clone()]).unwrap_err();
+        let _ = std::fs::remove_file(empty);
+        assert!(empty_file_error
+            .to_string()
+            .contains("custom root certificate file is empty"));
+    }
 
     #[test]
     fn create_room_request_uses_private_chat_preset_for_private_visibility() {
