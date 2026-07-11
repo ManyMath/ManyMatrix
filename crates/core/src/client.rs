@@ -46,7 +46,7 @@ use crate::Error;
 
 const BACKGROUND_SYNC_TIMEOUT: Duration = Duration::from_secs(30);
 const BACKGROUND_SYNC_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
-const SYNC_ONCE_DEADLINE_GRACE: Duration = Duration::from_millis(500);
+const SYNC_ONCE_DEADLINE_GRACE: Duration = Duration::from_secs(5);
 
 #[cfg(not(target_family = "wasm"))]
 #[derive(Clone, Debug, Default)]
