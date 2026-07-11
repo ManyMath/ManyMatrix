@@ -46,6 +46,7 @@ use crate::Error;
 
 const BACKGROUND_SYNC_TIMEOUT: Duration = Duration::from_secs(30);
 const BACKGROUND_SYNC_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const SYNC_ONCE_DEADLINE_GRACE: Duration = Duration::from_millis(500);
 
 #[cfg(not(target_family = "wasm"))]
 #[derive(Clone, Debug, Default)]
@@ -103,6 +104,47 @@ fn custom_root_certificates_from_paths(
         certificates.append(&mut parsed);
     }
     Ok(certificates)
+}
+
+fn sync_once_deadline(timeout: Duration) -> Duration {
+    timeout.saturating_add(SYNC_ONCE_DEADLINE_GRACE)
+}
+
+#[cfg(not(target_family = "wasm"))]
+async fn sync_once_with_deadline<F, T>(future: F, timeout: Duration) -> Result<T, Error>
+where
+    F: std::future::Future<Output = Result<T, matrix_sdk::Error>>,
+{
+    let deadline = sync_once_deadline(timeout);
+    tokio::time::timeout(deadline, future)
+        .await
+        .map_err(|_| {
+            Error::Other(format!(
+                "sync_once timed out after {}ms",
+                deadline.as_millis()
+            ))
+        })?
+        .map_err(Error::from)
+}
+
+#[cfg(target_family = "wasm")]
+async fn sync_once_with_deadline<F, T>(future: F, timeout: Duration) -> Result<T, Error>
+where
+    F: std::future::Future<Output = Result<T, matrix_sdk::Error>>,
+{
+    use futures_util::future::{select, Either};
+
+    let deadline = sync_once_deadline(timeout);
+    let deadline_ms = u32::try_from(deadline.as_millis()).unwrap_or(u32::MAX);
+    let future = Box::pin(future);
+    let timer = Box::pin(gloo_timers::future::TimeoutFuture::new(deadline_ms));
+    match select(future, timer).await {
+        Either::Left((result, _)) => result.map_err(Error::from),
+        Either::Right(((), _)) => Err(Error::Other(format!(
+            "sync_once timed out after {}ms",
+            deadline.as_millis()
+        ))),
+    }
 }
 
 async fn wait_for_background_sync_cancelled(cancelled: &AtomicBool) {
@@ -305,7 +347,12 @@ impl ManyMatrixClient {
         if let Some(ref token) = *self.sync_token.lock().await {
             settings = settings.token(token.clone());
         }
-        let response = self.client.sync_once(settings).await?;
+        let sync = self.client.sync_once(settings);
+        let response = if let Some(timeout) = timeout {
+            sync_once_with_deadline(sync, timeout).await?
+        } else {
+            sync.await?
+        };
         *self.sync_token.lock().await = Some(response.next_batch);
         Ok(())
     }
