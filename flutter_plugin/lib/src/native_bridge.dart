@@ -129,6 +129,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execWithHandleAndStrings(bindings, method, args);
       case 'sync_once':
         return _execHandleOnly(bindings, method, args);
+      case 'sync_once_with_timeout':
+        return _execSyncOnceWithTimeout(bindings, args);
       case 'sync_forever':
         return _execHandleOnly(bindings, method, args);
       case 'joined_rooms':
@@ -285,6 +287,24 @@ class ManyMatrixBridge implements ffi.Finalizable {
       default:
         throw Exception('Unknown handle-only method: $method');
     }
+    return _extractStringResult(bindings, result);
+  }
+
+  static String? _execSyncOnceWithTimeout(
+    ManyMatrixBindings bindings,
+    Map<String, dynamic> args,
+  ) {
+    final timeoutMs = args['timeout_ms'] as int;
+    if (timeoutMs < 0) {
+      throw ArgumentError.value(
+          timeoutMs, 'timeout_ms', 'must be non-negative');
+    }
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final result = bindings.manymatrix_sync_once_with_timeout(
+      handle,
+      timeoutMs,
+    );
     return _extractStringResult(bindings, result);
   }
 
@@ -865,8 +885,16 @@ class ManyMatrixBridge implements ffi.Finalizable {
   }
 
   /// Perform a single sync round.
-  Future<void> syncOnce() async {
-    await _call('sync_once', {});
+  Future<void> syncOnce({Duration? timeout}) async {
+    if (timeout == null) {
+      await _call('sync_once', {});
+      return;
+    }
+    final timeoutMs = timeout.inMilliseconds;
+    if (timeoutMs < 0) {
+      throw ArgumentError.value(timeout, 'timeout', 'must be non-negative');
+    }
+    await _call('sync_once_with_timeout', {'timeout_ms': timeoutMs});
   }
 
   /// Start the continuous sync loop in a background thread.

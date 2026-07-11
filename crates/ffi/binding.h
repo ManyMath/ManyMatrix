@@ -202,6 +202,16 @@ struct FfiResult manymatrix_login(struct ManyMatrixClient *handle,
  struct FfiResult manymatrix_sync_once(struct ManyMatrixClient *handle);
 
 /**
+ * Perform a single sync round with an explicit long-poll timeout.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+
+struct FfiResult manymatrix_sync_once_with_timeout(struct ManyMatrixClient *handle,
+                                                   uint64_t timeout_ms);
+
+/**
  * Start the sync loop on a background thread.
  *
  * # Safety

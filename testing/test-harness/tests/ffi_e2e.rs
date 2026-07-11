@@ -70,7 +70,7 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
         assert!(session.contains(alice_reg.localpart.as_str()));
         eprintln!("Logged in via FFI");
 
-        let r = manymatrix_ffi::manymatrix_sync_once(h);
+        let r = manymatrix_ffi::manymatrix_sync_once_with_timeout(h, 1_000);
         assert_ok(&r);
 
         let r = manymatrix_ffi::manymatrix_server_capabilities(h);

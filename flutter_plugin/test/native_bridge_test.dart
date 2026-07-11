@@ -21,6 +21,18 @@ void main() {
     );
   });
 
+  test('ManyMatrixBridge exposes bounded sync API', () {
+    void acceptsBoundedSync(
+      Future<void> Function(ManyMatrixBridge) sync,
+    ) {
+      expect(sync, isA<Future<void> Function(ManyMatrixBridge)>());
+    }
+
+    acceptsBoundedSync(
+      (bridge) => bridge.syncOnce(timeout: const Duration(milliseconds: 250)),
+    );
+  });
+
   test('ManyMatrixBridge exposes custom event power-level API', () {
     void acceptsPowerLevelConfigurator(
       Future<void> Function(ManyMatrixBridge) configure,

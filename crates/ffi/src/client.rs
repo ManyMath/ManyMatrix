@@ -5,6 +5,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use manymatrix_core::ManyMatrixClient as CoreClient;
 
@@ -157,6 +158,22 @@ pub unsafe extern "C" fn manymatrix_restore(
 pub unsafe extern "C" fn manymatrix_sync_once(handle: *mut ManyMatrixClient) -> FfiResult {
     let client = client_from_handle(handle);
     match RUNTIME.block_on(client.sync_once()) {
+        Ok(()) => FfiResult::success_void(),
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
+/// Perform a single sync round with an explicit long-poll timeout.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_sync_once_with_timeout(
+    handle: *mut ManyMatrixClient,
+    timeout_ms: u64,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    match RUNTIME.block_on(client.sync_once_with_timeout(Duration::from_millis(timeout_ms))) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
     }

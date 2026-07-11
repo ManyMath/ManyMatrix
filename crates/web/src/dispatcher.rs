@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -90,6 +91,11 @@ struct RestoreArgs {
     homeserver_url: String,
     session_json: String,
     store_name: String,
+}
+
+#[derive(Deserialize)]
+struct SyncOnceArgs {
+    timeout_ms: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -380,8 +386,16 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             Ok(serde_json::json!({}))
         }
         "sync.once" => {
+            let args: SyncOnceArgs = serde_json::from_str(args_json).map_err(serde_err)?;
             let client = get_client()?;
-            client.sync_once().await.map_err(sdk_err)?;
+            if let Some(timeout_ms) = args.timeout_ms {
+                client
+                    .sync_once_with_timeout(Duration::from_millis(timeout_ms))
+                    .await
+                    .map_err(sdk_err)?;
+            } else {
+                client.sync_once().await.map_err(sdk_err)?;
+            }
             let token = client.sync_token_clone().await;
             Ok(serde_json::json!({"next_batch": token}))
         }

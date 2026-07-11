@@ -217,8 +217,13 @@ class ManyMatrixBridge {
     _resubscribeEvents();
   }
 
-  Future<void> syncOnce() async {
-    await _call('sync.once', {});
+  Future<void> syncOnce({Duration? timeout}) async {
+    if (timeout != null && timeout.inMilliseconds < 0) {
+      throw ArgumentError.value(timeout, 'timeout', 'must be non-negative');
+    }
+    await _call('sync.once', {
+      if (timeout != null) 'timeout_ms': timeout.inMilliseconds,
+    });
   }
 
   Future<void> syncForever() async {

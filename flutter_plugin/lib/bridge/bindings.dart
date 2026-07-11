@@ -270,6 +270,28 @@ class ManyMatrixBindings {
   late final _manymatrix_sync_once = _manymatrix_sync_oncePtr
       .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
 
+  /// Perform a single sync round with an explicit long-poll timeout.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_sync_once_with_timeout(
+    ffi.Pointer<ManyMatrixClient> handle,
+    int timeout_ms,
+  ) {
+    return _manymatrix_sync_once_with_timeout(
+      handle,
+      timeout_ms,
+    );
+  }
+
+  late final _manymatrix_sync_once_with_timeoutPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              ffi.Uint64)>>('manymatrix_sync_once_with_timeout');
+  late final _manymatrix_sync_once_with_timeout =
+      _manymatrix_sync_once_with_timeoutPtr
+          .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>, int)>();
+
   /// Start the sync loop on a background thread.
   ///
   /// # Safety
