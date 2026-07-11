@@ -273,7 +273,7 @@ class ManyMatrixBindings {
   /// Start the sync loop on a background thread.
   ///
   /// # Safety
-  /// `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
+  /// `handle` must be a valid ManyMatrixClient pointer for this call.
   FfiResult manymatrix_sync_forever(
     ffi.Pointer<ManyMatrixClient> handle,
   ) {
@@ -292,7 +292,7 @@ class ManyMatrixBindings {
   /// Start the sync loop on a background thread and report when it exits.
   ///
   /// # Safety
-  /// `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
+  /// `handle` must be a valid ManyMatrixClient pointer for this call.
   /// `callback` must remain valid for the lifetime of the client.
   FfiResult manymatrix_sync_forever_with_status(
     ffi.Pointer<ManyMatrixClient> handle,

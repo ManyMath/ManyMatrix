@@ -1399,6 +1399,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// After calling dispose, this instance must not be used again.
   void dispose() {
     _finalizer.detach(this);
+    _mainBindings.manymatrix_free(_handle);
     _messageCallable?.close();
     _reactionCallable?.close();
     _receiptCallable?.close();
@@ -1406,6 +1407,5 @@ class ManyMatrixBridge implements ffi.Finalizable {
     for (final callable in _customEventCallables) {
       callable.close();
     }
-    _mainBindings.manymatrix_free(_handle);
   }
 }

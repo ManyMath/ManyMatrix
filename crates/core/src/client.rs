@@ -1,5 +1,8 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Duration;
 use tokio::sync::Mutex;
 
@@ -40,8 +43,17 @@ use crate::types::{
 };
 use crate::Error;
 
+const BACKGROUND_SYNC_TIMEOUT: Duration = Duration::from_secs(30);
+const BACKGROUND_SYNC_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
+
+async fn wait_for_background_sync_cancelled(cancelled: &AtomicBool) {
+    while !cancelled.load(Ordering::SeqCst) {
+        tokio::time::sleep(BACKGROUND_SYNC_CANCEL_POLL_INTERVAL).await;
+    }
+}
 
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
 #[derive(Clone)]
@@ -115,6 +127,34 @@ impl ManyMatrixClient {
 
         info!("starting sync...");
         self.client.sync(SyncSettings::default()).await?;
+        Ok(())
+    }
+
+    /// Run the sync loop until `cancelled` becomes true.
+    ///
+    /// Used by the FFI bridge so disposal can stop the background sync thread
+    /// before Dart callback trampolines are closed.
+    pub async fn sync_until_cancelled(&self, cancelled: Arc<AtomicBool>) -> Result<(), Error> {
+        self.client
+            .add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
+                if let SyncRoomMessageEvent::Original(msg) = ev {
+                    let room_name = room
+                        .display_name()
+                        .await
+                        .ok()
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| room.room_id().to_string());
+                    info!("[{}] {}: {}", room_name, msg.sender, msg.content.body());
+                }
+            });
+
+        info!("starting low-latency sync...");
+        while !cancelled.load(Ordering::SeqCst) {
+            tokio::select! {
+                result = self.sync_once_with_timeout(BACKGROUND_SYNC_TIMEOUT) => result?,
+                _ = wait_for_background_sync_cancelled(&cancelled) => break,
+            }
+        }
         Ok(())
     }
 

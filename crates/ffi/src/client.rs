@@ -1,5 +1,10 @@
 use std::ffi::{c_char, c_void, CString};
 use std::path::Path;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+use std::thread::JoinHandle;
 
 use manymatrix_core::ManyMatrixClient as CoreClient;
 
@@ -8,11 +13,44 @@ use crate::{str_from_ptr, RUNTIME};
 
 /// Opaque FFI handle for the core Matrix client.
 pub struct ManyMatrixClient {
-    _private: [u8; 0],
+    client: CoreClient,
+    sync_thread: Mutex<Option<JoinHandle<()>>>,
+    sync_cancel: Arc<AtomicBool>,
 }
 
 pub(crate) unsafe fn client_from_handle<'a>(handle: *mut ManyMatrixClient) -> &'a CoreClient {
-    &*(handle as *const CoreClient)
+    &(*handle).client
+}
+
+unsafe fn ffi_client_from_handle<'a>(handle: *mut ManyMatrixClient) -> &'a ManyMatrixClient {
+    &*handle
+}
+
+impl ManyMatrixClient {
+    fn new(client: CoreClient) -> Self {
+        Self {
+            client,
+            sync_thread: Mutex::new(None),
+            sync_cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn store_sync_thread(&self, thread: JoinHandle<()>) {
+        *self.sync_thread.lock().expect("sync thread mutex poisoned") = Some(thread);
+    }
+
+    fn stop_sync_thread(&self) {
+        self.sync_cancel.store(true, Ordering::SeqCst);
+        let thread = self
+            .sync_thread
+            .lock()
+            .expect("sync thread mutex poisoned")
+            .take();
+        if let Some(thread) = thread {
+            let _ = thread.join();
+        }
+        self.sync_cancel.store(false, Ordering::SeqCst);
+    }
 }
 
 fn sync_status_json(state: &str, ok: bool, error: Option<String>) -> serde_json::Value {
@@ -57,7 +95,7 @@ pub unsafe extern "C" fn manymatrix_new(
     let path = str_from_ptr(store_path);
     match RUNTIME.block_on(CoreClient::new(url, Path::new(path))) {
         Ok(client) => {
-            let handle = Box::into_raw(Box::new(client)) as *mut ManyMatrixClient;
+            let handle = Box::into_raw(Box::new(ManyMatrixClient::new(client)));
             FfiResult::success(handle as *mut c_void)
         }
         Err(e) => FfiResult::error_from(&e),
@@ -127,40 +165,46 @@ pub unsafe extern "C" fn manymatrix_sync_once(handle: *mut ManyMatrixClient) -> 
 /// Start the sync loop on a background thread.
 ///
 /// # Safety
-/// `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
+/// `handle` must be a valid ManyMatrixClient pointer for this call.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_sync_forever(handle: *mut ManyMatrixClient) -> FfiResult {
-    // We need a 'static reference for the spawned thread. The caller guarantees
-    // the handle remains valid (they must call manymatrix_free only after stopping sync).
-    let client_ref: &'static CoreClient = &*(handle as *const CoreClient);
-    std::thread::spawn(move || {
-        RUNTIME.block_on(client_ref.sync_forever()).ok();
+    let ffi_client = ffi_client_from_handle(handle);
+    ffi_client.stop_sync_thread();
+    let client = ffi_client.client.clone();
+    let cancelled = ffi_client.sync_cancel.clone();
+    let thread = std::thread::spawn(move || {
+        RUNTIME
+            .block_on(client.sync_until_cancelled(cancelled))
+            .ok();
     });
+    ffi_client.store_sync_thread(thread);
     FfiResult::success_void()
 }
 
 /// Start the sync loop on a background thread and report when it exits.
 ///
 /// # Safety
-/// `handle` must be a valid ManyMatrixClient pointer that outlives the sync loop.
+/// `handle` must be a valid ManyMatrixClient pointer for this call.
 /// `callback` must remain valid for the lifetime of the client.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_sync_forever_with_status(
     handle: *mut ManyMatrixClient,
     callback: SyncStatusCallback,
 ) -> FfiResult {
-    // We need a 'static reference for the spawned thread. The caller guarantees
-    // the handle remains valid (they must call manymatrix_free only after stopping sync).
-    let client_ref: &'static CoreClient = &*(handle as *const CoreClient);
-    std::thread::spawn(move || {
+    let ffi_client = ffi_client_from_handle(handle);
+    ffi_client.stop_sync_thread();
+    let client = ffi_client.client.clone();
+    let cancelled = ffi_client.sync_cancel.clone();
+    let thread = std::thread::spawn(move || {
         send_sync_status(callback, sync_status_json("running", true, None));
-        let result = RUNTIME.block_on(client_ref.sync_forever());
+        let result = RUNTIME.block_on(client.sync_until_cancelled(cancelled));
         let status = match result {
             Ok(()) => sync_status_json("exited", true, None),
             Err(error) => failed_sync_status_json(&error),
         };
         send_sync_status(callback, status);
     });
+    ffi_client.store_sync_thread(thread);
     FfiResult::success_void()
 }
 
@@ -218,7 +262,8 @@ pub unsafe extern "C" fn manymatrix_logout(handle: *mut ManyMatrixClient) -> Ffi
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_free(handle: *mut ManyMatrixClient) {
     if !handle.is_null() {
-        let client = Box::from_raw(handle as *mut CoreClient);
+        let client = Box::from_raw(handle);
+        client.stop_sync_thread();
         // Drop inside runtime context so deadpool (SQLite pool) can clean up.
         RUNTIME.block_on(async move { drop(client) });
     }
