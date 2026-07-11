@@ -41,7 +41,11 @@ async fn main() -> Result<()> {
     };
 
     let server = TestHomeserver::start(kind).await?;
-    eprintln!("[actor] {} ready at {}", server.server_kind(), server.base_url());
+    eprintln!(
+        "[actor] {} ready at {}",
+        server.server_kind(),
+        server.base_url()
+    );
 
     let ext = server.register_user("webext", EXT_PASSWORD).await?;
     let actor_reg = server.register_user("webactor", ACTOR_PASSWORD).await?;

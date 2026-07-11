@@ -165,6 +165,27 @@ void main() {
     expect(timeline.newestFirst.single.editedAt, 2);
   });
 
+  test('thread replies are projected out of the main timeline', () {
+    final timeline = RoomTimeline(
+      newestFirst: <MessageEvent>[
+        _message('reply-2', timestamp: 3, threadRoot: 'root'),
+        _message('reply-1', timestamp: 2, threadRoot: 'root'),
+        _message('root', timestamp: 1),
+        _message('standalone', timestamp: 0),
+      ],
+    );
+
+    expect(timeline.mainNewestFirst.map((m) => m.eventId), <String>[
+      'root',
+      'standalone',
+    ]);
+    expect(timeline.threadReplyCount('root'), 2);
+    expect(
+      timeline.threadMessagesNewestFirst('root').map((m) => m.eventId),
+      <String>['reply-2', 'reply-1', 'root'],
+    );
+  });
+
   test('live replacement events update the original message', () async {
     final service = _FakeMatrixService(
       initialMessages: <MessageEvent>[
@@ -215,6 +236,7 @@ MessageEvent _message(
   String sender = '@alice:example.org',
   int timestamp = 0,
   String? replacesEventId,
+  String? threadRoot,
 }) {
   return MessageEvent(
     eventId: eventId,
@@ -224,6 +246,7 @@ MessageEvent _message(
     msgtype: 'm.text',
     timestamp: timestamp,
     replacesEventId: replacesEventId,
+    threadRoot: threadRoot,
   );
 }
 
@@ -286,6 +309,10 @@ class _FakeMatrixService implements MatrixService {
   Stream<ReceiptEvent> get receiptEvents => _receipts.stream;
 
   @override
+  Stream<SessionProblem> get sessionProblems =>
+      const Stream<SessionProblem>.empty();
+
+  @override
   String? get currentUserId => '@alice:example.org';
 
   @override
@@ -302,7 +329,13 @@ class _FakeMatrixService implements MatrixService {
   Future<void> logout() async {}
 
   @override
+  Future<void> clearSavedSession({bool keepHomeserver = true}) async {}
+
+  @override
   Future<List<RoomSummary>> joinedRooms() async => const <RoomSummary>[];
+
+  @override
+  Future<List<RoomInvite>> invitedRooms() async => const <RoomInvite>[];
 
   @override
   Future<String> createRoom({String? name, String? topic}) async =>
@@ -310,6 +343,9 @@ class _FakeMatrixService implements MatrixService {
 
   @override
   Future<String> joinRoom(String roomIdOrAlias) async => roomIdOrAlias;
+
+  @override
+  Future<void> leaveRoom(String roomId) async {}
 
   @override
   Future<void> invite(String roomId, String userId) async {}
@@ -368,6 +404,10 @@ class _FakeMatrixService implements MatrixService {
 
   @override
   Future<List<String>> roomMembers(String roomId) async => const <String>[];
+
+  @override
+  Future<RoomDetails> roomDetails(String roomId) async =>
+      RoomDetails(roomId: roomId);
 
   @override
   Future<bool> isRoomEncrypted(String roomId) async => false;

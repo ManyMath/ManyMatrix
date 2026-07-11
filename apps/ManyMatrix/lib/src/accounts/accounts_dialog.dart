@@ -102,6 +102,8 @@ class _AccountRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accounts = ref.watch(accountsProvider);
+    final auth = ref.watch(authControllerProvider);
+    final recovery = auth is AuthRecoveryNeeded ? auth : null;
 
     return MListTile(
       title: Text(account.label),
@@ -113,35 +115,68 @@ class _AccountRow extends ConsumerWidget {
                 .read(authControllerProvider.notifier)
                 .switchAccount(account.id),
       semanticLabel: 'Switch to ${account.label}',
-      trailing: accounts.length > 1 || !active
-          ? MButton(
-              variant: MButtonVariant.ghost,
-              size: MButtonSize.sm,
-              semanticLabel: 'Forget ${account.label}',
-              onPressed: () async {
-                final confirmed = await showMConfirmDialog(
-                  context,
-                  title: 'Forget account?',
-                  content: Builder(
-                    builder: (BuildContext ctx) => Text(
-                      account.label,
-                      style: MTheme.of(ctx).typography.code,
-                    ),
-                  ),
-                  confirmLabel: 'Forget',
-                  confirmVariant: MButtonVariant.destructive,
-                );
-                if (confirmed) {
-                  if (active) {
-                    await ref.read(authControllerProvider.notifier).signOut();
-                  } else {
-                    ref.read(accountsControllerProvider).forget(account.id);
+      trailing: _trailing(context, ref, accounts, recovery),
+    );
+  }
+
+  Widget? _trailing(
+    BuildContext context,
+    WidgetRef ref,
+    List<SavedAccount> accounts,
+    AuthRecoveryNeeded? recovery,
+  ) {
+    final recoveryForThisAccount = active && recovery?.accountId == account.id;
+    final showForget = accounts.length > 1 || !active || recoveryForThisAccount;
+    if (!recoveryForThisAccount && !showForget) return null;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (recoveryForThisAccount)
+          MButton(
+            variant: MButtonVariant.outline,
+            size: MButtonSize.sm,
+            onPressed: recovery is AuthNeedsReconnect
+                ? () {
+                    Navigator.of(context).pop();
+                    ref.read(authControllerProvider.notifier).reconnectActive();
                   }
-                }
-              },
-              child: MIcon(MIconData.close),
-            )
-          : null,
+                : () => Navigator.of(context).pop(),
+            child: Text(
+              recovery is AuthNeedsReconnect ? 'Reconnect' : 'Sign in again',
+            ),
+          ),
+        if (recoveryForThisAccount && showForget) const SizedBox(width: 8),
+        if (showForget) _forgetButton(context, ref),
+      ],
+    );
+  }
+
+  Widget _forgetButton(BuildContext context, WidgetRef ref) {
+    return MButton(
+      variant: MButtonVariant.ghost,
+      size: MButtonSize.sm,
+      semanticLabel: 'Forget ${account.label}',
+      onPressed: () async {
+        final confirmed = await showMConfirmDialog(
+          context,
+          title: 'Forget account?',
+          content: Builder(
+            builder: (BuildContext ctx) =>
+                Text(account.label, style: MTheme.of(ctx).typography.code),
+          ),
+          confirmLabel: 'Forget',
+          confirmVariant: MButtonVariant.destructive,
+        );
+        if (confirmed) {
+          if (active) {
+            await ref.read(authControllerProvider.notifier).signOut();
+          } else {
+            ref.read(accountsControllerProvider).forget(account.id);
+          }
+        }
+      },
+      child: MIcon(MIconData.close),
     );
   }
 }

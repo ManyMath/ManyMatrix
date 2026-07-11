@@ -4,7 +4,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
 import 'package:manyui_riverpod/manyui_riverpod.dart';
 
+import '../accounts/accounts_dialog.dart';
 import '../matrix/auth.dart';
+import '../matrix/account.dart';
 import '../matrix/providers.dart';
 import '../platform/runtime.dart';
 import '../theme.dart';
@@ -17,33 +19,66 @@ class LoginPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final homeserver = useState('');
-    final username = useState('');
-    final password = useState('');
+    final homeserver = useMemoized(() => MController<String>(''));
+    final username = useMemoized(() => MController<String>(''));
+    final password = useMemoized(() => MController<String>(''));
+    useEffect(() {
+      return () {
+        homeserver.dispose();
+        username.dispose();
+        password.dispose();
+      };
+    }, const []);
+    final homeserverFocus = useFocusNode();
+    final usernameFocus = useFocusNode();
+    final passwordFocus = useFocusNode();
 
     final auth = ref.watch(authControllerProvider);
-    final signingIn = auth is AuthAuthenticating;
-    final error = auth is AuthUnauthenticated ? auth.error : null;
+    final busy = auth is AuthAuthenticating || auth is AuthRestoring;
+    final reauth = auth is AuthNeedsReauth ? auth : null;
+    final reconnect = auth is AuthNeedsReconnect ? auth : null;
+    final recovery = auth is AuthRecoveryNeeded ? auth : null;
+    final accounts = ref.watch(accountsProvider);
+    final error = auth is AuthUnauthenticated ? auth.error : reauth?.message;
+
+    useEffect(() {
+      if (recovery == null) return null;
+      homeserver.value = recovery.homeserverUrl;
+      username.value = recovery.suggestedUsername;
+      return null;
+    }, <Object?>[recovery?.accountId, recovery?.homeserverUrl]);
 
     void submit() {
-      if (signingIn || !matrixRuntimeSupported) return;
+      if (busy || !matrixRuntimeSupported) return;
       final server = homeserver.value.trim().isEmpty
           ? _defaultHomeserver
           : homeserver.value.trim();
       if (username.value.trim().isEmpty || password.value.isEmpty) return;
-      ref
-          .read(authControllerProvider.notifier)
-          .signIn(
-            homeserverUrl: server,
-            username: username.value.trim(),
-            password: password.value,
-          );
+      final controller = ref.read(authControllerProvider.notifier);
+      if (reauth != null) {
+        controller.reauthenticateActive(
+          username: username.value.trim(),
+          password: password.value,
+        );
+      } else {
+        controller.signIn(
+          homeserverUrl: server,
+          username: username.value.trim(),
+          password: password.value,
+        );
+      }
     }
 
     return MScaffold(
       header: MAppHeader(
         title: 'ManyMatrix',
         actions: <Widget>[
+          if (accounts.isNotEmpty)
+            MButton(
+              variant: MButtonVariant.ghost,
+              onPressed: () => showAccountsDialog(context),
+              child: const Text('Accounts'),
+            ),
           MButton(
             variant: MButtonVariant.ghost,
             onPressed: () => ref.toggleMThemeMode(themeModeProvider),
@@ -65,14 +100,26 @@ class LoginPage extends HookConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: matrixRuntimeSupported
-                    ? _buildForm(
-                        homeserver: homeserver,
-                        username: username,
-                        password: password,
-                        signingIn: signingIn,
-                        error: error,
-                        onSubmit: submit,
-                      )
+                    ? reconnect == null
+                          ? _buildForm(
+                              homeserver: homeserver,
+                              username: username,
+                              password: password,
+                              homeserverFocus: homeserverFocus,
+                              usernameFocus: usernameFocus,
+                              passwordFocus: passwordFocus,
+                              signingIn: busy,
+                              error: error,
+                              recovery: reauth,
+                              onSubmit: submit,
+                            )
+                          : _buildReconnect(
+                              reconnect: reconnect,
+                              busy: busy,
+                              onReconnect: () => ref
+                                  .read(authControllerProvider.notifier)
+                                  .reconnectActive(),
+                            )
                     : _buildWebGate(),
               ),
             ),
@@ -83,50 +130,69 @@ class LoginPage extends HookConsumerWidget {
   }
 
   Widget _buildForm({
-    required ValueNotifier<String> homeserver,
-    required ValueNotifier<String> username,
-    required ValueNotifier<String> password,
+    required MController<String> homeserver,
+    required MController<String> username,
+    required MController<String> password,
+    required FocusNode homeserverFocus,
+    required FocusNode usernameFocus,
+    required FocusNode passwordFocus,
     required bool signingIn,
     required String? error,
+    required AuthNeedsReauth? recovery,
     required VoidCallback onSubmit,
   }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        const MSectionHeader(
-          title: 'Sign in to Matrix',
-          description: 'Connect to your homeserver to get started.',
+        MSectionHeader(
+          title: recovery == null ? 'Sign in to Matrix' : 'Sign in again',
+          description: recovery == null
+              ? 'Connect to your homeserver to get started.'
+              : 'Reconnect ${recovery.label} on ${recovery.homeserverUrl}.',
         ),
         const SizedBox(height: 24),
-        const MLabel('Homeserver'),
-        const SizedBox(height: 8),
-        MTextField(
-          placeholder: _defaultHomeserver,
-          semanticLabel: 'Homeserver',
+        MField(
+          label: 'Homeserver',
+          focusNode: homeserverFocus,
           enabled: !signingIn,
-          onChanged: (value) => homeserver.value = value,
+          child: MTextField(
+            controller: homeserver,
+            focusNode: homeserverFocus,
+            placeholder: _defaultHomeserver,
+            semanticLabel: 'Homeserver',
+            enabled: !signingIn,
+            readOnly: recovery != null,
+          ),
         ),
         const SizedBox(height: 16),
-        const MLabel('Username'),
-        const SizedBox(height: 8),
-        MTextField(
-          placeholder: 'Username',
-          semanticLabel: 'Username',
+        MField(
+          label: 'Username',
+          focusNode: usernameFocus,
           enabled: !signingIn,
-          onChanged: (value) => username.value = value,
+          child: MTextField(
+            controller: username,
+            focusNode: usernameFocus,
+            placeholder: 'Username',
+            semanticLabel: 'Username',
+            enabled: !signingIn,
+          ),
         ),
         const SizedBox(height: 16),
-        const MLabel('Password'),
-        const SizedBox(height: 8),
-        MTextField(
-          obscureText: true,
-          placeholder: 'Password',
-          semanticLabel: 'Password',
+        MField(
+          label: 'Password',
+          focusNode: passwordFocus,
           enabled: !signingIn,
-          error: error != null,
-          onChanged: (value) => password.value = value,
-          onSubmitted: (_) => onSubmit(),
+          child: MTextField(
+            controller: password,
+            focusNode: passwordFocus,
+            obscureText: true,
+            placeholder: 'Password',
+            semanticLabel: 'Password',
+            enabled: !signingIn,
+            error: error != null,
+            onSubmitted: (_) => onSubmit(),
+          ),
         ),
         if (error != null) ...<Widget>[
           const SizedBox(height: 12),
@@ -146,10 +212,34 @@ class LoginPage extends HookConsumerWidget {
                       child: MCircularProgress.indeterminate(),
                     ),
                     SizedBox(width: 8),
-                    Text('Signing in…'),
+                    Text('Signing in...'),
                   ],
                 )
-              : const Text('Sign in'),
+              : Text(recovery == null ? 'Sign in' : 'Sign in again'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReconnect({
+    required AuthNeedsReconnect reconnect,
+    required bool busy,
+    required VoidCallback onReconnect,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        MSectionHeader(
+          title: 'Reconnect Matrix',
+          description: '${reconnect.label} on ${reconnect.homeserverUrl}',
+        ),
+        const SizedBox(height: 16),
+        MAlert(variant: MAlertVariant.destructive, message: reconnect.message),
+        const SizedBox(height: 24),
+        MButton(
+          onPressed: busy ? null : onReconnect,
+          child: const Text('Reconnect'),
         ),
       ],
     );

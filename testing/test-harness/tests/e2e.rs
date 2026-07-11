@@ -51,9 +51,11 @@ async fn alice_sends_bob_receives(kind: ServerKind) -> Result<()> {
         // --- Alice creates a room and invites Bob ---
         let mut req = CreateRoomRequest::new();
         req.name = Some("test-room".to_owned());
-        req.invite = vec![<&matrix_sdk::ruma::UserId>::try_from(bob_reg.user_id.as_str())
-            .unwrap()
-            .to_owned()];
+        req.invite = vec![
+            <&matrix_sdk::ruma::UserId>::try_from(bob_reg.user_id.as_str())
+                .unwrap()
+                .to_owned(),
+        ];
         let create_resp = alice.inner().create_room(req).await?;
         let room_id = create_resp.room_id().to_owned();
         eprintln!("Room created: {room_id}");

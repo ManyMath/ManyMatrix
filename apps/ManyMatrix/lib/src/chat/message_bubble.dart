@@ -1,8 +1,10 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
 import 'package:manymatrix/manymatrix.dart';
 
+import '../matrix/matrix_display.dart';
 import '../matrix/providers.dart';
 
 /// One timeline entry: sender + time above a colored bubble, right-aligned
@@ -17,8 +19,10 @@ class MessageBubble extends ConsumerWidget {
     required this.isMine,
     this.reactions = const <ReactionEvent>[],
     this.receipts = const <ReceiptEvent>[],
+    this.threadReplyCount = 0,
     this.onReply,
     this.onEdit,
+    this.onOpenThread,
     this.onThreadReply,
     super.key,
   });
@@ -27,8 +31,10 @@ class MessageBubble extends ConsumerWidget {
   final bool isMine;
   final List<ReactionEvent> reactions;
   final List<ReceiptEvent> receipts;
+  final int threadReplyCount;
   final VoidCallback? onReply;
   final VoidCallback? onEdit;
+  final VoidCallback? onOpenThread;
   final VoidCallback? onThreadReply;
 
   static String formatTimestamp(int millisecondsSinceEpoch) {
@@ -47,14 +53,16 @@ class MessageBubble extends ConsumerWidget {
     final foreground = isMine
         ? theme.colors.primaryForeground
         : theme.colors.foreground;
+    final author = isMine ? 'You' : matrixUserDisplayName(message.sender);
     final messageText = _displayBody(message);
     final body = message.msgtype == 'm.emote'
-        ? '* ${message.sender.split(':').first} $messageText'
+        ? '* $author $messageText'
         : messageText;
     final kindLabel = _messageKindLabel(message.msgtype);
     final reactionCounts = _reactionCounts(reactions);
     final readReceiptSummary = _readReceiptSummary(receipts);
     final hasMetadata = reactionCounts.isNotEmpty || readReceiptSummary != null;
+    final isThreadReply = message.threadRoot != null;
     final actions = <Widget>[
       if (onReply != null)
         MButton(
@@ -72,6 +80,18 @@ class MessageBubble extends ConsumerWidget {
           onPressed: onEdit,
           child: const Text('Edit'),
         ),
+      if (onOpenThread != null)
+        MButton(
+          variant: MButtonVariant.ghost,
+          size: MButtonSize.sm,
+          style: const MButtonStyleDelta(minHeight: 40),
+          onPressed: onOpenThread,
+          child: Text(
+            threadReplyCount > 0
+                ? 'Open thread ($threadReplyCount)'
+                : 'Open thread',
+          ),
+        ),
       if (onThreadReply != null)
         MButton(
           variant: MButtonVariant.ghost,
@@ -80,134 +100,169 @@ class MessageBubble extends ConsumerWidget {
           onPressed: onThreadReply,
           child: const Text('Thread'),
         ),
+      if (message.inReplyTo != null)
+        MButton(
+          variant: MButtonVariant.ghost,
+          size: MButtonSize.sm,
+          style: const MButtonStyleDelta(minHeight: 40),
+          onPressed: () => _copyEventLink(context, message.inReplyTo!),
+          child: const Text('Copy reply link'),
+        ),
+      if (message.threadRoot != null)
+        MButton(
+          variant: MButtonVariant.ghost,
+          size: MButtonSize.sm,
+          style: const MButtonStyleDelta(minHeight: 40),
+          onPressed: () => _copyEventLink(context, message.threadRoot!),
+          child: const Text('Copy thread link'),
+        ),
+      MButton(
+        variant: MButtonVariant.ghost,
+        size: MButtonSize.sm,
+        style: const MButtonStyleDelta(minHeight: 40),
+        onPressed: () => _copyEventLink(context, message.eventId),
+        child: const Text('Copy link'),
+      ),
     ];
 
-    return Align(
-      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Column(
-            crossAxisAlignment: isMine
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(
-                  '${isMine ? 'You' : message.sender}'
-                  '  ${formatTimestamp(message.timestamp)}'
-                  '${message.editedAt == null ? '' : ' edited'}',
-                  style: theme.typography.caption.copyWith(
-                    color: theme.colors.mutedForeground,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  if (isMine)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 4, top: 4),
-                      child: MButton(
-                        variant: MButtonVariant.ghost,
-                        onPressed: () => _confirmDelete(context, ref),
-                        semanticLabel: 'Delete message',
-                        child: const Text('×'),
-                      ),
-                    ),
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: background,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          if (message.inReplyTo != null) ...<Widget>[
-                            _MessageContextLine(
-                              text:
-                                  'Reply to ${_shortEventId(message.inReplyTo!)}',
-                              color: foreground,
-                            ),
-                            const SizedBox(height: 4),
-                          ],
-                          if (message.threadRoot != null) ...<Widget>[
-                            _MessageContextLine(
-                              text:
-                                  'Thread ${_shortEventId(message.threadRoot!)}',
-                              color: foreground,
-                            ),
-                            const SizedBox(height: 4),
-                          ],
-                          if (kindLabel != null) ...<Widget>[
-                            _MessageContextLine(
-                              text: kindLabel,
-                              color: foreground,
-                            ),
-                            const SizedBox(height: 4),
-                          ],
-                          Text(
-                            body,
-                            style: theme.typography.body.copyWith(
-                              color: foreground,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (hasMetadata)
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : 640.0;
+          final maxBubbleWidth = availableWidth < 700
+              ? availableWidth * 0.82
+              : 560.0;
+          final minBubbleWidth = maxBubbleWidth < 112 ? maxBubbleWidth : 112.0;
+
+          final bubbleColumn = ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: minBubbleWidth,
+              maxWidth: maxBubbleWidth,
+            ),
+            child: Column(
+              crossAxisAlignment: isMine
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
                 Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Wrap(
-                    alignment: isMine ? WrapAlignment.end : WrapAlignment.start,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 4,
-                    runSpacing: 4,
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    '$author  ${formatTimestamp(message.timestamp)}'
+                    '${message.editedAt == null ? '' : ' edited'}',
+                    style: theme.typography.caption.copyWith(
+                      color: theme.colors.mutedForeground,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: background,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      for (final entry in reactionCounts.entries)
-                        _ReactionCountChip(
-                          reactionKey: entry.key,
-                          count: entry.value,
+                      if (message.inReplyTo != null &&
+                          !isThreadReply) ...<Widget>[
+                        _MessageContextLine(text: 'Reply', color: foreground),
+                        const SizedBox(height: 4),
+                      ],
+                      if (isThreadReply) ...<Widget>[
+                        _MessageContextLine(
+                          text: 'Thread reply',
+                          color: foreground,
                         ),
-                      if (readReceiptSummary != null)
-                        Text(
-                          readReceiptSummary,
-                          style: theme.typography.caption.copyWith(
-                            color: theme.colors.mutedForeground,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 4),
+                      ],
+                      if (kindLabel != null) ...<Widget>[
+                        _MessageContextLine(text: kindLabel, color: foreground),
+                        const SizedBox(height: 4),
+                      ],
+                      Text(
+                        body,
+                        style: theme.typography.body.copyWith(
+                          color: foreground,
                         ),
+                      ),
                     ],
                   ),
                 ),
-              if (actions.isNotEmpty)
+                if (hasMetadata)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Wrap(
+                      alignment: isMine
+                          ? WrapAlignment.end
+                          : WrapAlignment.start,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: <Widget>[
+                        for (final entry in reactionCounts.entries)
+                          _ReactionCountChip(
+                            reactionKey: entry.key,
+                            count: entry.value,
+                          ),
+                        if (readReceiptSummary != null)
+                          Text(
+                            readReceiptSummary,
+                            style: theme.typography.caption.copyWith(
+                              color: theme.colors.mutedForeground,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                if (actions.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: MActionRow(
+                      alignment: isMine
+                          ? WrapAlignment.end
+                          : WrapAlignment.start,
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: actions,
+                    ),
+                  ),
+              ],
+            ),
+          );
+
+          return Row(
+            mainAxisAlignment: isMine
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (isMine)
                 Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: MActionRow(
-                    alignment: isMine ? WrapAlignment.end : WrapAlignment.start,
-                    spacing: 4,
-                    runSpacing: 4,
-                    children: actions,
+                  padding: const EdgeInsets.only(right: 4, top: 20),
+                  child: MButton(
+                    variant: MButtonVariant.ghost,
+                    onPressed: () => _confirmDelete(context, ref),
+                    semanticLabel: 'Delete message',
+                    child: const Text('×'),
                   ),
                 ),
+              bubbleColumn,
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -248,6 +303,21 @@ class MessageBubble extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  Future<void> _copyEventLink(BuildContext context, String eventId) async {
+    await Clipboard.setData(
+      ClipboardData(
+        text: matrixEventPermalink(roomId: message.roomId, eventId: eventId),
+      ),
+    );
+    if (!context.mounted) return;
+    showMToast(
+      context,
+      duration: const Duration(seconds: 2),
+      semanticLabel: 'Link copied',
+      builder: (_) => const Text('Link copied'),
+    );
   }
 }
 
@@ -308,11 +378,6 @@ String? _messageKindLabel(String msgtype) {
   };
 }
 
-String _shortEventId(String eventId) {
-  if (eventId.length <= 16) return eventId;
-  return '${eventId.substring(0, 16)}...';
-}
-
 Map<String, int> _reactionCounts(List<ReactionEvent> reactions) {
   final counts = <String, int>{};
   for (final reaction in reactions) {
@@ -328,7 +393,9 @@ String? _readReceiptSummary(List<ReceiptEvent> receipts) {
     readers.add(receipt.userId);
   }
   if (readers.isEmpty) return null;
-  if (readers.length == 1) return 'Read by ${readers.single}';
+  if (readers.length == 1) {
+    return 'Read by ${matrixUserDisplayName(readers.single)}';
+  }
   return 'Read by ${readers.length} people';
 }
 

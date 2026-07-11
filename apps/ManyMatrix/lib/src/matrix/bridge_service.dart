@@ -21,6 +21,9 @@ abstract class MatrixService {
   /// Typed read-receipt events from the background sync thread. Broadcast.
   Stream<ReceiptEvent> get receiptEvents;
 
+  /// Background sync/auth failures that require user recovery. Broadcast.
+  Stream<SessionProblem> get sessionProblems;
+
   /// The logged-in user's Matrix ID, or null when logged out.
   String? get currentUserId;
 
@@ -40,7 +43,13 @@ abstract class MatrixService {
   /// releases the client.
   Future<void> logout();
 
+  /// Drops the persisted session secret. When [keepHomeserver] is true, the
+  /// account remains reconnectable/re-authenticatable from the switcher.
+  Future<void> clearSavedSession({bool keepHomeserver = true});
+
   Future<List<RoomSummary>> joinedRooms();
+
+  Future<List<RoomInvite>> invitedRooms();
 
   /// Creates a new room with optional name and topic. Returns the new room's
   /// ID.
@@ -48,6 +57,9 @@ abstract class MatrixService {
 
   /// Joins a room by ID or alias. Returns the (possibly resolved) room ID.
   Future<String> joinRoom(String roomIdOrAlias);
+
+  /// Leaves or declines a room membership.
+  Future<void> leaveRoom(String roomId);
 
   /// Invites a user to a room.
   Future<void> invite(String roomId, String userId);
@@ -83,6 +95,9 @@ abstract class MatrixService {
   /// The joined member user IDs for a room.
   Future<List<String>> roomMembers(String roomId);
 
+  /// Stable room identity details.
+  Future<RoomDetails> roomDetails(String roomId);
+
   /// Whether end-to-end encryption is enabled for [roomId].
   Future<bool> isRoomEncrypted(String roomId);
 
@@ -100,6 +115,39 @@ abstract class MatrixService {
 
   /// Releases native resources. The service must not be used afterwards.
   void dispose();
+}
+
+class SessionProblem {
+  const SessionProblem({
+    required this.message,
+    required this.requiresReauth,
+    this.error,
+  });
+
+  final String message;
+  final bool requiresReauth;
+  final Object? error;
+}
+
+bool isInvalidMatrixSessionError(Object error) {
+  final raw = error.toString();
+  final lower = raw.toLowerCase();
+  if (error is ManyMatrixException) {
+    final errcode = '${error.details['errcode'] ?? ''}'.toUpperCase();
+    if (errcode == 'M_UNKNOWN_TOKEN') return true;
+  }
+  return lower.contains('m_unknown_token') ||
+      lower.contains('unknown token') ||
+      lower.contains('refresh token') ||
+      lower.contains('missing refresh token') ||
+      lower.contains('invalid token');
+}
+
+String friendlySessionProblem(Object error) {
+  if (isInvalidMatrixSessionError(error)) {
+    return 'Your Matrix session expired. Sign in again to reconnect this account.';
+  }
+  return 'Matrix sync stopped. Check your connection and reconnect.';
 }
 
 /// Production [MatrixService] backed by [ManyMatrixBridge].
@@ -127,6 +175,7 @@ class BridgeMatrixService implements MatrixService {
   final _rawMessages = StreamController<String>.broadcast();
   final _rawReactions = StreamController<String>.broadcast();
   final _rawReceipts = StreamController<String>.broadcast();
+  final _sessionProblems = StreamController<SessionProblem>.broadcast();
   late final Stream<MessageEvent> _messageEvents = messageEventStream(
     _rawMessages.stream,
   ).asBroadcastStream();
@@ -147,6 +196,9 @@ class BridgeMatrixService implements MatrixService {
   Stream<ReceiptEvent> get receiptEvents => _receiptEvents;
 
   @override
+  Stream<SessionProblem> get sessionProblems => _sessionProblems.stream;
+
+  @override
   String? get currentUserId => _userId;
 
   Future<void> _ensureInitialized() async {
@@ -165,8 +217,67 @@ class BridgeMatrixService implements MatrixService {
     client.onMessage(_rawMessages.add);
     client.onReaction(_rawReactions.add);
     client.onReceipt(_rawReceipts.add);
+    client.onSessionUpdate((sessionJson) {
+      unawaited(_persistSessionJson(sessionJson));
+    });
+    client.onSyncStatus((json) {
+      unawaited(_handleSyncStatus(json));
+    });
     _userId = await client.whoami();
+    await _persistCurrentSession(client);
     await client.syncForever();
+  }
+
+  Future<void> _persistSessionJson(String sessionJson) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsSessionKey, sessionJson);
+  }
+
+  Future<void> _persistCurrentSession(ManyMatrixBridge client) async {
+    final sessionJson = await client.currentSession();
+    if (sessionJson != null) {
+      await _persistSessionJson(sessionJson);
+    }
+  }
+
+  Future<void> _handleSyncStatus(String json) async {
+    final decoded = jsonDecode(json);
+    if (decoded is! Map<String, dynamic>) return;
+    if (decoded['ok'] == true) {
+      final client = _client;
+      if (client != null) await _persistCurrentSession(client);
+      return;
+    }
+
+    final error = _syncStatusError(decoded);
+    final requiresReauth = isInvalidMatrixSessionError(error);
+    if (requiresReauth) {
+      await clearSavedSession(keepHomeserver: true);
+    }
+    _sessionProblems.add(
+      SessionProblem(
+        message: friendlySessionProblem(error),
+        requiresReauth: requiresReauth,
+        error: error,
+      ),
+    );
+  }
+
+  Object _syncStatusError(Map<String, dynamic> status) {
+    final message = status['error'] as String? ?? 'Background sync stopped';
+    final details = <String, dynamic>{
+      if (status['errorDetails'] is Map)
+        ...(status['errorDetails'] as Map).map(
+          (key, value) => MapEntry('$key', value),
+        ),
+      'state': status['state'],
+      'method': 'sync_forever',
+    };
+    return manyMatrixExceptionForEnvelope(
+      status['errorKind'] as String? ?? 'MatrixSdkError',
+      message,
+      details: details,
+    );
   }
 
   @override
@@ -181,11 +292,11 @@ class BridgeMatrixService implements MatrixService {
     try {
       await client.restore(sessionJson);
       await _startSession(client);
-    } on Object {
+    } on Object catch (error) {
       client.dispose();
-      // The stored session no longer works; drop it so the next launch goes
-      // straight to login.
-      await _clearPersistedSession();
+      if (isInvalidMatrixSessionError(error)) {
+        await clearSavedSession(keepHomeserver: true);
+      }
       rethrow;
     }
     _client = client;
@@ -201,13 +312,14 @@ class BridgeMatrixService implements MatrixService {
     final client = await _createClient(homeserverUrl);
     try {
       final sessionJson = await client.login(username, password);
-      await _startSession(client);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsHomeserverKey, homeserverUrl);
       // TODO(manymatrix): persist to secure storage instead of plain prefs.
       await prefs.setString(_prefsSessionKey, sessionJson);
+      await _startSession(client);
     } on Object {
       client.dispose();
+      await clearSavedSession(keepHomeserver: false);
       rethrow;
     }
     _client = client;
@@ -219,7 +331,7 @@ class BridgeMatrixService implements MatrixService {
     final client = _client;
     _client = null;
     _userId = null;
-    await _clearPersistedSession();
+    await clearSavedSession(keepHomeserver: false);
     if (client == null) return;
     try {
       await client.logout();
@@ -230,9 +342,12 @@ class BridgeMatrixService implements MatrixService {
     }
   }
 
-  Future<void> _clearPersistedSession() async {
+  @override
+  Future<void> clearSavedSession({bool keepHomeserver = true}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsHomeserverKey);
+    if (!keepHomeserver) {
+      await prefs.remove(_prefsHomeserverKey);
+    }
     await prefs.remove(_prefsSessionKey);
   }
 
@@ -248,12 +363,18 @@ class BridgeMatrixService implements MatrixService {
   Future<List<RoomSummary>> joinedRooms() => _requireClient.joinedRooms();
 
   @override
+  Future<List<RoomInvite>> invitedRooms() => _requireClient.invitedRooms();
+
+  @override
   Future<String> createRoom({String? name, String? topic}) =>
       _requireClient.createRoom(name: name, topic: topic);
 
   @override
   Future<String> joinRoom(String roomIdOrAlias) =>
       _requireClient.joinRoom(roomIdOrAlias);
+
+  @override
+  Future<void> leaveRoom(String roomId) => _requireClient.leaveRoom(roomId);
 
   @override
   Future<void> invite(String roomId, String userId) =>
@@ -314,6 +435,10 @@ class BridgeMatrixService implements MatrixService {
   }
 
   @override
+  Future<RoomDetails> roomDetails(String roomId) =>
+      _requireClient.roomDetails(roomId);
+
+  @override
   Future<bool> isRoomEncrypted(String roomId) =>
       _requireClient.isRoomEncrypted(roomId);
 
@@ -340,5 +465,6 @@ class BridgeMatrixService implements MatrixService {
     _rawMessages.close();
     _rawReactions.close();
     _rawReceipts.close();
+    _sessionProblems.close();
   }
 }

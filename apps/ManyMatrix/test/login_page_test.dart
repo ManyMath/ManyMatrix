@@ -8,6 +8,7 @@ import 'package:manyui/manyui.dart';
 import 'package:manymatrix_app/src/app.dart';
 import 'package:manymatrix_app/src/matrix/bridge_service.dart';
 import 'package:manymatrix_app/src/matrix/providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// In-memory [MatrixService]; no FFI, no persistence.
 class FakeMatrixService implements MatrixService {
@@ -32,6 +33,10 @@ class FakeMatrixService implements MatrixService {
 
   @override
   Stream<ReceiptEvent> get receiptEvents => const Stream<ReceiptEvent>.empty();
+
+  @override
+  Stream<SessionProblem> get sessionProblems =>
+      const Stream<SessionProblem>.empty();
 
   @override
   String? get currentUserId => _userId;
@@ -61,7 +66,13 @@ class FakeMatrixService implements MatrixService {
   }
 
   @override
+  Future<void> clearSavedSession({bool keepHomeserver = true}) async {}
+
+  @override
   Future<List<RoomSummary>> joinedRooms() async => const <RoomSummary>[];
+
+  @override
+  Future<List<RoomInvite>> invitedRooms() async => const <RoomInvite>[];
 
   @override
   Future<String> createRoom({String? name, String? topic}) async =>
@@ -69,6 +80,9 @@ class FakeMatrixService implements MatrixService {
 
   @override
   Future<String> joinRoom(String roomIdOrAlias) async => roomIdOrAlias;
+
+  @override
+  Future<void> leaveRoom(String roomId) async {}
 
   @override
   Future<void> invite(String roomId, String userId) async {}
@@ -126,6 +140,10 @@ class FakeMatrixService implements MatrixService {
   Future<List<String>> roomMembers(String roomId) async => membersForRoom;
 
   @override
+  Future<RoomDetails> roomDetails(String roomId) async =>
+      RoomDetails(roomId: roomId);
+
+  @override
   Future<bool> isRoomEncrypted(String roomId) async => false;
 
   @override
@@ -175,13 +193,23 @@ Future<void> _enterField(WidgetTester tester, int index, String text) async {
   await tester.pump();
 }
 
+Future<void> _pumpPastRestore(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 1));
+  await tester.pump();
+}
+
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
   testWidgets('signs in through the fake service and lands on rooms', (
     tester,
   ) async {
     final service = FakeMatrixService();
     await tester.pumpWidget(_app(service));
-    await tester.pump(); // AuthRestoring -> AuthUnauthenticated
+    await _pumpPastRestore(tester);
 
     expect(find.text('Sign in to Matrix'), findsOneWidget);
 
@@ -207,7 +235,7 @@ void main() {
   ) async {
     final service = FakeMatrixService(failLoginWith: 'M_FORBIDDEN');
     await tester.pumpWidget(_app(service));
-    await tester.pump();
+    await _pumpPastRestore(tester);
 
     await _enterField(tester, 0, 'https://example.org');
     await _enterField(tester, 1, 'alice');

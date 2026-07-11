@@ -9,9 +9,13 @@ import 'package:manymatrix/manymatrix.dart';
 
 import '../matrix/providers.dart';
 import '../matrix/room_timeline.dart';
+import '../matrix/matrix_display.dart';
 import '../room_info/room_info_page.dart';
 import 'invite_dialog.dart';
 import 'message_bubble.dart';
+
+const double _timelineMaxWidth = 920;
+const EdgeInsets _timelinePadding = EdgeInsets.fromLTRB(20, 12, 20, 12);
 
 /// Full-screen chat route used by the narrow layout.
 class ChatPage extends ConsumerWidget {
@@ -75,9 +79,17 @@ class ChatView extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = MTheme.of(context);
     final timeline = ref.watch(roomTimelineProvider(roomId));
+    final timelineData = timeline.valueOrNull;
     final currentUserId = ref.watch(currentUserIdProvider);
     final scrollController = useScrollController();
     final composeTarget = useState<_ComposeTarget?>(null);
+    final selectedThreadRootId = useState<String?>(null);
+
+    useEffect(() {
+      composeTarget.value = null;
+      selectedThreadRootId.value = null;
+      return null;
+    }, [roomId]);
 
     // Load older history when the user scrolls near the (visual) top --
     // with a reversed list that is the max scroll extent.
@@ -103,6 +115,36 @@ class ChatView extends HookConsumerWidget {
           .map((room) => room.displayName)
           .firstOrNull;
     }
+
+    String threadRootIdFor(MessageEvent message) =>
+        message.threadRoot ?? message.eventId;
+
+    void openThread(MessageEvent message) {
+      selectedThreadRootId.value = threadRootIdFor(message);
+      composeTarget.value = null;
+    }
+
+    void replyInThread(MessageEvent message) {
+      selectedThreadRootId.value = threadRootIdFor(message);
+      composeTarget.value = _ComposeTarget.thread(message);
+    }
+
+    MessageEvent? selectedThreadRootMessage() {
+      final data = timelineData;
+      final rootId = selectedThreadRootId.value;
+      if (data == null || rootId == null) return null;
+      for (final message in data.newestFirst) {
+        if (message.eventId == rootId) return message;
+      }
+      return null;
+    }
+
+    final defaultThreadTarget = selectedThreadRootMessage();
+    final activeComposeTarget =
+        composeTarget.value ??
+        (defaultThreadTarget == null
+            ? null
+            : _ComposeTarget.thread(defaultThreadTarget));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -153,7 +195,8 @@ class ChatView extends HookConsumerWidget {
               ),
             ),
             data: (data) {
-              if (data.newestFirst.isEmpty) {
+              final mainMessages = data.mainNewestFirst;
+              if (mainMessages.isEmpty) {
                 return const Center(
                   child: MEmptyState(
                     title: 'No messages yet',
@@ -161,60 +204,208 @@ class ChatView extends HookConsumerWidget {
                   ),
                 );
               }
-              // reverse: true puts index 0 (newest) at the bottom.
-              return ListView.builder(
-                controller: scrollController,
-                reverse: true,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount:
-                    data.newestFirst.length + (data.loadingOlder ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index >= data.newestFirst.length) {
-                    return const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Center(
-                        child: MCircularProgress.indeterminate(
-                          semanticLabel: 'Loading older messages',
-                        ),
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final laneWidth = constraints.maxWidth < _timelineMaxWidth
+                      ? constraints.maxWidth
+                      : _timelineMaxWidth;
+
+                  // reverse: true puts index 0 (newest) at the bottom.
+                  return Center(
+                    child: SizedBox(
+                      width: laneWidth,
+                      height: constraints.maxHeight,
+                      child: ListView.builder(
+                        controller: scrollController,
+                        reverse: true,
+                        padding: _timelinePadding,
+                        itemCount:
+                            mainMessages.length + (data.loadingOlder ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= mainMessages.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Center(
+                                child: MCircularProgress.indeterminate(
+                                  semanticLabel: 'Loading older messages',
+                                ),
+                              ),
+                            );
+                          }
+                          final message = mainMessages[index];
+                          final isMine =
+                              currentUserId != null &&
+                              message.sender == currentUserId;
+                          final threadReplyCount = data.threadReplyCount(
+                            message.eventId,
+                          );
+                          return MessageBubble(
+                            message: message,
+                            isMine: isMine,
+                            threadReplyCount: threadReplyCount,
+                            reactions: data.reactionsFor(message.eventId),
+                            receipts: isMine
+                                ? data
+                                      .receiptsFor(message.eventId)
+                                      .where(
+                                        (receipt) =>
+                                            receipt.userId != currentUserId,
+                                      )
+                                      .toList()
+                                : const <ReceiptEvent>[],
+                            onReply: () => composeTarget.value =
+                                _ComposeTarget.reply(message),
+                            onEdit: isMine && message.msgtype == 'm.text'
+                                ? () => composeTarget.value =
+                                      _ComposeTarget.edit(message)
+                                : null,
+                            onOpenThread: threadReplyCount > 0
+                                ? () => openThread(message)
+                                : null,
+                            onThreadReply: () => replyInThread(message),
+                          );
+                        },
                       ),
-                    );
-                  }
-                  final message = data.newestFirst[index];
-                  final isMine =
-                      currentUserId != null && message.sender == currentUserId;
-                  return MessageBubble(
-                    message: message,
-                    isMine: isMine,
-                    reactions: data.reactionsFor(message.eventId),
-                    receipts: isMine
-                        ? data
-                              .receiptsFor(message.eventId)
-                              .where(
-                                (receipt) => receipt.userId != currentUserId,
-                              )
-                              .toList()
-                        : const <ReceiptEvent>[],
-                    onReply: () =>
-                        composeTarget.value = _ComposeTarget.reply(message),
-                    onEdit: isMine && message.msgtype == 'm.text'
-                        ? () =>
-                              composeTarget.value = _ComposeTarget.edit(message)
-                        : null,
-                    onThreadReply: () =>
-                        composeTarget.value = _ComposeTarget.thread(message),
+                    ),
                   );
                 },
               );
             },
           ),
         ),
+        if (timelineData != null && selectedThreadRootId.value != null)
+          _ThreadPanel(
+            rootId: selectedThreadRootId.value!,
+            timeline: timelineData,
+            currentUserId: currentUserId,
+            onClose: () {
+              selectedThreadRootId.value = null;
+              composeTarget.value = null;
+            },
+            onReply: (message) =>
+                composeTarget.value = _ComposeTarget.reply(message),
+            onEdit: (message) =>
+                composeTarget.value = _ComposeTarget.edit(message),
+            onThreadReply: replyInThread,
+          ),
         Container(height: 1, color: theme.colors.border),
         _Composer(
           roomId: roomId,
-          target: composeTarget.value,
-          onClearTarget: () => composeTarget.value = null,
+          target: activeComposeTarget,
+          keepTargetAfterSend:
+              activeComposeTarget?.kind == _ComposeTargetKind.thread,
+          onClearTarget: () {
+            if (composeTarget.value != null) {
+              composeTarget.value = null;
+            } else {
+              selectedThreadRootId.value = null;
+            }
+          },
         ),
       ],
+    );
+  }
+}
+
+class _ThreadPanel extends StatelessWidget {
+  const _ThreadPanel({
+    required this.rootId,
+    required this.timeline,
+    required this.currentUserId,
+    required this.onClose,
+    required this.onReply,
+    required this.onEdit,
+    required this.onThreadReply,
+  });
+
+  final String rootId;
+  final RoomTimeline timeline;
+  final String? currentUserId;
+  final VoidCallback onClose;
+  final ValueChanged<MessageEvent> onReply;
+  final ValueChanged<MessageEvent> onEdit;
+  final ValueChanged<MessageEvent> onThreadReply;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MTheme.of(context);
+    final messages = timeline.threadMessagesNewestFirst(rootId);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colors.background,
+        border: Border(top: BorderSide(color: theme.colors.border)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: _timelineMaxWidth),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                MSectionHeader(
+                  title: 'Thread',
+                  titleMaxLines: 1,
+                  actions: <Widget>[
+                    MButton(
+                      variant: MButtonVariant.ghost,
+                      size: MButtonSize.sm,
+                      onPressed: onClose,
+                      semanticLabel: 'Close thread',
+                      child: const MIcon(MIconData.close, size: 16),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: messages.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: MEmptyState(
+                            title: 'Thread not loaded',
+                            description:
+                                'Load older messages to fetch more context.',
+                          ),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          reverse: true,
+                          itemCount: messages.length,
+                          itemBuilder: (context, index) {
+                            final message = messages[index];
+                            final isMine =
+                                currentUserId != null &&
+                                message.sender == currentUserId;
+                            return MessageBubble(
+                              message: message,
+                              isMine: isMine,
+                              reactions: timeline.reactionsFor(message.eventId),
+                              receipts: isMine
+                                  ? timeline
+                                        .receiptsFor(message.eventId)
+                                        .where(
+                                          (receipt) =>
+                                              receipt.userId != currentUserId,
+                                        )
+                                        .toList()
+                                  : const <ReceiptEvent>[],
+                              onReply: () => onReply(message),
+                              onEdit: isMine && message.msgtype == 'm.text'
+                                  ? () => onEdit(message)
+                                  : null,
+                              onThreadReply: () => onThreadReply(message),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -274,11 +465,13 @@ class _Composer extends HookConsumerWidget {
   const _Composer({
     required this.roomId,
     required this.target,
+    required this.keepTargetAfterSend,
     required this.onClearTarget,
   });
 
   final String roomId;
   final _ComposeTarget? target;
+  final bool keepTargetAfterSend;
   final VoidCallback onClearTarget;
 
   @override
@@ -382,7 +575,9 @@ class _Composer extends HookConsumerWidget {
         unawaited(service.sendTyping(roomId, false).catchError((_) {}));
         controller.value = '';
         htmlController.value = '';
-        onClearTarget();
+        if (!keepTargetAfterSend) {
+          onClearTarget();
+        }
         final sender = service.currentUserId;
         if (sender != null) {
           ref
@@ -527,7 +722,8 @@ class _ComposeTargetBanner extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Text(
-                    '${target.modeLabel} ${target.message.sender}',
+                    '${target.modeLabel} '
+                    '${matrixUserDisplayName(target.message.sender)}',
                     style: theme.typography.label.copyWith(
                       color: theme.colors.foreground,
                     ),

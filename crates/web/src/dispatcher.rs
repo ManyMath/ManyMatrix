@@ -35,17 +35,29 @@ fn emit_event(kind: &str, payload: &impl serde::Serialize) {
             return;
         }
     };
+    emit_event_payload_json(kind, &payload_json);
+}
+
+fn emit_event_payload_json(kind: &str, payload_json: &str) {
     EVENT_SINK.with(|cell| {
         if let Some(sink) = cell.borrow().as_ref() {
             if let Err(e) = sink.call2(
                 &wasm_bindgen::JsValue::NULL,
                 &wasm_bindgen::JsValue::from_str(kind),
-                &wasm_bindgen::JsValue::from_str(&payload_json),
+                &wasm_bindgen::JsValue::from_str(payload_json),
             ) {
                 tracing::warn!("event sink call failed for {}: {:?}", kind, e);
             }
         }
     });
+}
+
+fn emit_session_update(session_json: String) {
+    emit_event_payload_json("session_update", &session_json);
+}
+
+fn attach_session_update_sink(client: &ManyMatrixClient) {
+    client.set_session_update_callback(emit_session_update);
 }
 
 fn sync_status_json(state: &str, ok: bool, error: Option<String>) -> serde_json::Value {
@@ -305,6 +317,7 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let mm = ManyMatrixClient::new(&args.homeserver_url, &args.store_name)
                 .await
                 .map_err(sdk_err)?;
+            attach_session_update_sink(&mm);
             let session = mm
                 .login(&args.username, &args.password)
                 .await
@@ -335,6 +348,7 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let mm = ManyMatrixClient::new(&args.homeserver_url, &args.store_name)
                 .await
                 .map_err(sdk_err)?;
+            attach_session_update_sink(&mm);
             mm.restore(&session).await.map_err(sdk_err)?;
             let user_id = mm
                 .inner()

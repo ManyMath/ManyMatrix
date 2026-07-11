@@ -70,21 +70,23 @@ void main() {
       expect(container.read(activeAccountIdProvider), 'a');
     });
 
-    test('forget removes the account and falls back to another when active',
-        () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      const a = SavedAccount(id: 'a', label: 'A', homeserverUrl: 'https://a');
-      const b = SavedAccount(id: 'b', label: 'B', homeserverUrl: 'https://b');
-      container.read(accountsControllerProvider).add(a);
-      container.read(accountsControllerProvider).add(b);
-      container.read(accountsControllerProvider).switchTo('a');
+    test(
+      'forget removes the account and falls back to another when active',
+      () {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        const a = SavedAccount(id: 'a', label: 'A', homeserverUrl: 'https://a');
+        const b = SavedAccount(id: 'b', label: 'B', homeserverUrl: 'https://b');
+        container.read(accountsControllerProvider).add(a);
+        container.read(accountsControllerProvider).add(b);
+        container.read(accountsControllerProvider).switchTo('a');
 
-      container.read(accountsControllerProvider).forget('a');
+        container.read(accountsControllerProvider).forget('a');
 
-      expect(container.read(accountsProvider), [b]);
-      expect(container.read(activeAccountIdProvider), 'b');
-    });
+        expect(container.read(accountsProvider), [b]);
+        expect(container.read(activeAccountIdProvider), 'b');
+      },
+    );
 
     test('forgetting the only account clears the active id', () {
       final container = ProviderContainer();
@@ -124,8 +126,10 @@ void main() {
           .read(accountsControllerProvider)
           .update(a.copyWith(userId: '@alice:example.org'));
 
-      expect(container.read(accountsProvider).single.userId,
-          '@alice:example.org');
+      expect(
+        container.read(accountsProvider).single.userId,
+        '@alice:example.org',
+      );
     });
   });
 
@@ -142,6 +146,20 @@ void main() {
       final serviceForB = container.read(matrixServiceProvider);
 
       expect(identical(serviceForA, serviceForB), isFalse);
+    });
+
+    test('selected room is scoped to the active account', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      const a = SavedAccount(id: 'a', label: 'A', homeserverUrl: 'https://a');
+      const b = SavedAccount(id: 'b', label: 'B', homeserverUrl: 'https://b');
+      container.read(accountsControllerProvider).add(a);
+      container.read(selectedRoomIdProvider.notifier).state = '!room:a';
+
+      container.read(accountsControllerProvider).add(b);
+
+      expect(container.read(activeAccountIdProvider), 'b');
+      expect(container.read(selectedRoomIdProvider), isNull);
     });
   });
 }

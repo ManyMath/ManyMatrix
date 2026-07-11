@@ -104,10 +104,7 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
         let mut accepted = false;
         for attempt in 0..20 {
             sync_pair(&alice, &bob, 1, 200).await?;
-            match bob
-                .accept_verification(&alice_reg.user_id, &flow_id)
-                .await
-            {
+            match bob.accept_verification(&alice_reg.user_id, &flow_id).await {
                 Ok(()) => {
                     accepted = true;
                     eprintln!("Bob accepted verification on attempt {}", attempt + 1);

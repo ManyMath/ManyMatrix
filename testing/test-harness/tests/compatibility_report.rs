@@ -309,7 +309,9 @@ async fn e2ee_behavior(server: &TestHomeserver) -> Result<String> {
 
     let alice_store = tempfile::tempdir()?;
     let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
-    alice.login(&alice_reg.localpart, "compat_e2ee_pass").await?;
+    alice
+        .login(&alice_reg.localpart, "compat_e2ee_pass")
+        .await?;
 
     let bob_store = tempfile::tempdir()?;
     let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;

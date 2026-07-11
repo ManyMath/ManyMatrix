@@ -34,6 +34,27 @@ class RoomTimeline {
 
   bool get canLoadOlder => endToken != null && !loadingOlder;
 
+  /// Timeline entries that belong to the room's main timeline.
+  ///
+  /// Matrix thread replies are still retained in [newestFirst] so they can be
+  /// shown inside a thread view, but they should not render as top-level chat
+  /// messages.
+  List<MessageEvent> get mainNewestFirst => newestFirst
+      .where((message) => message.threadRoot == null)
+      .toList(growable: false);
+
+  List<MessageEvent> threadMessagesNewestFirst(String threadRootId) =>
+      newestFirst
+          .where(
+            (message) =>
+                message.eventId == threadRootId ||
+                message.threadRoot == threadRootId,
+          )
+          .toList(growable: false);
+
+  int threadReplyCount(String threadRootId) =>
+      newestFirst.where((message) => message.threadRoot == threadRootId).length;
+
   List<ReactionEvent> reactionsFor(String eventId) =>
       reactionsByEventId[eventId] ?? const <ReactionEvent>[];
 

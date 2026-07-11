@@ -129,9 +129,10 @@ async fn federated_message(creator_kind: ServerKind, joiner_kind: ServerKind) ->
             .await?;
         eprintln!("alice: sent federated message");
 
-        let received = receive_federated_message_with_retry(&bob, &mut rx, 30, Duration::from_secs(1))
-            .await
-            .context("timed out waiting for federated message")?;
+        let received =
+            receive_federated_message_with_retry(&bob, &mut rx, 30, Duration::from_secs(1))
+                .await
+                .context("timed out waiting for federated message")?;
         assert_eq!(received, "hello across the wire");
         eprintln!("bob: received federated message: {received}");
 

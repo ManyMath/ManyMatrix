@@ -182,11 +182,8 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
         let r = manymatrix_ffi::manymatrix_sync_once(alice);
         assert_ok(&r);
         let rid = cstr(&room_id);
-        let r = manymatrix_ffi::manymatrix_invite(
-            alice,
-            rid.as_ptr(),
-            cstr(&bob_reg.user_id).as_ptr(),
-        );
+        let r =
+            manymatrix_ffi::manymatrix_invite(alice, rid.as_ptr(), cstr(&bob_reg.user_id).as_ptr());
         assert_ok(&r);
 
         // Bob syncs, joins

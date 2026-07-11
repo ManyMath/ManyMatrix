@@ -127,6 +127,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execWithHandleAndStrings(bindings, method, args);
       case 'restore':
         return _execWithHandleAndStrings(bindings, method, args);
+      case 'current_session':
+        return _execHandleOnly(bindings, method, args);
       case 'sync_once':
         return _execHandleOnly(bindings, method, args);
       case 'sync_once_with_timeout':
@@ -136,6 +138,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
       case 'stop_sync':
         return _execHandleOnly(bindings, method, args);
       case 'joined_rooms':
+        return _execHandleOnly(bindings, method, args);
+      case 'invited_rooms':
         return _execHandleOnly(bindings, method, args);
       case 'server_capabilities':
         return _execHandleOnly(bindings, method, args);
@@ -166,6 +170,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
       case 'room_avatar_url':
         return _execWithHandleAndOneString(bindings, method, args);
       case 'room_members':
+        return _execWithHandleAndOneString(bindings, method, args);
+      case 'room_details':
         return _execWithHandleAndOneString(bindings, method, args);
       case 'room_power_levels':
         return _execWithHandleAndOneString(bindings, method, args);
@@ -272,6 +278,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         result = bindings.manymatrix_stop_sync(handle);
       case 'joined_rooms':
         result = bindings.manymatrix_joined_rooms(handle);
+      case 'invited_rooms':
+        result = bindings.manymatrix_invited_rooms(handle);
       case 'server_capabilities':
         result = bindings.manymatrix_server_capabilities(handle);
       case 'logout':
@@ -280,6 +288,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         result = bindings.manymatrix_sync_token(handle);
       case 'whoami':
         result = bindings.manymatrix_whoami(handle);
+      case 'current_session':
+        result = bindings.manymatrix_current_session(handle);
       case 'bootstrap_cross_signing':
         result = bindings.manymatrix_bootstrap_cross_signing(handle);
       case 'setup_key_backup':
@@ -371,6 +381,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
           result = bindings.manymatrix_room_avatar_url(handle, s1.cast());
         case 'room_members':
           result = bindings.manymatrix_room_members(handle, s1.cast());
+        case 'room_details':
+          result = bindings.manymatrix_room_details(handle, s1.cast());
         case 'room_power_levels':
           result = bindings.manymatrix_room_power_levels(handle, s1.cast());
         case 'is_room_encrypted':
@@ -888,6 +900,11 @@ class ManyMatrixBridge implements ffi.Finalizable {
     await _call('restore', {'session_json': sessionJson});
   }
 
+  /// Export the current session JSON, including refreshed tokens if present.
+  Future<String?> currentSession() async {
+    return await _call('current_session', {}) as String?;
+  }
+
   /// Perform a single sync round.
   Future<void> syncOnce({Duration? timeout}) async {
     if (timeout == null) {
@@ -927,6 +944,16 @@ class ManyMatrixBridge implements ffi.Finalizable {
     final list = jsonDecode(json) as List<dynamic>;
     return list
         .map((e) => RoomSummary.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Get the list of pending invited rooms.
+  Future<List<RoomInvite>> invitedRooms() async {
+    final json = await _call('invited_rooms', {}) as String?;
+    if (json == null) return [];
+    final list = jsonDecode(json) as List<dynamic>;
+    return list
+        .map((e) => RoomInvite.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
@@ -1025,6 +1052,15 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Get the list of joined member user IDs for a room (JSON array string).
   Future<String?> roomMembers(String roomId) async {
     return await _call('room_members', {'s1': roomId}) as String?;
+  }
+
+  /// Get stable room identity details.
+  Future<RoomDetails> roomDetails(String roomId) async {
+    final json = await _call('room_details', {'s1': roomId}) as String?;
+    if (json == null || json.isEmpty) {
+      return RoomDetails(roomId: roomId);
+    }
+    return RoomDetails.fromJson(jsonDecode(json) as Map<String, dynamic>);
   }
 
   /// Get a normalized room power-level snapshot as a JSON object string.
@@ -1431,6 +1467,28 @@ class ManyMatrixBridge implements ffi.Finalizable {
   ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
       _syncStatusCallable;
 
+  /// Register a callback for refreshed session JSON updates.
+  void onSessionUpdate(void Function(String sessionJson) callback) {
+    _sessionUpdateCallable?.close();
+    final nativeCallable =
+        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
+      (ffi.Pointer<ffi.Char> ptr) {
+        final json = ptr.cast<Utf8>().toDartString();
+        _mainBindings.ffi_free_string(ptr.cast());
+        callback(json);
+      },
+    );
+    final result = _mainBindings.manymatrix_on_session_update(
+      _handle,
+      nativeCallable.nativeFunction,
+    );
+    _checkResult(_mainBindings, result, method: 'on_session_update');
+    _sessionUpdateCallable = nativeCallable;
+  }
+
+  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
+      _sessionUpdateCallable;
+
   /// Dispose the client, freeing native resources.
   ///
   /// After calling dispose, this instance must not be used again.
@@ -1441,6 +1499,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
     _reactionCallable?.close();
     _receiptCallable?.close();
     _syncStatusCallable?.close();
+    _sessionUpdateCallable?.close();
     for (final callable in _customEventCallables) {
       callable.close();
     }

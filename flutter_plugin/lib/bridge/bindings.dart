@@ -251,6 +251,50 @@ class ManyMatrixBindings {
       FfiResult Function(
           ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
 
+  /// Get the current JSON-serialized StoredSession, including any refreshed
+  /// access/refresh tokens known to the SDK.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_current_session(
+    ffi.Pointer<ManyMatrixClient> handle,
+  ) {
+    return _manymatrix_current_session(
+      handle,
+    );
+  }
+
+  late final _manymatrix_current_sessionPtr = _lookup<
+          ffi
+          .NativeFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>>(
+      'manymatrix_current_session');
+  late final _manymatrix_current_session = _manymatrix_current_sessionPtr
+      .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
+
+  /// Register a callback for refreshed session JSON updates.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  /// `callback` must remain valid for the lifetime of the client.
+  FfiResult manymatrix_on_session_update(
+    ffi.Pointer<ManyMatrixClient> handle,
+    SessionUpdateCallback callback,
+  ) {
+    return _manymatrix_on_session_update(
+      handle,
+      callback,
+    );
+  }
+
+  late final _manymatrix_on_session_updatePtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              SessionUpdateCallback)>>('manymatrix_on_session_update');
+  late final _manymatrix_on_session_update =
+      _manymatrix_on_session_updatePtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>, SessionUpdateCallback)>();
+
   /// Perform a single sync round.
   ///
   /// # Safety
@@ -371,6 +415,25 @@ class ManyMatrixBindings {
           .NativeFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>>(
       'manymatrix_joined_rooms');
   late final _manymatrix_joined_rooms = _manymatrix_joined_roomsPtr
+      .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
+
+  /// Get the list of invited rooms as a JSON array of RoomInvite objects.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_invited_rooms(
+    ffi.Pointer<ManyMatrixClient> handle,
+  ) {
+    return _manymatrix_invited_rooms(
+      handle,
+    );
+  }
+
+  late final _manymatrix_invited_roomsPtr = _lookup<
+          ffi
+          .NativeFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>>(
+      'manymatrix_invited_rooms');
+  late final _manymatrix_invited_rooms = _manymatrix_invited_roomsPtr
       .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
 
   /// Get Matrix server version and capability data as JSON.
@@ -1627,6 +1690,29 @@ class ManyMatrixBindings {
       FfiResult Function(
           ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
 
+  /// Get stable room identity details as JSON.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  /// `room_id` must point to a valid NUL-terminated C string.
+  FfiResult manymatrix_room_details(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+  ) {
+    return _manymatrix_room_details(
+      handle,
+      room_id,
+    );
+  }
+
+  late final _manymatrix_room_detailsPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>)>>('manymatrix_room_details');
+  late final _manymatrix_room_details = _manymatrix_room_detailsPtr.asFunction<
+      FfiResult Function(
+          ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
+
   /// Return the room power-level snapshot as a JSON string.
   ///
   /// # Safety
@@ -1924,3 +2010,11 @@ typedef SyncStatusCallback
     = ffi.Pointer<ffi.NativeFunction<SyncStatusCallbackFunction>>;
 typedef SyncStatusCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
 typedef DartSyncStatusCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
+
+/// Callback type for refreshed session JSON updates.
+typedef SessionUpdateCallback
+    = ffi.Pointer<ffi.NativeFunction<SessionUpdateCallbackFunction>>;
+typedef SessionUpdateCallbackFunction = ffi.Void Function(
+    ffi.Pointer<ffi.Char>);
+typedef DartSessionUpdateCallbackFunction = void Function(
+    ffi.Pointer<ffi.Char>);

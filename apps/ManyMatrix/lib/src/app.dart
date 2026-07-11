@@ -43,7 +43,9 @@ class AuthGate extends ConsumerWidget {
     return switch (auth) {
       AuthRestoring() => const _RestoringSplash(),
       AuthAuthenticated() => const RoomsPage(),
-      AuthUnauthenticated() || AuthAuthenticating() => const LoginPage(),
+      AuthUnauthenticated() ||
+      AuthAuthenticating() ||
+      AuthRecoveryNeeded() => const LoginPage(),
     };
   }
 }

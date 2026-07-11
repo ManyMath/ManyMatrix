@@ -43,6 +43,26 @@ void main() {
     acceptsSyncStop((bridge) => bridge.stopSync());
   });
 
+  test('ManyMatrixBridge exposes session persistence APIs', () {
+    void acceptsSessionUpdateRegistrar(
+      void Function(ManyMatrixBridge, void Function(String)) registrar,
+    ) {
+      expect(registrar,
+          isA<void Function(ManyMatrixBridge, void Function(String))>());
+    }
+
+    void acceptsCurrentSessionReader(
+      Future<String?> Function(ManyMatrixBridge) read,
+    ) {
+      expect(read, isA<Future<String?> Function(ManyMatrixBridge)>());
+    }
+
+    acceptsSessionUpdateRegistrar(
+      (bridge, callback) => bridge.onSessionUpdate(callback),
+    );
+    acceptsCurrentSessionReader((bridge) => bridge.currentSession());
+  });
+
   test('ManyMatrixBridge exposes custom event power-level API', () {
     void acceptsPowerLevelConfigurator(
       Future<void> Function(ManyMatrixBridge) configure,

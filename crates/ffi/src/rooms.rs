@@ -301,3 +301,24 @@ pub unsafe extern "C" fn manymatrix_room_members(
         Err(e) => FfiResult::error_from(&e),
     }
 }
+
+/// Get stable room identity details as JSON.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+/// `room_id` must point to a valid NUL-terminated C string.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_room_details(
+    handle: *mut ManyMatrixClient,
+    room_id: *const c_char,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let room_id = str_from_ptr(room_id);
+    match client.room_details(room_id) {
+        Ok(details) => match serde_json::to_string(&details) {
+            Ok(json) => FfiResult::success_string(&json),
+            Err(e) => FfiResult::error_from(&e),
+        },
+        Err(e) => FfiResult::error_from(&e),
+    }
+}

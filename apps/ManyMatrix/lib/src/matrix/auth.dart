@@ -15,6 +15,57 @@ class AuthUnauthenticated extends AuthState {
   final String? error;
 }
 
+/// A saved account exists, but the session needs user action before it can be
+/// used again.
+sealed class AuthRecoveryNeeded extends AuthState {
+  const AuthRecoveryNeeded({
+    required this.accountId,
+    required this.label,
+    required this.homeserverUrl,
+    required this.message,
+    this.userId,
+  });
+
+  final String accountId;
+  final String label;
+  final String homeserverUrl;
+  final String? userId;
+  final String message;
+
+  String get suggestedUsername {
+    final candidate = userId ?? label;
+    if (candidate.startsWith('@')) {
+      final colon = candidate.indexOf(':');
+      if (colon > 1) return candidate.substring(1, colon);
+    }
+    return candidate.startsWith('@') ? candidate.substring(1) : candidate;
+  }
+}
+
+/// The saved access/refresh tokens are no longer accepted. Password sign-in is
+/// required, but the saved account and homeserver should remain available.
+class AuthNeedsReauth extends AuthRecoveryNeeded {
+  const AuthNeedsReauth({
+    required super.accountId,
+    required super.label,
+    required super.homeserverUrl,
+    required super.message,
+    super.userId,
+  });
+}
+
+/// The session may still be valid, but restore/sync failed for a recoverable
+/// reason such as network or bridge failure.
+class AuthNeedsReconnect extends AuthRecoveryNeeded {
+  const AuthNeedsReconnect({
+    required super.accountId,
+    required super.label,
+    required super.homeserverUrl,
+    required super.message,
+    super.userId,
+  });
+}
+
 /// A sign-in request is in flight.
 class AuthAuthenticating extends AuthState {
   const AuthAuthenticating();

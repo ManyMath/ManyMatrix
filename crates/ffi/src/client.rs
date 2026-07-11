@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use manymatrix_core::ManyMatrixClient as CoreClient;
 
-use crate::types::{FfiErrorSource, FfiResult, SyncStatusCallback};
+use crate::types::{FfiErrorSource, FfiResult, SessionUpdateCallback, SyncStatusCallback};
 use crate::{str_from_ptr, RUNTIME};
 
 /// Opaque FFI handle for the core Matrix client.
@@ -77,6 +77,12 @@ fn send_sync_status(callback: SyncStatusCallback, status: serde_json::Value) {
         if let Ok(cstr) = CString::new(json) {
             callback(cstr.into_raw());
         }
+    }
+}
+
+fn send_session_update(callback: SessionUpdateCallback, session_json: String) {
+    if let Ok(cstr) = CString::new(session_json) {
+        callback(cstr.into_raw());
     }
 }
 
@@ -148,6 +154,38 @@ pub unsafe extern "C" fn manymatrix_restore(
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
     }
+}
+
+/// Get the current JSON-serialized StoredSession, including any refreshed
+/// access/refresh tokens known to the SDK.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_current_session(handle: *mut ManyMatrixClient) -> FfiResult {
+    let client = client_from_handle(handle);
+    match client.current_session_json() {
+        Ok(Some(json)) => FfiResult::success_string(&json),
+        Ok(None) => FfiResult::success_void(),
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
+/// Register a callback for refreshed session JSON updates.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+/// `callback` must remain valid for the lifetime of the client.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_on_session_update(
+    handle: *mut ManyMatrixClient,
+    callback: SessionUpdateCallback,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    client.set_session_update_callback(move |session_json| {
+        send_session_update(callback, session_json);
+    });
+    FfiResult::success_void()
 }
 
 /// Perform a single sync round.
@@ -244,6 +282,20 @@ pub unsafe extern "C" fn manymatrix_stop_sync(handle: *mut ManyMatrixClient) -> 
 pub unsafe extern "C" fn manymatrix_joined_rooms(handle: *mut ManyMatrixClient) -> FfiResult {
     let client = client_from_handle(handle);
     let rooms = RUNTIME.block_on(client.joined_rooms());
+    match serde_json::to_string(&rooms) {
+        Ok(json) => FfiResult::success_string(&json),
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
+/// Get the list of invited rooms as a JSON array of RoomInvite objects.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_invited_rooms(handle: *mut ManyMatrixClient) -> FfiResult {
+    let client = client_from_handle(handle);
+    let rooms = RUNTIME.block_on(client.invited_rooms());
     match serde_json::to_string(&rooms) {
         Ok(json) => FfiResult::success_string(&json),
         Err(e) => FfiResult::error_from(&e),

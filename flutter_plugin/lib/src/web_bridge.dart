@@ -176,6 +176,7 @@ class ManyMatrixBridge {
   Future<void> _persistSession(String sessionJson) async {
     final obj = {'manymatrix_session': sessionJson}.jsify() as JSObject;
     await _chrome.storage.local.set(obj).toDart;
+    _onSessionUpdateCallback?.call(sessionJson);
   }
 
   static Future<String?> loadPersistedSession() async {
@@ -217,6 +218,8 @@ class ManyMatrixBridge {
     _resubscribeEvents();
   }
 
+  Future<String?> currentSession() => loadPersistedSession();
+
   Future<void> syncOnce({Duration? timeout}) async {
     if (timeout != null && timeout.inMilliseconds < 0) {
       throw ArgumentError.value(timeout, 'timeout', 'must be non-negative');
@@ -254,6 +257,10 @@ class ManyMatrixBridge {
     return list
         .map((e) => RoomSummary.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<RoomInvite>> invitedRooms() async {
+    return const <RoomInvite>[];
   }
 
   Future<String> serverCapabilities() async {
@@ -344,6 +351,10 @@ class ManyMatrixBridge {
   Future<String?> roomMembers(String roomId) async {
     final result = await _call('rooms.members', {'room_id': roomId});
     return result['members_json'] as String?;
+  }
+
+  Future<RoomDetails> roomDetails(String roomId) async {
+    return RoomDetails(roomId: roomId);
   }
 
   Future<String?> roomPowerLevels(String roomId) async {
@@ -604,6 +615,7 @@ class ManyMatrixBridge {
   void Function(String json)? _onReactionCallback;
   void Function(String json)? _onReceiptCallback;
   void Function(String json)? _onSyncStatusCallback;
+  void Function(String json)? _onSessionUpdateCallback;
   JSFunction? _eventListener;
   bool _eventsSubscribed = false;
 
@@ -611,7 +623,8 @@ class ManyMatrixBridge {
       _onMessageCallback != null ||
       _onReactionCallback != null ||
       _onReceiptCallback != null ||
-      _onSyncStatusCallback != null;
+      _onSyncStatusCallback != null ||
+      _onSessionUpdateCallback != null;
 
   void _handleRuntimeMessage(JSAny? message, JSAny? sender, JSAny? reply) {
     final data = message.dartify();
@@ -628,6 +641,8 @@ class ManyMatrixBridge {
         _onReceiptCallback?.call(payload);
       case 'sync_status':
         _onSyncStatusCallback?.call(payload);
+      case 'session_update':
+        unawaited(_persistSession(payload));
     }
   }
 
@@ -687,6 +702,11 @@ class ManyMatrixBridge {
     _ensureEventChannel();
   }
 
+  void onSessionUpdate(void Function(String sessionJson) callback) {
+    _onSessionUpdateCallback = callback;
+    _ensureEventChannel();
+  }
+
   void dispose() {
     final listener = _eventListener;
     if (listener != null) {
@@ -697,6 +717,7 @@ class ManyMatrixBridge {
     _onReactionCallback = null;
     _onReceiptCallback = null;
     _onSyncStatusCallback = null;
+    _onSessionUpdateCallback = null;
     _eventsSubscribed = false;
   }
 }

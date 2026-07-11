@@ -99,6 +99,31 @@ pub struct RoomSummary {
     pub unread_count: u64,
 }
 
+/// Stable identity details for a room.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomDetails {
+    pub room_id: String,
+    pub canonical_alias: Option<String>,
+    pub alt_aliases: Vec<String>,
+}
+
+/// Summary of an invited room before the user accepts or declines.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomInvite {
+    pub room_id: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub topic: Option<String>,
+    pub canonical_alias: Option<String>,
+    pub alt_aliases: Vec<String>,
+    pub invited_user_id: Option<String>,
+    pub invited_display_name: Option<String>,
+    pub invited_avatar_url: Option<String>,
+    pub inviter_user_id: Option<String>,
+    pub inviter_display_name: Option<String>,
+    pub inviter_avatar_url: Option<String>,
+}
+
 /// Preview of the most recent message in a room.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LastMessage {

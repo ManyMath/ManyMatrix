@@ -43,6 +43,9 @@ class _FakeModerationService implements MatrixService {
   @override
   Stream<ReceiptEvent> get receiptEvents => const Stream<ReceiptEvent>.empty();
   @override
+  Stream<SessionProblem> get sessionProblems =>
+      const Stream<SessionProblem>.empty();
+  @override
   String? get currentUserId => null;
   @override
   Future<String?> restoreSession() async => null;
@@ -55,13 +58,19 @@ class _FakeModerationService implements MatrixService {
   @override
   Future<void> logout() async {}
   @override
+  Future<void> clearSavedSession({bool keepHomeserver = true}) async {}
+  @override
   Future<List<RoomSummary>> joinedRooms() async => const <RoomSummary>[];
+  @override
+  Future<List<RoomInvite>> invitedRooms() async => const <RoomInvite>[];
   @override
   Future<String> createRoom({String? name, String? topic}) async =>
       throw UnimplementedError();
   @override
   Future<String> joinRoom(String roomIdOrAlias) async =>
       throw UnimplementedError();
+  @override
+  Future<void> leaveRoom(String roomId) async {}
   @override
   Future<void> invite(String roomId, String userId) async {}
   @override
@@ -100,6 +109,13 @@ class _FakeModerationService implements MatrixService {
   Future<void> sendReadReceipt(String roomId, String eventId) async {}
   @override
   Future<List<String>> roomMembers(String roomId) async => const <String>[];
+
+  @override
+  Future<RoomDetails> roomDetails(String roomId) async => RoomDetails(
+    roomId: roomId,
+    canonicalAlias: '#test:example.org',
+    altAliases: const <String>['#general:example.org'],
+  );
 
   @override
   Future<bool> isRoomEncrypted(String roomId) async {
@@ -141,6 +157,27 @@ Widget _app(
 }
 
 void main() {
+  group('RoomInfoPage room identity', () {
+    testWidgets('shows room id and aliases', (tester) async {
+      final service = _FakeModerationService(roomEncrypted: true);
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
+      await tester.pump();
+
+      expect(find.text('Identity'), findsOneWidget);
+      expect(find.text('!room:example.org'), findsOneWidget);
+      expect(find.text('#test:example.org'), findsOneWidget);
+      expect(
+        find.text('#test:example.org, #general:example.org'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Register an alias'), findsOneWidget);
+    });
+  });
+
   group('RoomInfoPage encryption status', () {
     testWidgets('shows encrypted rooms as encrypted', (tester) async {
       final service = _FakeModerationService(roomEncrypted: true);

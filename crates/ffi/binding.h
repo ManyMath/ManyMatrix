@@ -70,6 +70,12 @@ typedef void (*ReceiptCallback)(char*);
 typedef void (*CustomEventCallback)(char*);
 
 /**
+ * Callback type for refreshed session JSON updates. Same ownership contract
+ * as [`MessageCallback`].
+ */
+typedef void (*SessionUpdateCallback)(char*);
+
+/**
  * Callback type for sync-loop status events. Failed exits include the legacy
  * `error` string plus structured `errorKind` and `errorDetails` fields. Same
  * ownership contract as [`MessageCallback`].
@@ -194,6 +200,26 @@ struct FfiResult manymatrix_login(struct ManyMatrixClient *handle,
  struct FfiResult manymatrix_restore(struct ManyMatrixClient *handle, const char *session_json);
 
 /**
+ * Get the current JSON-serialized StoredSession, including any refreshed
+ * access/refresh tokens known to the SDK.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+ struct FfiResult manymatrix_current_session(struct ManyMatrixClient *handle);
+
+/**
+ * Register a callback for refreshed session JSON updates.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ * `callback` must remain valid for the lifetime of the client.
+ */
+
+struct FfiResult manymatrix_on_session_update(struct ManyMatrixClient *handle,
+                                              SessionUpdateCallback callback);
+
+/**
  * Perform a single sync round.
  *
  * # Safety
@@ -245,6 +271,14 @@ struct FfiResult manymatrix_sync_forever_with_status(struct ManyMatrixClient *ha
  * `handle` must be a valid ManyMatrixClient pointer.
  */
  struct FfiResult manymatrix_joined_rooms(struct ManyMatrixClient *handle);
+
+/**
+ * Get the list of invited rooms as a JSON array of RoomInvite objects.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ */
+ struct FfiResult manymatrix_invited_rooms(struct ManyMatrixClient *handle);
 
 /**
  * Get Matrix server version and capability data as JSON.
@@ -793,5 +827,14 @@ struct FfiResult manymatrix_ban(struct ManyMatrixClient *handle,
  * `handle` must be a valid ManyMatrixClient pointer.
  */
  struct FfiResult manymatrix_room_members(struct ManyMatrixClient *handle, const char *room_id);
+
+/**
+ * Get stable room identity details as JSON.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer.
+ * `room_id` must point to a valid NUL-terminated C string.
+ */
+ struct FfiResult manymatrix_room_details(struct ManyMatrixClient *handle, const char *room_id);
 
 #endif  /* MANYMATRIX_FFI_H */

@@ -6,6 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manymatrix/manymatrix.dart';
 import 'package:manyui/manyui.dart';
 import 'package:manymatrix_app/src/app.dart';
+import 'package:manymatrix_app/src/matrix/account.dart';
 import 'package:manymatrix_app/src/matrix/bridge_service.dart';
 import 'package:manymatrix_app/src/matrix/providers.dart';
 
@@ -18,9 +19,11 @@ class FakeMatrixService implements MatrixService {
   final String? failJoinWith;
 
   List<RoomSummary> rooms = const <RoomSummary>[];
+  List<RoomInvite> roomInvites = const <RoomInvite>[];
   String? lastCreatedName;
   String? lastCreatedTopic;
   String? lastJoinedTarget;
+  final List<String> declinedRooms = <String>[];
   final List<({String roomId, String userId})> invited =
       <({String roomId, String userId})>[];
 
@@ -36,6 +39,10 @@ class FakeMatrixService implements MatrixService {
 
   @override
   Stream<ReceiptEvent> get receiptEvents => const Stream<ReceiptEvent>.empty();
+
+  @override
+  Stream<SessionProblem> get sessionProblems =>
+      const Stream<SessionProblem>.empty();
 
   @override
   String? get currentUserId => _userId;
@@ -59,7 +66,13 @@ class FakeMatrixService implements MatrixService {
   }
 
   @override
+  Future<void> clearSavedSession({bool keepHomeserver = true}) async {}
+
+  @override
   Future<List<RoomSummary>> joinedRooms() async => rooms;
+
+  @override
+  Future<List<RoomInvite>> invitedRooms() async => roomInvites;
 
   @override
   Future<String> createRoom({String? name, String? topic}) async {
@@ -86,7 +99,18 @@ class FakeMatrixService implements MatrixService {
         unreadCount: 0,
       ),
     ];
+    roomInvites = roomInvites
+        .where((invite) => invite.roomId != roomIdOrAlias)
+        .toList();
     return roomIdOrAlias;
+  }
+
+  @override
+  Future<void> leaveRoom(String roomId) async {
+    declinedRooms.add(roomId);
+    roomInvites = roomInvites
+        .where((invite) => invite.roomId != roomId)
+        .toList();
   }
 
   @override
@@ -142,6 +166,10 @@ class FakeMatrixService implements MatrixService {
   Future<List<String>> roomMembers(String roomId) async => const <String>[];
 
   @override
+  Future<RoomDetails> roomDetails(String roomId) async =>
+      RoomDetails(roomId: roomId);
+
+  @override
   Future<bool> isRoomEncrypted(String roomId) async => false;
 
   @override
@@ -163,8 +191,19 @@ class FakeMatrixService implements MatrixService {
 }
 
 Widget _app(FakeMatrixService service) {
+  const account = SavedAccount(
+    id: 'test-account',
+    label: '@alice:example.org',
+    homeserverUrl: 'https://example.org',
+    userId: '@alice:example.org',
+  );
   return ProviderScope(
-    overrides: [matrixServiceProvider.overrideWithValue(service)],
+    overrides: [
+      accountsLoaderProvider.overrideWith((ref) async {}),
+      accountsProvider.overrideWith((ref) => const <SavedAccount>[account]),
+      activeAccountIdProvider.overrideWith((ref) => account.id),
+      matrixServiceProvider.overrideWithValue(service),
+    ],
     child: const MWidgetsApp(
       debugShowCheckedModeBanner: false,
       home: AuthGate(),
@@ -275,6 +314,77 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('Could not join room'), findsOneWidget);
+    });
+  });
+
+  group('room invitations', () {
+    testWidgets('shows pending invites and accepts one', (tester) async {
+      final service = FakeMatrixService()
+        ..roomInvites = const <RoomInvite>[
+          RoomInvite(
+            roomId: '!invite:example.org',
+            displayName: 'Project Room',
+            canonicalAlias: '#project:example.org',
+          ),
+        ];
+      await _pumpToRooms(tester, service);
+
+      expect(find.text('Invitations'), findsOneWidget);
+      expect(find.text('Project Room'), findsOneWidget);
+      expect(find.text('#project:example.org'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(MButton, 'Join').last);
+      await tester.pump();
+      await tester.pump();
+
+      expect(service.lastJoinedTarget, '!invite:example.org');
+    });
+
+    testWidgets('opens invite details before accepting', (tester) async {
+      final service = FakeMatrixService()
+        ..roomInvites = const <RoomInvite>[
+          RoomInvite(
+            roomId: '!invite:example.org',
+            displayName: 'Project Room',
+            topic: 'Planning and launch work',
+            canonicalAlias: '#project:example.org',
+            invitedUserId: '@guest:example.org',
+            invitedDisplayName: 'Guest',
+            inviterUserId: '@alice:example.org',
+            inviterDisplayName: 'Alice',
+          ),
+        ];
+      await _pumpToRooms(tester, service);
+
+      await tester.tap(find.widgetWithText(MButton, 'Details'));
+      await tester.pump();
+
+      expect(find.text('Room invitation'), findsOneWidget);
+      expect(find.text('Room ID'), findsOneWidget);
+      expect(find.text('!invite:example.org'), findsOneWidget);
+      expect(find.text('Aliases'), findsOneWidget);
+      expect(find.text('#project:example.org'), findsWidgets);
+      expect(find.text('Topic'), findsOneWidget);
+      expect(find.text('Planning and launch work'), findsOneWidget);
+      expect(find.text('Guest (@guest:example.org)'), findsOneWidget);
+      expect(find.text('Alice (@alice:example.org)'), findsOneWidget);
+    });
+
+    testWidgets('declines a pending invite', (tester) async {
+      final service = FakeMatrixService()
+        ..roomInvites = const <RoomInvite>[
+          RoomInvite(
+            roomId: '!invite:example.org',
+            displayName: 'Project Room',
+          ),
+        ];
+      await _pumpToRooms(tester, service);
+
+      await tester.tap(find.widgetWithText(MButton, 'Decline'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(service.declinedRooms, <String>['!invite:example.org']);
     });
   });
 }

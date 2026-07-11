@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex as StdMutex,
 };
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -39,7 +39,8 @@ use tracing::info;
 use crate::session::StoredSession;
 use crate::types::{
     CreateRoomOptions, CustomEvent, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent,
-    ReceiptEvent, RoomSummary, RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities,
+    ReceiptEvent, RoomDetails, RoomInvite, RoomSummary, RoomVisibility, SasEmoji, SasEmojis,
+    ServerCapabilities,
 };
 use crate::Error;
 
@@ -55,6 +56,18 @@ async fn wait_for_background_sync_cancelled(cancelled: &AtomicBool) {
     }
 }
 
+fn room_details_from_room(room: &Room) -> RoomDetails {
+    RoomDetails {
+        room_id: room.room_id().to_string(),
+        canonical_alias: room.canonical_alias().map(|alias| alias.to_string()),
+        alt_aliases: room
+            .alt_aliases()
+            .into_iter()
+            .map(|alias| alias.to_string())
+            .collect(),
+    }
+}
+
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
 #[derive(Clone)]
 pub struct ManyMatrixClient {
@@ -62,6 +75,8 @@ pub struct ManyMatrixClient {
     homeserver: String,
     store_path: PathBuf,
     sync_token: Arc<Mutex<Option<String>>>,
+    latest_session_json: Arc<StdMutex<Option<String>>>,
+    session_update_callback: Arc<StdMutex<Option<Box<dyn Fn(String) + Send + Sync>>>>,
 }
 
 impl ManyMatrixClient {
@@ -85,13 +100,72 @@ impl ManyMatrixClient {
             homeserver: self.homeserver.clone(),
             session,
         };
+        self.remember_session_json(&stored)?;
         Ok(stored)
     }
 
     /// Restore a previously saved session.
     pub async fn restore(&self, session: &StoredSession) -> Result<(), Error> {
         self.client.restore_session(session.session.clone()).await?;
+        self.remember_session_json(session)?;
         Ok(())
+    }
+
+    fn remember_session_json(&self, session: &StoredSession) -> Result<(), Error> {
+        let json = serde_json::to_string(session)?;
+        *self
+            .latest_session_json
+            .lock()
+            .expect("session mutex poisoned") = Some(json);
+        Ok(())
+    }
+
+    fn publish_session_json(
+        latest_session_json: &Arc<StdMutex<Option<String>>>,
+        session_update_callback: &Arc<StdMutex<Option<Box<dyn Fn(String) + Send + Sync>>>>,
+        session: &StoredSession,
+    ) -> Result<(), Error> {
+        let json = serde_json::to_string(session)?;
+        *latest_session_json.lock().expect("session mutex poisoned") = Some(json.clone());
+        if let Some(callback) = &*session_update_callback
+            .lock()
+            .expect("session callback mutex poisoned")
+        {
+            callback(json);
+        }
+        Ok(())
+    }
+
+    /// JSON-serialize the current Matrix session in the persisted
+    /// [`StoredSession`] shape.
+    pub fn current_session_json(&self) -> Result<Option<String>, Error> {
+        if let Some(session) = self.client.matrix_auth().session() {
+            let stored = StoredSession {
+                homeserver: self.homeserver.clone(),
+                session,
+            };
+            self.remember_session_json(&stored)?;
+        }
+        Ok(self
+            .latest_session_json
+            .lock()
+            .expect("session mutex poisoned")
+            .clone())
+    }
+
+    /// Registers a synchronous callback for Matrix SDK session token updates.
+    ///
+    /// The SDK invokes this after successful access/refresh-token rotation.
+    /// Consumers should persist the JSON immediately so a later restore does
+    /// not use stale refresh credentials.
+    pub fn set_session_update_callback<F>(&self, callback: F)
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        *self
+            .session_update_callback
+            .lock()
+            .expect("session callback mutex poisoned") = Some(Box::new(callback));
     }
 
     /// Log out of the homeserver and remove local state.
@@ -383,6 +457,71 @@ impl ManyMatrixClient {
             });
         }
         summaries
+    }
+
+    /// List pending room invitations.
+    pub async fn invited_rooms(&self) -> Vec<RoomInvite> {
+        let mut invites = Vec::new();
+        for room in self.client.invited_rooms() {
+            let room_id = room.room_id().to_string();
+            let display_name = room
+                .display_name()
+                .await
+                .ok()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| room_id.clone());
+            let invite_details = room.invite_details().await.ok();
+            let invited_user_id = invite_details
+                .as_ref()
+                .map(|details| details.invitee.user_id().to_string());
+            let invited_display_name = invite_details
+                .as_ref()
+                .and_then(|details| details.invitee.display_name().map(ToOwned::to_owned));
+            let invited_avatar_url = invite_details.as_ref().and_then(|details| {
+                details
+                    .invitee
+                    .avatar_url()
+                    .map(|avatar_url| avatar_url.to_string())
+            });
+            let inviter_user_id = invite_details.as_ref().map(|details| {
+                details
+                    .inviter
+                    .as_ref()
+                    .map(|inviter| inviter.user_id().to_string())
+                    .unwrap_or_else(|| details.invitee.event().sender().to_string())
+            });
+            let inviter_display_name = invite_details
+                .as_ref()
+                .and_then(|details| details.inviter.as_ref())
+                .map(|inviter| inviter.name().to_owned());
+            let inviter_avatar_url = invite_details
+                .as_ref()
+                .and_then(|details| details.inviter.as_ref())
+                .and_then(|inviter| {
+                    inviter
+                        .avatar_url()
+                        .map(|avatar_url| avatar_url.to_string())
+                });
+            invites.push(RoomInvite {
+                room_id,
+                display_name,
+                avatar_url: room.avatar_url().map(|url| url.to_string()),
+                topic: room.topic(),
+                canonical_alias: room.canonical_alias().map(|alias| alias.to_string()),
+                alt_aliases: room
+                    .alt_aliases()
+                    .into_iter()
+                    .map(|alias| alias.to_string())
+                    .collect(),
+                invited_user_id,
+                invited_display_name,
+                invited_avatar_url,
+                inviter_user_id,
+                inviter_display_name,
+                inviter_avatar_url,
+            });
+        }
+        invites
     }
 
     /// Paginate messages backward from a room.
@@ -699,6 +838,12 @@ impl ManyMatrixClient {
     pub fn room_avatar_url(&self, room_id: &str) -> Result<Option<String>, Error> {
         let room = self.get_room_parsed(room_id)?;
         Ok(room.avatar_url().map(|u| u.to_string()))
+    }
+
+    /// Get stable room identity details.
+    pub fn room_details(&self, room_id: &str) -> Result<RoomDetails, Error> {
+        let room = self.get_room_parsed(room_id)?;
+        Ok(room_details_from_room(&room))
     }
 
     /// Get the list of joined member user IDs for a room.
@@ -1218,10 +1363,48 @@ impl ManyMatrixClient {
             .with_encryption_settings(key_backup_encryption_settings())
             .build()
             .await?;
+        let latest_session_json = Arc::new(StdMutex::new(None));
+        let session_update_callback = Arc::new(StdMutex::new(None));
+        let homeserver = homeserver_url.to_owned();
+        {
+            let homeserver = homeserver.clone();
+            let latest_session_json = latest_session_json.clone();
+            let session_update_callback = session_update_callback.clone();
+            client.set_session_callbacks(
+                Box::new(|client| {
+                    client.session_tokens().ok_or_else(
+                        || -> Box<dyn std::error::Error + Send + Sync> {
+                            "no active Matrix session tokens".into()
+                        },
+                    )
+                }),
+                Box::new(move |client| {
+                    let session = client.matrix_auth().session().ok_or_else(
+                        || -> Box<dyn std::error::Error + Send + Sync> {
+                            "no active Matrix session".into()
+                        },
+                    )?;
+                    let stored = StoredSession {
+                        homeserver: homeserver.clone(),
+                        session,
+                    };
+                    ManyMatrixClient::publish_session_json(
+                        &latest_session_json,
+                        &session_update_callback,
+                        &stored,
+                    )
+                    .map_err(
+                        |error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) },
+                    )
+                }),
+            )?;
+        }
         Ok(Self {
             client,
-            homeserver: homeserver_url.to_owned(),
+            homeserver,
             sync_token: Arc::new(Mutex::new(None)),
+            latest_session_json,
+            session_update_callback,
             store_path: store_path.to_owned(),
         })
     }
@@ -1435,11 +1618,49 @@ impl ManyMatrixClient {
             .with_encryption_settings(key_backup_encryption_settings())
             .build()
             .await?;
+        let latest_session_json = Arc::new(StdMutex::new(None));
+        let session_update_callback = Arc::new(StdMutex::new(None));
+        let homeserver = homeserver_url.to_owned();
+        {
+            let homeserver = homeserver.clone();
+            let latest_session_json = latest_session_json.clone();
+            let session_update_callback = session_update_callback.clone();
+            client.set_session_callbacks(
+                Box::new(|client| {
+                    client.session_tokens().ok_or_else(
+                        || -> Box<dyn std::error::Error + Send + Sync> {
+                            "no active Matrix session tokens".into()
+                        },
+                    )
+                }),
+                Box::new(move |client| {
+                    let session = client.matrix_auth().session().ok_or_else(
+                        || -> Box<dyn std::error::Error + Send + Sync> {
+                            "no active Matrix session".into()
+                        },
+                    )?;
+                    let stored = StoredSession {
+                        homeserver: homeserver.clone(),
+                        session,
+                    };
+                    ManyMatrixClient::publish_session_json(
+                        &latest_session_json,
+                        &session_update_callback,
+                        &stored,
+                    )
+                    .map_err(
+                        |error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) },
+                    )
+                }),
+            )?;
+        }
         info!("WASM client built for {}", homeserver_url);
         Ok(Self {
             client,
-            homeserver: homeserver_url.to_owned(),
+            homeserver,
             sync_token: Arc::new(Mutex::new(None)),
+            latest_session_json,
+            session_update_callback,
             store_path: PathBuf::from(store_name),
         })
     }

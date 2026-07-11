@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
+import 'package:manymatrix/manymatrix.dart';
 
 import '../matrix/providers.dart';
 
@@ -37,6 +38,12 @@ class RoomInfoPage extends ConsumerWidget {
         slivers: <Widget>[
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            sliver: SliverToBoxAdapter(
+              child: _RoomIdentitySection(roomId: roomId),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             sliver: SliverToBoxAdapter(
               child: _EncryptionSection(roomId: roomId),
             ),
@@ -88,6 +95,128 @@ class RoomInfoPage extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RoomIdentitySection extends ConsumerWidget {
+  const _RoomIdentitySection({required this.roomId});
+
+  final String roomId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final details = ref.watch(roomDetailsProvider(roomId));
+
+    return MInsetPanel(
+      padding: const EdgeInsets.all(12),
+      child: details.when(
+        loading: () => const MSectionHeader(
+          title: 'Identity',
+          description: 'Loading room identity.',
+        ),
+        error: (error, _) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            MSectionHeader(
+              title: 'Identity',
+              description: roomId,
+              descriptionMaxLines: 2,
+              actions: <Widget>[
+                MButton(
+                  variant: MButtonVariant.ghost,
+                  onPressed: () => ref.invalidate(roomDetailsProvider(roomId)),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            MAlert(
+              variant: MAlertVariant.destructive,
+              message: 'Could not load room aliases: $error',
+            ),
+          ],
+        ),
+        data: (details) => _RoomIdentityDetails(details: details),
+      ),
+    );
+  }
+}
+
+class _RoomIdentityDetails extends StatelessWidget {
+  const _RoomIdentityDetails({required this.details});
+
+  final RoomDetails details;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MTheme.of(context);
+    final aliases = details.aliases;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        const MSectionHeader(title: 'Identity'),
+        const SizedBox(height: 12),
+        _IdentityRow(label: 'Room ID', value: details.roomId),
+        const SizedBox(height: 8),
+        if (details.canonicalAlias != null)
+          _IdentityRow(label: 'Canonical alias', value: details.canonicalAlias!)
+        else
+          _IdentityRow(label: 'Canonical alias', value: 'Not set', muted: true),
+        const SizedBox(height: 8),
+        _IdentityRow(
+          label: 'Aliases',
+          value: aliases.isEmpty ? 'No aliases registered' : aliases.join(', '),
+          muted: aliases.isEmpty,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Register an alias by creating a Matrix room alias like #name:server on the homeserver and publishing it as the room canonical alias.',
+          style: theme.typography.caption.copyWith(
+            color: theme.colors.mutedForeground,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _IdentityRow extends StatelessWidget {
+  const _IdentityRow({
+    required this.label,
+    required this.value,
+    this.muted = false,
+  });
+
+  final String label;
+  final String value;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          label,
+          style: theme.typography.caption.copyWith(
+            color: theme.colors.mutedForeground,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 2,
+          style: theme.typography.body.copyWith(
+            color: muted ? theme.colors.mutedForeground : null,
+          ),
+        ),
+      ],
     );
   }
 }

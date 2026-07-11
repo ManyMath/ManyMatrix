@@ -162,6 +162,10 @@ pub type CustomEventCallback = extern "C" fn(*mut c_char);
 /// ownership contract as [`MessageCallback`].
 pub type SyncStatusCallback = extern "C" fn(*mut c_char);
 
+/// Callback type for refreshed session JSON updates. Same ownership contract
+/// as [`MessageCallback`].
+pub type SessionUpdateCallback = extern "C" fn(*mut c_char);
+
 #[cfg(test)]
 mod tests {
     use super::FfiResult;

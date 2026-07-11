@@ -21,7 +21,7 @@ void main() {
     await tester.tap(find.text('Reply'));
     await tester.pump();
 
-    expect(find.text('Replying to @bob:example.org'), findsOneWidget);
+    expect(find.text('Replying to bob'), findsOneWidget);
 
     await tester.enterText(find.byType(EditableText), 'Answer');
     await tester.tap(find.text('Send'));
@@ -30,14 +30,16 @@ void main() {
     expect(service.replyCalls, <_ReplyCall>[
       const _ReplyCall(roomId: _roomId, eventId: r'$event-1', body: 'Answer'),
     ]);
-    expect(find.text('Replying to @bob:example.org'), findsNothing);
+    expect(find.text('Replying to bob'), findsNothing);
     expect(find.text('Answer'), findsOneWidget);
-    expect(find.text(r'Reply to $event-1'), findsOneWidget);
+    expect(find.text('Reply'), findsWidgets);
+    expect(find.textContaining(r'$event-1'), findsNothing);
   });
 
   testWidgets('sends thread replies against the thread root', (tester) async {
     final service = _FakeMatrixService(
       initialMessages: <MessageEvent>[
+        _message(r'$root-event', sender: '@alice:example.org', body: 'Root'),
         _message(
           r'$reply-1',
           sender: '@bob:example.org',
@@ -48,10 +50,14 @@ void main() {
     );
 
     await _pumpChat(tester, service);
-    await tester.tap(find.text('Thread'));
-    await tester.pump();
+    expect(find.text('Existing thread message'), findsNothing);
+    expect(find.text('Open thread (1)'), findsOneWidget);
 
-    expect(find.text('Thread reply to @bob:example.org'), findsOneWidget);
+    await tester.tap(find.text('Open thread (1)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Existing thread message'), findsOneWidget);
+    expect(find.text('Thread reply to alice'), findsOneWidget);
 
     await tester.enterText(find.byType(EditableText), 'Thread answer');
     await tester.tap(find.text('Send'));
@@ -64,10 +70,18 @@ void main() {
         body: 'Thread answer',
       ),
     ]);
-    expect(find.text('Thread reply to @bob:example.org'), findsNothing);
+    expect(service.textCalls, isEmpty);
+    expect(find.text('Thread reply to alice'), findsOneWidget);
     expect(find.text('Thread answer'), findsOneWidget);
-    expect(find.text(r'Reply to $reply-1'), findsOneWidget);
-    expect(find.text(r'Thread $root-event'), findsNWidgets(2));
+    expect(find.text('Thread reply'), findsWidgets);
+    expect(find.textContaining(r'$root-event'), findsNothing);
+
+    await tester.tap(find.bySemanticsLabel('Close thread'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Thread answer'), findsNothing);
+    expect(find.text('Existing thread message'), findsNothing);
+    expect(find.text('Open thread (2)'), findsOneWidget);
   });
 
   testWidgets('edits own text messages from the composer', (tester) async {
@@ -81,7 +95,7 @@ void main() {
     await tester.tap(find.text('Edit'));
     await tester.pump();
 
-    expect(find.text('Editing @alice:example.org'), findsOneWidget);
+    expect(find.text('Editing alice'), findsOneWidget);
 
     await tester.enterText(find.byType(EditableText), 'Edited body');
     await tester.tap(find.text('Save'));
@@ -94,7 +108,7 @@ void main() {
         newBody: 'Edited body',
       ),
     ]);
-    expect(find.text('Editing @alice:example.org'), findsNothing);
+    expect(find.text('Editing alice'), findsNothing);
     expect(find.text('Original'), findsNothing);
     expect(find.text('Edited body'), findsOneWidget);
     expect(find.textContaining('edited'), findsOneWidget);
@@ -134,7 +148,7 @@ void main() {
     expect(service.emoteCalls, <_MessageCall>[
       const _MessageCall(roomId: _roomId, body: 'waves'),
     ]);
-    expect(find.text('* @alice waves'), findsOneWidget);
+    expect(find.text('* You waves'), findsOneWidget);
   });
 
   testWidgets('sends formatted HTML with a plain-text fallback', (
@@ -162,6 +176,31 @@ void main() {
     ]);
     expect(find.text('Bold'), findsOneWidget);
   });
+
+  testWidgets('keeps outgoing messages inside a centered readable lane', (
+    tester,
+  ) async {
+    final previousSize = tester.view.physicalSize;
+    final previousDevicePixelRatio = tester.view.devicePixelRatio;
+    addTearDown(() {
+      tester.view.physicalSize = previousSize;
+      tester.view.devicePixelRatio = previousDevicePixelRatio;
+    });
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1466, 1000);
+
+    final service = _FakeMatrixService(
+      initialMessages: <MessageEvent>[
+        _message(r'$event-1', sender: '@alice:example.org', body: 'Readable'),
+      ],
+    );
+
+    await _pumpChat(tester, service);
+
+    final messageRect = tester.getRect(find.text('Readable'));
+    expect(messageRect.right, lessThan(1210));
+    expect(messageRect.left, greaterThan(560));
+  });
 }
 
 const _roomId = '!room:example.org';
@@ -169,7 +208,10 @@ const _roomId = '!room:example.org';
 Future<void> _pumpChat(WidgetTester tester, _FakeMatrixService service) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: <Override>[matrixServiceProvider.overrideWithValue(service)],
+      overrides: <Override>[
+        matrixServiceProvider.overrideWithValue(service),
+        currentUserIdProvider.overrideWithValue(service.currentUserId),
+      ],
       child: const MWidgetsApp(
         debugShowCheckedModeBanner: false,
         home: ChatView(roomId: _roomId),
@@ -202,6 +244,7 @@ class _FakeMatrixService implements MatrixService {
   final List<MessageEvent> initialMessages;
   final List<_EditCall> editCalls = <_EditCall>[];
   final List<_HtmlCall> htmlCalls = <_HtmlCall>[];
+  final List<_MessageCall> textCalls = <_MessageCall>[];
   final List<_MessageCall> noticeCalls = <_MessageCall>[];
   final List<_MessageCall> emoteCalls = <_MessageCall>[];
   final List<_ReplyCall> replyCalls = <_ReplyCall>[];
@@ -221,6 +264,10 @@ class _FakeMatrixService implements MatrixService {
   Stream<ReceiptEvent> get receiptEvents => _receipts.stream;
 
   @override
+  Stream<SessionProblem> get sessionProblems =>
+      const Stream<SessionProblem>.empty();
+
+  @override
   String? get currentUserId => '@alice:example.org';
 
   @override
@@ -237,7 +284,13 @@ class _FakeMatrixService implements MatrixService {
   Future<void> logout() async {}
 
   @override
+  Future<void> clearSavedSession({bool keepHomeserver = true}) async {}
+
+  @override
   Future<List<RoomSummary>> joinedRooms() async => const <RoomSummary>[];
+
+  @override
+  Future<List<RoomInvite>> invitedRooms() async => const <RoomInvite>[];
 
   @override
   Future<String> createRoom({String? name, String? topic}) async =>
@@ -245,6 +298,9 @@ class _FakeMatrixService implements MatrixService {
 
   @override
   Future<String> joinRoom(String roomIdOrAlias) async => roomIdOrAlias;
+
+  @override
+  Future<void> leaveRoom(String roomId) async {}
 
   @override
   Future<void> invite(String roomId, String userId) async {}
@@ -257,7 +313,10 @@ class _FakeMatrixService implements MatrixService {
   }) async => PaginatedMessages(messages: initialMessages);
 
   @override
-  Future<String> sendText(String roomId, String body) async => r'$local';
+  Future<String> sendText(String roomId, String body) async {
+    textCalls.add(_MessageCall(roomId: roomId, body: body));
+    return r'$local';
+  }
 
   @override
   Future<String> sendHtml(String roomId, String body, String html) async {
@@ -314,6 +373,10 @@ class _FakeMatrixService implements MatrixService {
 
   @override
   Future<List<String>> roomMembers(String roomId) async => const <String>[];
+
+  @override
+  Future<RoomDetails> roomDetails(String roomId) async =>
+      RoomDetails(roomId: roomId);
 
   @override
   Future<bool> isRoomEncrypted(String roomId) async => false;

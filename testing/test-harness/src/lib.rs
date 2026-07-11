@@ -164,10 +164,10 @@ impl ServerKind {
             #[cfg(feature = "hosted-tests")]
             Self::HostedTuwunel => "tuwunel-hosted",
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             Self::Unavailable => "unavailable",
         }
     }
@@ -189,10 +189,10 @@ impl ServerKind {
             #[cfg(feature = "hosted-tests")]
             Self::HostedTuwunel => "tuwunel",
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             Self::Unavailable => "unavailable",
         }
     }
@@ -214,10 +214,10 @@ impl ServerKind {
             #[cfg(feature = "hosted-tests")]
             Self::HostedTuwunel => "/_matrix/client/versions",
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             Self::Unavailable => "/_matrix/client/versions",
         }
     }
@@ -239,10 +239,10 @@ impl ServerKind {
             #[cfg(feature = "hosted-tests")]
             Self::HostedTuwunel => "registration_token",
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             Self::Unavailable => "unavailable",
         }
     }
@@ -313,10 +313,10 @@ impl ServerKind {
                 revision: None,
             },
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             Self::Unavailable => compat::ServerSourceMetadata {
                 source_type: "unavailable".to_owned(),
                 label: "no homeserver test tier enabled".to_owned(),
@@ -361,10 +361,10 @@ impl std::fmt::Display for ServerKind {
             #[cfg(feature = "hosted-tests")]
             ServerKind::HostedTuwunel => write!(f, "Hosted Tuwunel"),
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             ServerKind::Unavailable => write!(f, "Unavailable"),
         }
     }
@@ -435,14 +435,12 @@ impl TestHomeserver {
             #[cfg(feature = "docker-tests")]
             ServerKind::DendriteDocker => Self::start_dendrite_docker().await,
             #[cfg(feature = "hosted-tests")]
-            ServerKind::HostedSynapse | ServerKind::HostedTuwunel => {
-                Self::start_hosted(kind).await
-            }
+            ServerKind::HostedSynapse | ServerKind::HostedTuwunel => Self::start_hosted(kind).await,
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             ServerKind::Unavailable => bail!("no homeserver test tier enabled"),
         }
     }
@@ -567,7 +565,10 @@ impl TestHomeserver {
             .with_env_var("CONDUWUIT_PORT", "6167")
             .with_env_var("CONDUWUIT_DATABASE_PATH", "/var/lib/continuwuity")
             .with_env_var("CONDUWUIT_ALLOW_REGISTRATION", "true")
-            .with_env_var("CONDUWUIT_REGISTRATION_TOKEN", CONTINUWUITY_REGISTRATION_TOKEN)
+            .with_env_var(
+                "CONDUWUIT_REGISTRATION_TOKEN",
+                CONTINUWUITY_REGISTRATION_TOKEN,
+            )
             .with_env_var("CONDUWUIT_LOG", "info")
             .with_env_var("CONDUWUIT_ALLOW_CHECK_FOR_UPDATES", "false")
             .start()
@@ -792,10 +793,10 @@ impl TestHomeserver {
                 cleanup_hosted_users(&self.base_url, users).await;
             }
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             HomeserverBackend::Unavailable => {}
         }
 
@@ -830,10 +831,10 @@ impl TestHomeserver {
                 Ok("hosted backend does not expose captured stdout".to_owned())
             }
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             HomeserverBackend::Unavailable => Ok("no homeserver backend enabled".to_owned()),
         }
     }
@@ -866,10 +867,10 @@ impl TestHomeserver {
                 Ok("hosted backend does not expose captured stderr".to_owned())
             }
             #[cfg(not(any(
-        feature = "embedded-tests",
-        feature = "docker-tests",
-        feature = "hosted-tests"
-    )))]
+                feature = "embedded-tests",
+                feature = "docker-tests",
+                feature = "hosted-tests"
+            )))]
             HomeserverBackend::Unavailable => Ok("no homeserver backend enabled".to_owned()),
         }
     }
@@ -1163,7 +1164,10 @@ async fn cleanup_hosted_users(base_url: &str, users: Vec<RegisteredUser>) {
         {
             Ok(response) => response,
             Err(error) => {
-                tracing::warn!("hosted cleanup: joined_rooms for {} failed: {error}", user.user_id);
+                tracing::warn!(
+                    "hosted cleanup: joined_rooms for {} failed: {error}",
+                    user.user_id
+                );
                 continue;
             }
         };
@@ -1190,7 +1194,9 @@ async fn cleanup_hosted_users(base_url: &str, users: Vec<RegisteredUser>) {
         for room in joined {
             for action in ["leave", "forget"] {
                 if let Err(error) = http
-                    .post(format!("{base_url}/_matrix/client/v3/rooms/{room}/{action}"))
+                    .post(format!(
+                        "{base_url}/_matrix/client/v3/rooms/{room}/{action}"
+                    ))
                     .bearer_auth(&user.access_token)
                     .json(&serde_json::json!({}))
                     .send()
