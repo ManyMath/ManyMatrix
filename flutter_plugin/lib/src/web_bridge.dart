@@ -6,9 +6,13 @@ import 'dart:developer' as developer;
 import 'dart:js_interop';
 import 'dart:typed_data';
 
+import 'package:web/web.dart' as web;
+
 import 'bridge_status.dart';
 import 'models/models.dart';
+import 'store_cleanup.dart';
 import 'web_bridge_errors.dart';
+import 'web_rpc_timeout.dart';
 
 @JS('chrome')
 external _Chrome get _chrome;
@@ -62,17 +66,622 @@ Future<bool> _waitForContextRestore() async {
   return false;
 }
 
+Map<String, dynamic> _stringMap(Object? value) {
+  if (value is! Map) {
+    throw ManyMatrixSerdeException(
+      'malformed bridge message: expected an object',
+      details: {'valueType': value.runtimeType.toString()},
+    );
+  }
+  return value.map((key, item) => MapEntry('$key', item));
+}
+
+ManyMatrixException _transportException(Object? value) {
+  final error = _stringMap(value);
+  return manyMatrixExceptionForEnvelope(
+    error['kind'] as String? ?? 'StorageError',
+    error['message'] as String? ?? 'ManyMatrix browser runtime failed',
+    details: error['details'] is Map
+        ? _stringMap(error['details'])
+        : const <String, dynamic>{},
+  );
+}
+
+Future<void> _scrubLegacyExtensionStorage({
+  String? expectedHomeserverUrl,
+  String? scopedSessionKey,
+  required bool ensure,
+}) async {
+  final message = <String, Object?>{
+    'type': 'manymatrix-legacy-storage',
+    'action': ensure ? 'ensure' : 'scrub',
+    if (expectedHomeserverUrl != null)
+      'expected_homeserver_url': expectedHomeserverUrl,
+    if (scopedSessionKey != null) 'scoped_session_key': scopedSessionKey,
+  };
+  final JSAny? replyJs;
+  try {
+    replyJs = await _chrome.runtime
+        .sendMessage(message.jsify())
+        .toDart
+        .timeout(const Duration(seconds: 30));
+  } on TimeoutException {
+    throw ManyMatrixStorageException(
+      'The ManyMatrix extension did not finish legacy storage cleanup.',
+      details: const {'reason': 'legacy_storage_cleanup_timeout'},
+    );
+  }
+  if (replyJs == null) {
+    throw ManyMatrixStorageException(
+      'The ManyMatrix extension did not answer legacy storage cleanup.',
+      details: const {'reason': 'legacy_storage_cleanup_no_reply'},
+    );
+  }
+  final reply = _stringMap(replyJs.dartify());
+  if (reply.containsKey('ok')) return;
+  if (reply.containsKey('err')) throw _transportException(reply['err']);
+  throw ManyMatrixSerdeException(
+    'malformed legacy storage cleanup reply',
+    details: const {'reason': 'legacy_storage_cleanup_malformed_reply'},
+  );
+}
+
+typedef _TransportEventHandler = void Function(String kind, String payload);
+
+abstract interface class _WebTransport {
+  set onEvent(_TransportEventHandler? handler);
+
+  Future<Map<String, dynamic>> call(
+    String method,
+    Map<String, dynamic> args,
+  );
+
+  Future<void> close();
+}
+
+class _WebStoreLease {
+  _WebStoreLease._(this._release, this._holding);
+
+  final Completer<void> _release;
+  final Future<JSAny?> _holding;
+
+  static Future<_WebStoreLease> acquire(String storeName) async {
+    final release = Completer<void>();
+    final granted = Completer<bool>();
+    final callback = ((JSAny? lock) {
+      if (!granted.isCompleted) granted.complete(lock != null);
+      if (lock == null) return null;
+      return release.future.then<JSAny?>((_) => null).toJS;
+    }).toJS;
+    final Future<JSAny?> holding;
+    try {
+      holding = web.window.navigator.locks
+          .request(
+            'manymatrix-store-$storeName',
+            <String, Object?>{
+              'mode': 'exclusive',
+              'ifAvailable': true,
+            }.jsify() as JSObject,
+            callback,
+          )
+          .toDart;
+    } on Object catch (error) {
+      throw ManyMatrixStorageException(
+        'This browser cannot enforce exclusive Matrix account storage.',
+        details: {'store': storeName, 'cause': '$error'},
+      );
+    }
+    final acquired = await granted.future.timeout(const Duration(seconds: 2));
+    if (!acquired) {
+      await holding;
+      throw ManyMatrixStorageException(
+        'This Matrix account is active in another browser tab. Close that tab before reconnecting.',
+        details: {'reason': 'store_active_in_another_tab', 'store': storeName},
+      );
+    }
+    return _WebStoreLease._(release, holding);
+  }
+
+  Future<void> release() async {
+    if (!_release.isCompleted) _release.complete();
+    await _holding;
+  }
+}
+
+class _ExtensionTransport implements _WebTransport {
+  _ExtensionTransport._(this._clientId)
+      : _ownerId = web.window.crypto.randomUUID();
+
+  static Future<_ExtensionTransport> create(String clientId) async {
+    final transport = _ExtensionTransport._(clientId);
+    await transport._claim(recovering: false);
+    transport._heartbeatTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(transport._heartbeat()),
+    );
+    return transport;
+  }
+
+  final String _clientId;
+  final String _ownerId;
+  _TransportEventHandler? _onEvent;
+  JSFunction? _eventListener;
+  Timer? _heartbeatTimer;
+  bool _disposed = false;
+  bool _workerReplacementPending = false;
+
+  Future<void> _claim({required bool recovering}) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (true) {
+      try {
+        await _callOnce('bridge.claim', {'recovering': recovering});
+        return;
+      } on ManyMatrixException catch (error) {
+        if (error.details['reason'] != 'owner_active' ||
+            DateTime.now().isAfter(deadline)) {
+          rethrow;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+    }
+  }
+
+  Future<void> _heartbeat() async {
+    if (_disposed) return;
+    try {
+      await _callOnce('bridge.heartbeat', const <String, dynamic>{});
+    } on Object {
+      // The next user operation reports ownership/context loss explicitly.
+    }
+  }
+
+  @override
+  set onEvent(_TransportEventHandler? handler) {
+    _onEvent = handler;
+    if (handler != null && _eventListener == null && !_disposed) {
+      final listener = _handleRuntimeMessage.toJS;
+      _chrome.runtime.onMessage.addListener(listener);
+      _eventListener = listener;
+    }
+  }
+
+  void _handleRuntimeMessage(JSAny? message, JSAny? sender, JSAny? reply) {
+    final data = message.dartify();
+    if (data is! Map || data['type'] != 'manymatrix-event') return;
+    if (data['client_id'] != _clientId || data['owner_id'] != _ownerId) return;
+    final kind = data['kind'];
+    final payload = data['payload'];
+    if (kind is String && payload is String) _onEvent?.call(kind, payload);
+  }
+
+  @override
+  Future<Map<String, dynamic>> call(
+    String method,
+    Map<String, dynamic> args,
+  ) async {
+    if (_disposed) {
+      throw StateError('ManyMatrix bridge is disposed');
+    }
+    return _callSerialized(method, args);
+  }
+
+  Future<Map<String, dynamic>> _callSerialized(
+    String method,
+    Map<String, dynamic> args,
+  ) async {
+    if (_disposed) throw StateError('ManyMatrix bridge is disposed');
+    if (_workerReplacementPending) throw _recoveredWorkerError(method);
+    try {
+      return await _callOnce(method, args);
+    } catch (error) {
+      if (_isRecoveryPending(error)) {
+        _workerReplacementPending = true;
+        throw _recoveredWorkerError(method);
+      }
+      if (_isStaleOwner(error)) {
+        if (_disposed) throw StateError('ManyMatrix bridge is disposed');
+        _workerReplacementPending = true;
+        try {
+          await _claim(recovering: true);
+        } on Object {
+          _workerReplacementPending = false;
+          rethrow;
+        }
+        throw _recoveredWorkerError(method);
+      }
+      if (!_isContextInvalidated(error.toString())) rethrow;
+      bridgeStatus.emit(BridgeStatus.reconnecting);
+      developer.log(
+        'extension context invalidated, waiting for reload',
+        name: 'manymatrix.bridge',
+      );
+      final recovered = await _waitForContextRestore();
+      if (!recovered) {
+        bridgeStatus.emit(BridgeStatus.failed);
+        throw ManyMatrixStorageException(
+          'extension reload did not recover in 5s',
+          details: {'method': method},
+        );
+      }
+      if (_disposed) throw StateError('ManyMatrix bridge is disposed');
+      _workerReplacementPending = true;
+      try {
+        await _claim(recovering: true);
+      } on Object {
+        _workerReplacementPending = false;
+        rethrow;
+      }
+      bridgeStatus.emit(BridgeStatus.connected);
+      developer.log('bridge recovered', name: 'manymatrix.bridge');
+      throw _recoveredWorkerError(method);
+    }
+  }
+
+  ManyMatrixStorageException _recoveredWorkerError(String method) =>
+      ManyMatrixStorageException(
+        'The extension Worker was replaced and must restore its session.',
+        details: {'reason': 'worker_replaced', 'method': method},
+      );
+
+  bool _isStaleOwner(Object error) =>
+      error is ManyMatrixException && error.details['reason'] == 'stale_owner';
+
+  bool _isRecoveryPending(Object error) =>
+      error is ManyMatrixException &&
+      error.details['reason'] == 'recovery_pending';
+
+  void _acknowledgeWorkerRecovery() {
+    _workerReplacementPending = false;
+  }
+
+  Future<Map<String, dynamic>> _callOnce(
+    String method,
+    Map<String, dynamic> args,
+  ) async {
+    final envelope = {
+      'target': 'offscreen',
+      'client_id': _clientId,
+      'owner_id': _ownerId,
+      'method': method,
+      'args': args,
+    };
+    final JSAny? replyJs;
+    try {
+      replyJs = await _chrome.runtime
+          .sendMessage(envelope.jsify())
+          .toDart
+          .timeout(webRpcTimeout(method));
+    } on TimeoutException {
+      throw ManyMatrixStorageException(
+        'no reply from the ManyMatrix extension runtime',
+        details: {'method': method},
+      );
+    }
+    if (replyJs == null) {
+      throw ManyMatrixStorageException(
+        'no reply from the ManyMatrix extension runtime',
+        details: {'method': method},
+      );
+    }
+    final reply = _stringMap(replyJs.dartify());
+    if (reply.containsKey('ok')) return _stringMap(reply['ok']);
+    if (reply.containsKey('err')) throw _transportException(reply['err']);
+    throw ManyMatrixSerdeException(
+      'malformed reply: missing ok/err',
+      details: {'method': method},
+    );
+  }
+
+  @override
+  Future<void> close() async {
+    if (_disposed) return;
+    _disposed = true;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    final listener = _eventListener;
+    if (listener != null) {
+      _chrome.runtime.onMessage.removeListener(listener);
+      _eventListener = null;
+    }
+    _onEvent = null;
+    try {
+      await _chrome.runtime
+          .sendMessage({
+            'target': 'offscreen',
+            'client_id': _clientId,
+            'owner_id': _ownerId,
+            'method': 'bridge.dispose',
+            'args': const <String, dynamic>{},
+          }.jsify())
+          .toDart
+          .timeout(const Duration(seconds: 5));
+    } on Object {
+      // The extension context may already be closing. Its offscreen
+      // document is destroyed by Chrome in that case.
+    }
+  }
+}
+
+class _WorkerTransport implements _WebTransport {
+  _WorkerTransport._(this._worker) {
+    _messageListener = _handleMessage.toJS;
+    _errorListener = _handleWorkerError.toJS;
+    _worker.onmessage = _messageListener;
+    _worker.onmessageerror = _errorListener;
+    _worker.onerror = _errorListener;
+  }
+
+  static Future<_WorkerTransport> create(String workerName) async {
+    final web.Worker worker;
+    try {
+      worker = web.Worker(
+        'manymatrix_worker.js'.toJS,
+        web.WorkerOptions(type: 'module', name: workerName),
+      );
+    } on Object catch (error) {
+      throw ManyMatrixStorageException(
+        'Could not start the ManyMatrix web worker. Serve the complete '
+        'release build over HTTP or HTTPS.',
+        details: {'cause': '$error'},
+      );
+    }
+    final transport = _WorkerTransport._(worker);
+    try {
+      await transport._ready.future.timeout(const Duration(seconds: 30));
+      return transport;
+    } on TimeoutException {
+      await transport.close();
+      throw ManyMatrixStorageException(
+        'The ManyMatrix web worker did not initialize in 30 seconds. Verify '
+        'that manymatrix_worker.js, pkg/manymatrix_web.js, and the WASM file '
+        'are deployed together over HTTP or HTTPS.',
+        details: {'worker': workerName},
+      );
+    } on Object {
+      await transport.close();
+      rethrow;
+    }
+  }
+
+  final web.Worker _worker;
+  final Completer<void> _ready = Completer<void>();
+  final Completer<void> _closed = Completer<void>();
+  final Map<int, Completer<Map<String, dynamic>>> _pending = {};
+  late final JSFunction _messageListener;
+  late final JSFunction _errorListener;
+  _TransportEventHandler? _onEvent;
+  int _nextRequestId = 1;
+  bool _disposed = false;
+  Future<void>? _closeFuture;
+
+  @override
+  set onEvent(_TransportEventHandler? handler) => _onEvent = handler;
+
+  void _handleMessage(web.MessageEvent event) {
+    try {
+      _handleMessageData(_stringMap(event.data.dartify()));
+    } on Object catch (error) {
+      final failure = error is ManyMatrixException
+          ? error
+          : ManyMatrixSerdeException(
+              'Could not decode a ManyMatrix worker message',
+              details: {'cause': '$error'},
+            );
+      if (!_ready.isCompleted) _ready.completeError(failure);
+      _failPending(failure);
+      bridgeStatus.emit(BridgeStatus.failed);
+    }
+  }
+
+  void _handleMessageData(Map<String, dynamic> message) {
+    final type = message['type'];
+    if (type == 'manymatrix-ready') {
+      if (!_ready.isCompleted) _ready.complete();
+      bridgeStatus.emit(BridgeStatus.connected);
+      return;
+    }
+    if (type == 'manymatrix-init-error') {
+      final error = _transportException(message['error']);
+      if (!_ready.isCompleted) _ready.completeError(error);
+      _failPending(error);
+      bridgeStatus.emit(BridgeStatus.failed);
+      return;
+    }
+    if (type == 'manymatrix-event') {
+      final kind = message['kind'];
+      final payload = message['payload'];
+      if (kind is String && payload is String) _onEvent?.call(kind, payload);
+      return;
+    }
+    if (type == 'manymatrix-closed') {
+      if (!_closed.isCompleted) _closed.complete();
+      return;
+    }
+
+    final requestId = message['id'];
+    if (requestId is! num) return;
+    final completer = _pending.remove(requestId.toInt());
+    if (completer == null) return;
+    if (type == 'manymatrix-result') {
+      completer.complete(_stringMap(message['ok']));
+    } else if (type == 'manymatrix-error') {
+      completer.completeError(_transportException(message['error']));
+    } else {
+      completer.completeError(
+        ManyMatrixSerdeException(
+          'unknown worker reply type',
+          details: {'type': '$type'},
+        ),
+      );
+    }
+  }
+
+  void _handleWorkerError(web.Event event) {
+    event.preventDefault();
+    final error = ManyMatrixStorageException(
+      'The ManyMatrix web worker could not load. Verify that '
+      'manymatrix_worker.js, pkg/manymatrix_web.js, and the WASM file are '
+      'deployed together and served with correct MIME types.',
+      details: const <String, dynamic>{},
+    );
+    if (!_ready.isCompleted) _ready.completeError(error);
+    if (!_closed.isCompleted) _closed.complete();
+    _failPending(error);
+    bridgeStatus.emit(BridgeStatus.failed);
+  }
+
+  void _failPending(Object error) {
+    final pending = _pending.values.toList();
+    _pending.clear();
+    for (final completer in pending) {
+      if (!completer.isCompleted) completer.completeError(error);
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> call(
+    String method,
+    Map<String, dynamic> args,
+  ) async {
+    if (_disposed) throw StateError('ManyMatrix bridge is disposed');
+    await _ready.future;
+    final requestId = _nextRequestId++;
+    final completer = Completer<Map<String, dynamic>>();
+    _pending[requestId] = completer;
+    _worker.postMessage(
+      <String, Object?>{
+        'type': 'manymatrix-call',
+        'id': requestId,
+        'method': method,
+        'args': args,
+      }.jsify(),
+    );
+    try {
+      final timeout = webRpcTimeout(method);
+      return await completer.future.timeout(timeout);
+    } on TimeoutException {
+      _pending.remove(requestId);
+      throw ManyMatrixStorageException(
+        'The ManyMatrix web worker did not answer in '
+        '${webRpcTimeout(method).inSeconds} seconds.',
+        details: {'method': method},
+      );
+    }
+  }
+
+  @override
+  Future<void> close() {
+    final activeClose = _closeFuture;
+    if (activeClose != null) return activeClose;
+    final future = _closeWorker();
+    _closeFuture = future;
+    return future;
+  }
+
+  Future<void> _closeWorker() async {
+    if (_disposed) return;
+    _disposed = true;
+    _onEvent = null;
+    _failPending(StateError('ManyMatrix bridge was disposed'));
+    _worker.postMessage({'type': 'manymatrix-close'}.jsify());
+    await _terminateAfterClose();
+  }
+
+  Future<void> _terminateAfterClose() async {
+    try {
+      await _closed.future.timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      // A failed module import may prevent the close acknowledgement.
+    } finally {
+      // Always enforce termination so an account cannot retain a ghost loop.
+      _worker.terminate();
+    }
+  }
+}
+
+Future<_WebTransport> _createTransport(
+  String workerName, {
+  String? extensionClientId,
+}) async {
+  if (_chromeRuntimeId()?.isNotEmpty ?? false) {
+    return _ExtensionTransport.create(extensionClientId ?? workerName);
+  }
+  return _WorkerTransport.create(workerName);
+}
+
 class ManyMatrixBridge {
   final String _homeserverUrl;
-  // ignore: unused_field
   final String _storePath;
+  final _WebTransport _transport;
+  final _WebStoreLease? _storeLease;
+  String? _currentSessionJson;
+  int _sessionGeneration = 0;
+  bool _closing = false;
+  bool _revokingSession = false;
+  bool _syncRunning = false;
+  Future<void> _sessionPersistence = Future<void>.value();
+  Future<void>? _closeFuture;
+  Future<void>? _transportRecovery;
 
-  ManyMatrixBridge._(this._homeserverUrl, this._storePath);
+  ManyMatrixBridge._(
+    this._homeserverUrl,
+    this._storePath,
+    this._transport,
+    this._storeLease,
+  ) {
+    _transport.onEvent = _handleTransportEvent;
+  }
 
-  String get _storeName =>
-      'manymatrix_${_homeserverUrl.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
+  static String _storeNameFor(String homeserverUrl, String storePath) =>
+      'manymatrix_${storePath.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_')}_'
+      '${Uri.parse(homeserverUrl).host.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_')}';
 
-  static Future<void> initialize(String libraryPath) async {}
+  String get _storeName => _storeNameFor(_homeserverUrl, _storePath);
+
+  static String _sessionKeyFor(String storeName) =>
+      'manymatrix_session_$storeName';
+
+  String get _sessionKey => _sessionKeyFor(_storeName);
+
+  static bool _initialized = false;
+  static Future<void>? _initializing;
+  static final Map<String, Future<void>> _closingStores =
+      <String, Future<void>>{};
+
+  static Future<void> initialize(String libraryPath) async {
+    if (_initialized) return;
+    final active = _initializing;
+    if (active != null) return active;
+    final future = _probeRuntime();
+    _initializing = future;
+    try {
+      await future;
+      _initialized = true;
+      bridgeStatus.emit(BridgeStatus.connected);
+    } finally {
+      _initializing = null;
+    }
+  }
+
+  static Future<void> _probeRuntime() async {
+    if (_chromeRuntimeId()?.isNotEmpty ?? false) {
+      await _scrubLegacyExtensionStorage(ensure: true);
+    }
+    final transport = await _createTransport('manymatrix-runtime-probe');
+    try {
+      final echo = await transport.call('dispatcher.echo', {
+        'message': 'runtime-probe',
+      });
+      if (echo['message'] != 'runtime-probe') {
+        throw ManyMatrixSerdeException(
+          'ManyMatrix web runtime returned an invalid probe response',
+          details: const <String, dynamic>{},
+        );
+      }
+    } finally {
+      await transport.close();
+    }
+  }
 
   static Future<ManyMatrixBridge> create(
     String homeserverUrl,
@@ -89,85 +698,119 @@ class ManyMatrixBridge {
         },
       );
     }
-    return ManyMatrixBridge._(homeserverUrl, storePath);
+    final namespace = storePath.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+    final storeName = _storeNameFor(homeserverUrl, storePath);
+    final extensionMode = _chromeRuntimeId()?.isNotEmpty ?? false;
+    if (extensionMode) {
+      await _scrubLegacyExtensionStorage(
+        expectedHomeserverUrl: homeserverUrl,
+        ensure: true,
+      );
+    }
+    final lease =
+        extensionMode ? null : await _WebStoreLease.acquire(storeName);
+    try {
+      final transport = await _createTransport(
+        'manymatrix-$namespace',
+        extensionClientId: storeName,
+      );
+      return ManyMatrixBridge._(
+        homeserverUrl,
+        storePath,
+        transport,
+        lease,
+      );
+    } on Object {
+      await lease?.release();
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> _call(
     String method,
     Map<String, dynamic> args,
   ) async {
+    final recovery = _transportRecovery;
+    if (recovery != null) await recovery;
     try {
-      return await _callOnce(method, args);
-    } catch (e) {
-      final msg = e.toString();
-      if (!_isContextInvalidated(msg)) rethrow;
-      bridgeStatus.emit(BridgeStatus.reconnecting);
-      developer.log(
-        'extension context invalidated, waiting for reload',
-        name: 'manymatrix.bridge',
-      );
-      final recovered = await _waitForContextRestore();
-      if (!recovered) {
-        bridgeStatus.emit(BridgeStatus.failed);
-        throw ManyMatrixStorageException(
-          'extension reload did not recover in 5s',
-          details: {'method': method},
+      return await _transport.call(method, args);
+    } on ManyMatrixException catch (error) {
+      if (error.details['reason'] != 'worker_replaced') rethrow;
+      await _restoreAfterTransportRecovery();
+      return _transport.call(method, args);
+    }
+  }
+
+  Future<void> _restoreAfterTransportRecovery() {
+    final active = _transportRecovery;
+    if (active != null) return active;
+    final future = () async {
+      final sessionJson = _currentSessionJson;
+      final extensionTransport =
+          _transport is _ExtensionTransport ? _transport : null;
+      try {
+        if (extensionTransport == null) {
+          throw StateError('Worker recovery is only valid in extension mode.');
+        }
+        if (sessionJson != null) {
+          await extensionTransport._callOnce('bridge.recovery_call', {
+            'method': 'auth.restore',
+            'args': {
+              'homeserver_url': _homeserverUrl,
+              'session_json': sessionJson,
+              'store_name': _storeName,
+            },
+          });
+          if (_hasEventCallbacks) {
+            await extensionTransport._callOnce('bridge.recovery_call', {
+              'method': 'events.subscribe',
+              'args': <String, dynamic>{},
+            });
+            _eventsSubscribed = true;
+          } else {
+            _eventsSubscribed = false;
+          }
+          if (_syncRunning) {
+            await extensionTransport._callOnce('bridge.recovery_call', {
+              'method': 'sync.start',
+              'args': <String, dynamic>{},
+            });
+          }
+        }
+        // A replacement with no persisted session still starts gated. Always
+        // release recovery_pending after the optional restore sequence.
+        await extensionTransport._callOnce(
+          'bridge.recovery_complete',
+          const <String, dynamic>{},
         );
+        extensionTransport._acknowledgeWorkerRecovery();
+      } on Object catch (error) {
+        final matrixError = error is ManyMatrixException ? error : null;
+        _onSyncStatusCallback?.call(
+          jsonEncode({
+            'state': 'transport_restore_failed',
+            'ok': false,
+            'error': '$error',
+            if (matrixError != null) 'errorKind': matrixError.kind,
+            if (matrixError != null) 'errorDetails': matrixError.details,
+          }),
+        );
+        rethrow;
       }
-      final result = await _callOnce(method, args);
-      bridgeStatus.emit(BridgeStatus.connected);
-      developer.log('bridge recovered', name: 'manymatrix.bridge');
-      return result;
-    }
-  }
-
-  Future<Map<String, dynamic>> _callOnce(
-    String method,
-    Map<String, dynamic> args,
-  ) async {
-    final envelope = {'target': 'offscreen', 'method': method, 'args': args};
-    final JSAny? replyJs;
-    try {
-      replyJs = await _chrome.runtime
-          .sendMessage(envelope.jsify())
-          .toDart
-          .timeout(const Duration(seconds: 30));
-    } on TimeoutException {
-      throw ManyMatrixStorageException(
-        'no reply from offscreen',
-        details: {},
-      );
-    }
-    if (replyJs == null) {
-      throw ManyMatrixStorageException(
-        'no reply from offscreen',
-        details: {},
-      );
-    }
-    final reply = replyJs.dartify() as Map<String, dynamic>;
-    if (reply.containsKey('ok')) {
-      return reply['ok'] as Map<String, dynamic>;
-    }
-    if (reply.containsKey('err')) {
-      final err = reply['err'] as Map<String, dynamic>;
-      throw _exceptionFor(
-        err['kind'] as String,
-        err['message'] as String? ?? '',
-        err['details'] as Map<String, dynamic>? ?? {},
-      );
-    }
-    throw ManyMatrixSerdeException(
-      'malformed reply: missing ok/err',
-      details: {'raw': reply},
+    }();
+    _transportRecovery = future;
+    unawaited(
+      future.then<void>(
+        (_) {
+          if (identical(_transportRecovery, future)) _transportRecovery = null;
+        },
+        onError: (Object _, StackTrace __) {
+          if (identical(_transportRecovery, future)) _transportRecovery = null;
+        },
+      ),
     );
+    return future;
   }
-
-  static ManyMatrixException _exceptionFor(
-    String kind,
-    String message,
-    Map<String, dynamic> details,
-  ) =>
-      manyMatrixExceptionForEnvelope(kind, message, details: details);
 
   static final _sensitiveKeys =
       RegExp(r'password|token|recovery_key', caseSensitive: false);
@@ -184,25 +827,184 @@ class ManyMatrixBridge {
   Future<Map<String, dynamic>> echo(String message) =>
       _call('dispatcher.echo', {'message': message});
 
-  Future<void> _persistSession(String sessionJson) async {
-    final obj = {'manymatrix_session': sessionJson}.jsify() as JSObject;
-    await _chrome.storage.local.set(obj).toDart;
-    _onSessionUpdateCallback?.call(sessionJson);
-  }
-
-  static Future<String?> loadPersistedSession() async {
-    final result =
-        await _chrome.storage.local.get('manymatrix_session'.toJS).toDart;
-    if (result == null) return null;
-    final map = (result as JSObject).dartify() as Map<String, dynamic>;
-    return map['manymatrix_session'] as String?;
+  Future<void> _persistSession(
+    String sessionJson, {
+    int? generation,
+  }) {
+    if (_closing || (generation != null && generation != _sessionGeneration)) {
+      return Future<void>.value();
+    }
+    final acceptedGeneration = generation ?? _sessionGeneration;
+    final previous = _sessionPersistence;
+    final operation = () async {
+      try {
+        await previous;
+      } on Object {
+        // A later refresh write must still be able to repair persistence.
+      }
+      if (_revokingSession) return;
+      _currentSessionJson = sessionJson;
+      if (_transport is _ExtensionTransport) {
+        final obj = {_sessionKey: sessionJson}.jsify() as JSObject;
+        await _chrome.storage.local.set(obj).toDart;
+        if (_revokingSession) {
+          await _chrome.storage.local.remove(_sessionKey.toJS).toDart;
+          return;
+        }
+        if (acceptedGeneration != _sessionGeneration) return;
+      } else {
+        web.window.sessionStorage.setItem(_sessionKey, sessionJson);
+      }
+      _onSessionUpdateCallback?.call(sessionJson);
+    }();
+    _sessionPersistence = operation.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return operation;
   }
 
   Future<void> _clearSession() async {
-    await _chrome.storage.local.remove('manymatrix_session'.toJS).toDart;
+    _revokingSession = true;
+    _currentSessionJson = null;
+    await _sessionPersistence;
+    if (_transport is _ExtensionTransport) {
+      await _scrubLegacyExtensionStorage(
+        expectedHomeserverUrl: _homeserverUrl,
+        scopedSessionKey: _sessionKey,
+        ensure: false,
+      );
+    } else {
+      web.window.sessionStorage.removeItem(_sessionKey);
+    }
   }
 
-  Future<String> login(String username, String password) async {
+  /// Stores a migrated session in the transport-appropriate secret store.
+  Future<void> persistSession(String sessionJson) =>
+      _persistSession(sessionJson);
+
+  /// Loads a session for this account without copying it into localStorage.
+  Future<String?> loadPersistedSession() async {
+    final String? sessionJson;
+    if (_transport is _ExtensionTransport) {
+      final result = await _chrome.storage.local.get(_sessionKey.toJS).toDart;
+      final decoded = result?.dartify();
+      sessionJson = decoded is Map ? decoded[_sessionKey] as String? : null;
+    } else {
+      sessionJson = web.window.sessionStorage.getItem(_sessionKey);
+    }
+    _currentSessionJson = sessionJson;
+    return sessionJson;
+  }
+
+  Future<void> clearPersistedSession() => _clearSession();
+
+  /// Removes browser state for an account after its Worker has closed.
+  static Future<void> clearStoredAccount(
+    String homeserverUrl,
+    String storePath,
+  ) async {
+    final storeName = _storeNameFor(homeserverUrl, storePath);
+    final closing = _closingStores[storeName];
+    if (closing != null) await closing;
+    await clearStoredSession(homeserverUrl, storePath);
+    await _deleteIndexedDbStores(storeName);
+  }
+
+  static Future<void> clearStoredSession(
+    String homeserverUrl,
+    String storePath,
+  ) async {
+    final sessionKey = _sessionKeyFor(
+      _storeNameFor(homeserverUrl, storePath),
+    );
+    web.window.sessionStorage.removeItem(sessionKey);
+    web.window.localStorage.removeItem(sessionKey);
+    if (_chromeRuntimeId()?.isNotEmpty ?? false) {
+      await _scrubLegacyExtensionStorage(
+        expectedHomeserverUrl: homeserverUrl,
+        scopedSessionKey: sessionKey,
+        ensure: false,
+      );
+    }
+  }
+
+  static Future<void> _deleteIndexedDbStores(String storeName) async {
+    final names = <String>{
+      storeName,
+      '$storeName::matrix-sdk-state',
+      '$storeName::matrix-sdk-crypto',
+      '$storeName::matrix-sdk-crypto-meta',
+    };
+    Object? enumerationFailure;
+    try {
+      final databases = await web.window.indexedDB.databases().toDart;
+      final decoded = databases.dartify();
+      for (final info in decoded is List ? decoded : const <Object?>[]) {
+        if (info is! Map) continue;
+        final name = info['name'];
+        if (name is! String) continue;
+        if (name.startsWith(storeName) ||
+            name.startsWith('backup-$storeName-')) {
+          names.add(name);
+        }
+      }
+    } on Object catch (error) {
+      // Deterministic stores are still attempted below. We cannot prove that
+      // timestamped matrix-sdk backup stores were removed without enumeration,
+      // so cleanup remains retryable instead of reporting a false success.
+      enumerationFailure = error;
+    }
+    await deleteAllMatrixStores(
+      names: names,
+      delete: _deleteIndexedDb,
+      enumerationFailure: enumerationFailure,
+    );
+  }
+
+  static Future<void> _deleteIndexedDb(String name) async {
+    final request = web.window.indexedDB.deleteDatabase(name);
+    final completer = Completer<void>();
+    request.onsuccess = ((web.Event _) {
+      if (!completer.isCompleted) completer.complete();
+    }).toJS;
+    request.onerror = ((web.Event _) {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          ManyMatrixStorageException(
+            'Could not delete the local Matrix store.',
+            details: {'database': name, 'cause': '${request.error}'},
+          ),
+        );
+      }
+    }).toJS;
+    request.onblocked = ((web.Event _) {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          ManyMatrixStorageException(
+            'The local Matrix store is still open in another tab.',
+            details: {'database': name},
+          ),
+        );
+      }
+    }).toJS;
+    await completer.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => throw ManyMatrixStorageException(
+        'Timed out deleting the local Matrix store.',
+        details: {'database': name},
+      ),
+    );
+  }
+
+  Future<String> login(
+    String username,
+    String password, {
+    String? deviceId,
+  }) async {
+    _closing = false;
+    _revokingSession = false;
+    final generation = ++_sessionGeneration;
     developer.log(
       'auth.login ${_redactArgs({'username': username, 'password': password})}',
       name: 'manymatrix.bridge',
@@ -211,25 +1013,30 @@ class ManyMatrixBridge {
       'homeserver_url': _homeserverUrl,
       'username': username,
       'password': password,
+      if (deviceId != null) 'device_id': deviceId,
       'store_name': _storeName,
     });
     final sessionJson = result['session_json'] as String;
-    await _persistSession(sessionJson);
+    await _persistSession(sessionJson, generation: generation);
     _resubscribeEvents();
     return sessionJson;
   }
 
   Future<void> restore(String sessionJson) async {
+    _closing = false;
+    _revokingSession = false;
+    _sessionGeneration += 1;
     developer.log('auth.restore', name: 'manymatrix.bridge');
     await _call('auth.restore', {
       'homeserver_url': _homeserverUrl,
       'session_json': sessionJson,
       'store_name': _storeName,
     });
+    _currentSessionJson = sessionJson;
     _resubscribeEvents();
   }
 
-  Future<String?> currentSession() => loadPersistedSession();
+  Future<String?> currentSession() async => _currentSessionJson;
 
   Future<void> syncOnce({Duration? timeout}) async {
     if (timeout != null && timeout.inMilliseconds < 0) {
@@ -244,6 +1051,7 @@ class ManyMatrixBridge {
     try {
       final result = await _call('sync.start', {});
       final alreadyRunning = result['already_running'] == true;
+      _syncRunning = true;
       _onSyncStatusCallback?.call(jsonEncode({
         'state': alreadyRunning ? 'already_running' : 'running',
         'ok': true,
@@ -260,6 +1068,7 @@ class ManyMatrixBridge {
 
   Future<void> stopSync() async {
     await _call('sync.stop', {});
+    _syncRunning = false;
   }
 
   Future<List<RoomSummary>> joinedRooms() async {
@@ -271,7 +1080,11 @@ class ManyMatrixBridge {
   }
 
   Future<List<RoomInvite>> invitedRooms() async {
-    return const <RoomInvite>[];
+    final result = await _call('rooms.invited', {});
+    final list = jsonDecode(result['invites_json'] as String) as List<dynamic>;
+    return list
+        .map((item) => RoomInvite.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<String> serverCapabilities() async {
@@ -279,10 +1092,25 @@ class ManyMatrixBridge {
     return result['capabilities_json'] as String;
   }
 
-  Future<void> logout() async {
+  Future<void> logout({bool clearPersistedSession = true}) async {
+    _closing = true;
+    _revokingSession = true;
+    _sessionGeneration += 1;
     developer.log('auth.logout', name: 'manymatrix.bridge');
-    await _call('auth.logout', {});
-    await _clearSession();
+    try {
+      try {
+        await stopSync();
+      } on Object {
+        // Logout still invalidates the remote token when sync cancellation
+        // itself fails.
+      }
+      await _call('auth.logout', {});
+    } finally {
+      if (clearPersistedSession) {
+        await close();
+        await _clearSession();
+      }
+    }
   }
 
   Future<String?> syncToken() async {
@@ -365,7 +1193,10 @@ class ManyMatrixBridge {
   }
 
   Future<RoomDetails> roomDetails(String roomId) async {
-    return RoomDetails(roomId: roomId);
+    final result = await _call('rooms.details', {'room_id': roomId});
+    return RoomDetails.fromJson(
+      jsonDecode(result['details_json'] as String) as Map<String, dynamic>,
+    );
   }
 
   Future<String?> roomPowerLevels(String roomId) async {
@@ -459,14 +1290,54 @@ class ManyMatrixBridge {
   Future<String> sendThreadReply(
     String roomId,
     String threadRootId,
-    String body,
-  ) async {
+    String body, {
+    String? inReplyToEventId,
+  }) async {
     final result = await _call('messages.thread_reply', {
       'room_id': roomId,
       'thread_root_event_id': threadRootId,
+      'in_reply_to_event_id': inReplyToEventId ?? threadRootId,
       'body': body,
     });
     return result['event_id'] as String;
+  }
+
+  Future<List<ThreadSummary>> threadIndex({int limitPerRoom = 50}) async {
+    final result = await _call('threads.index', {
+      'limit_per_room': limitPerRoom,
+    });
+    return (jsonDecode(result['threads_json'] as String) as List<dynamic>)
+        .map((value) => ThreadSummary.fromJson(value as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<PaginatedThreadMessages> getThreadMessages(
+    String roomId,
+    String threadRootEventId, {
+    String? fromToken,
+    int limit = 50,
+  }) async {
+    final result = await _call('threads.messages', {
+      'room_id': roomId,
+      'thread_root_event_id': threadRootEventId,
+      'from_token': fromToken,
+      'limit': limit,
+    });
+    return PaginatedThreadMessages.fromJson(
+      jsonDecode(result['paginated_json'] as String) as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> sendThreadReadReceipt(
+    String roomId,
+    String threadRootEventId,
+    String eventId,
+  ) async {
+    await _call('threads.read_receipt', {
+      'room_id': roomId,
+      'thread_root_event_id': threadRootEventId,
+      'event_id': eventId,
+    });
   }
 
   Future<void> sendReadReceipt(String roomId, String eventId) async {
@@ -583,6 +1454,17 @@ class ManyMatrixBridge {
     return encoded == null ? null : base64Decode(encoded);
   }
 
+  /// Download and, when required, decrypt a complete Matrix media source.
+  Future<Uint8List?> downloadMediaSource(
+    Map<String, dynamic> mediaSource,
+  ) async {
+    final result = await _call('media.download', {
+      'media_source': mediaSource,
+    });
+    final encoded = result['data_base64'] as String?;
+    return encoded == null ? null : base64Decode(encoded);
+  }
+
   Future<Uint8List?> getThumbnail(
     String mxcUri, {
     int width = 128,
@@ -617,17 +1499,15 @@ class ManyMatrixBridge {
 
   // === Event push channel ===
   //
-  // The wasm dispatcher forwards sync and sync-status events through offscreen.js, which
-  // broadcasts them as {type: 'manymatrix-event', kind, payload} runtime
-  // messages. A single chrome.runtime.onMessage listener dispatches to the
-  // registered callbacks by kind.
+  // Both transports normalize pushed events to `(kind, payload)`: the module
+  // Worker posts them directly, while the extension broadcasts them through
+  // chrome.runtime from its offscreen document.
 
   void Function(String json)? _onMessageCallback;
   void Function(String json)? _onReactionCallback;
   void Function(String json)? _onReceiptCallback;
   void Function(String json)? _onSyncStatusCallback;
   void Function(String json)? _onSessionUpdateCallback;
-  JSFunction? _eventListener;
   bool _eventsSubscribed = false;
 
   bool get _hasEventCallbacks =>
@@ -637,12 +1517,7 @@ class ManyMatrixBridge {
       _onSyncStatusCallback != null ||
       _onSessionUpdateCallback != null;
 
-  void _handleRuntimeMessage(JSAny? message, JSAny? sender, JSAny? reply) {
-    final data = message.dartify();
-    if (data is! Map || data['type'] != 'manymatrix-event') return;
-    final kind = data['kind'] as String?;
-    final payload = data['payload'] as String?;
-    if (kind == null || payload == null) return;
+  void _handleTransportEvent(String kind, String payload) {
     switch (kind) {
       case 'message':
         _onMessageCallback?.call(payload);
@@ -653,16 +1528,25 @@ class ManyMatrixBridge {
       case 'sync_status':
         _onSyncStatusCallback?.call(payload);
       case 'session_update':
-        unawaited(_persistSession(payload));
+        final generation = _sessionGeneration;
+        unawaited(
+          _persistSession(payload, generation: generation).catchError((
+            Object error,
+            StackTrace stackTrace,
+          ) {
+            _onSyncStatusCallback?.call(
+              jsonEncode({
+                'state': 'session_persistence_failed',
+                'ok': false,
+                'error': '$error',
+              }),
+            );
+          }),
+        );
     }
   }
 
   void _ensureEventChannel() {
-    if (_eventListener == null) {
-      final listener = _handleRuntimeMessage.toJS;
-      _chrome.runtime.onMessage.addListener(listener);
-      _eventListener = listener;
-    }
     if (_eventsSubscribed) return;
     _eventsSubscribed = true;
     unawaited(
@@ -718,17 +1602,51 @@ class ManyMatrixBridge {
     _ensureEventChannel();
   }
 
-  void dispose() {
-    final listener = _eventListener;
-    if (listener != null) {
-      _chrome.runtime.onMessage.removeListener(listener);
-      _eventListener = null;
-    }
+  void _detachCallbacks() {
+    _transport.onEvent = null;
     _onMessageCallback = null;
     _onReactionCallback = null;
     _onReceiptCallback = null;
     _onSyncStatusCallback = null;
     _onSessionUpdateCallback = null;
     _eventsSubscribed = false;
+  }
+
+  Future<void> close() {
+    final activeClose = _closeFuture;
+    if (activeClose != null) return activeClose;
+    _closing = true;
+    _syncRunning = false;
+    _sessionGeneration += 1;
+    _detachCallbacks();
+    final future = () async {
+      try {
+        await _transport.close();
+        await _sessionPersistence;
+      } finally {
+        await _storeLease?.release();
+      }
+    }();
+    _closeFuture = future;
+    _closingStores[_storeName] = future;
+    unawaited(
+      future.then<void>(
+        (_) {
+          if (identical(_closingStores[_storeName], future)) {
+            _closingStores.remove(_storeName);
+          }
+        },
+        onError: (Object _, StackTrace __) {
+          if (identical(_closingStores[_storeName], future)) {
+            _closingStores.remove(_storeName);
+          }
+        },
+      ),
+    );
+    return future;
+  }
+
+  void dispose() {
+    unawaited(close().catchError((Object _, StackTrace __) {}));
   }
 }

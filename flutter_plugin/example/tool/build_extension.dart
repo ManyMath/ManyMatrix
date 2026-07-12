@@ -10,7 +10,8 @@ Future<void> run(
   stdout.write(result.stdout);
   stderr.write(result.stderr);
   if (result.exitCode != 0) {
-    throw ProcessException(cmd, args, 'exit ${result.exitCode}', result.exitCode);
+    throw ProcessException(
+        cmd, args, 'exit ${result.exitCode}', result.exitCode);
   }
 }
 
@@ -76,6 +77,10 @@ void verifyArtifacts(Directory dir) {
     'pkg/manymatrix_web.js',
     'offscreen.html',
     'offscreen.js',
+    'worker_lifecycle.mjs',
+    'legacy_storage.mjs',
+    'manymatrix_worker.js',
+    'manymatrix_worker_protocol.mjs',
     'sw.js',
     'manifest.json',
     'flutter_bootstrap.js',
@@ -98,6 +103,7 @@ Future<void> main() async {
   final repoRoot = exampleDir.parent.parent.path;
   final buildWebDir = Directory('${exampleDir.path}/build/web');
   final extensionSrcDir = Directory('${exampleDir.path}/extension');
+  final ordinaryWorkerDir = Directory('$repoRoot/apps/ManyMatrix/web');
   final extensionBuildDir = Directory('${exampleDir.path}/build/extension');
   final zipPath = '${exampleDir.path}/build/extension.zip';
 
@@ -121,7 +127,8 @@ Future<void> main() async {
       cwd: exampleDir.path,
     );
   } on ProcessException catch (e) {
-    stderr.writeln('[build_extension] step "flutter-build" failed: ${e.message}');
+    stderr
+        .writeln('[build_extension] step "flutter-build" failed: ${e.message}');
     exit(1);
   }
 
@@ -139,16 +146,24 @@ Future<void> main() async {
 
   copyTree(buildWebDir, extensionBuildDir);
   copyTree(extensionSrcDir, extensionBuildDir);
+  for (final name in <String>[
+    'manymatrix_worker.js',
+    'manymatrix_worker_protocol.mjs',
+  ]) {
+    File('${ordinaryWorkerDir.path}/$name').copySync(
+      '${extensionBuildDir.path}/$name',
+    );
+  }
 
   final bootstrapFile = File('${extensionBuildDir.path}/flutter_bootstrap.js');
   if (bootstrapFile.existsSync()) {
     final patched = bootstrapFile.readAsStringSync().replaceAll(
-      RegExp(
-        r'_flutter\.loader\.load\(\{\s*serviceWorkerSettings:\s*\{.*?\}\s*\}\);',
-        dotAll: true,
-      ),
-      '_flutter.loader.load({});',
-    );
+          RegExp(
+            r'_flutter\.loader\.load\(\{\s*serviceWorkerSettings:\s*\{.*?\}\s*\}\);',
+            dotAll: true,
+          ),
+          '_flutter.loader.load({});',
+        );
     bootstrapFile.writeAsStringSync(patched);
   }
 

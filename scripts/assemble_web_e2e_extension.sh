@@ -15,6 +15,8 @@ out="${1:?usage: assemble_web_e2e_extension.sh <outdir>}"
 
 mkdir -p "$out/pkg"
 cp flutter_plugin/example/extension/* "$out/"
+cp apps/ManyMatrix/web/manymatrix_worker.js \
+  apps/ManyMatrix/web/manymatrix_worker_protocol.mjs "$out/"
 cp crates/web/pkg/manymatrix_web.js crates/web/pkg/manymatrix_web_bg.wasm "$out/pkg/"
 # Chrome refuses to load the extension when side_panel.default_path points
 # at a missing file, so stub out the Flutter app entry point.
