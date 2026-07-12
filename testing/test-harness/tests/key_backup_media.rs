@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use manymatrix_core::{CreateRoomOptions, ManyMatrixClient};
 use test_harness::{ServerKind, TestHomeserver};
 use tracing_subscriber::EnvFilter;
@@ -347,13 +347,24 @@ async fn encrypted_media_upload(kind: ServerKind) -> Result<()> {
         );
         let media_msg = media_msg.unwrap();
 
-        // Encrypted media: mxc_uri is None (MediaSource::Encrypted, confirmed Phase 6 decision)
+        // Encrypted media has no plain MXC shortcut, but retains the complete
+        // descriptor required by matrix-sdk to authenticate and decrypt it.
         assert!(
             media_msg.mxc_uri.is_none(),
             "mxc_uri should be None for encrypted media (MediaSource::Encrypted), got: {:?}",
             media_msg.mxc_uri
         );
-        eprintln!("Encrypted media upload verified: mxc_uri=None as expected");
+        let media_source = media_msg
+            .media_source
+            .as_ref()
+            .context("encrypted media should expose its complete media source")?;
+        assert!(
+            media_source.get("file").is_some(),
+            "encrypted media source should contain a file descriptor: {media_source}"
+        );
+        let downloaded = bob.download_media_source(media_source).await?;
+        assert_eq!(downloaded, b"encrypted media content");
+        eprintln!("Encrypted media descriptor and decrypted download verified");
 
         Ok(())
     }

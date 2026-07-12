@@ -201,13 +201,16 @@ pub unsafe extern "C" fn manymatrix_send_thread_reply(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
     thread_root_id: *const c_char,
+    in_reply_to_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
     let client = client_from_handle(handle);
     let room_id = str_from_ptr(room_id);
     let thread_root_id = str_from_ptr(thread_root_id);
+    let in_reply_to_id = str_from_ptr(in_reply_to_id);
     let body = str_from_ptr(body);
-    match RUNTIME.block_on(client.send_thread_reply(room_id, thread_root_id, body)) {
+    match RUNTIME.block_on(client.send_thread_reply(room_id, thread_root_id, in_reply_to_id, body))
+    {
         Ok(event_id) => FfiResult::success_string(&event_id),
         Err(e) => FfiResult::error_from(&e),
     }
@@ -274,6 +277,78 @@ pub unsafe extern "C" fn manymatrix_get_messages(
             Ok(json) => FfiResult::success_string(&json),
             Err(e) => FfiResult::error_from(&e),
         },
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
+/// Return a JSON array of recent server-aggregated thread summaries.
+///
+/// # Safety
+/// `handle` must be a valid `ManyMatrixClient` pointer.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_thread_index(
+    handle: *mut ManyMatrixClient,
+    limit_per_room: u32,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    match RUNTIME.block_on(client.thread_index(limit_per_room)) {
+        Ok(threads) => match serde_json::to_string(&threads) {
+            Ok(json) => FfiResult::success_string(&json),
+            Err(e) => FfiResult::error_from(&e),
+        },
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
+/// Load a JSON-serialized page of messages from one thread.
+///
+/// # Safety
+/// `handle` must be valid. String pointers must be valid UTF-8 C strings;
+/// `from_token` may be null.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_get_thread_messages(
+    handle: *mut ManyMatrixClient,
+    room_id: *const c_char,
+    thread_root_event_id: *const c_char,
+    from_token: *const c_char,
+    limit: u32,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let room_id = str_from_ptr(room_id);
+    let thread_root_event_id = str_from_ptr(thread_root_event_id);
+    let from_token = optional_str_from_ptr(from_token);
+    match RUNTIME.block_on(client.get_thread_messages(
+        room_id,
+        thread_root_event_id,
+        from_token,
+        limit,
+    )) {
+        Ok(paginated) => match serde_json::to_string(&paginated) {
+            Ok(json) => FfiResult::success_string(&json),
+            Err(e) => FfiResult::error_from(&e),
+        },
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
+/// Send a read receipt scoped to one thread.
+///
+/// # Safety
+/// `handle` and all string pointers must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_send_thread_read_receipt(
+    handle: *mut ManyMatrixClient,
+    room_id: *const c_char,
+    thread_root_event_id: *const c_char,
+    event_id: *const c_char,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let room_id = str_from_ptr(room_id);
+    let thread_root_event_id = str_from_ptr(thread_root_event_id);
+    let event_id = str_from_ptr(event_id);
+    match RUNTIME.block_on(client.send_thread_read_receipt(room_id, thread_root_event_id, event_id))
+    {
+        Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
     }
 }

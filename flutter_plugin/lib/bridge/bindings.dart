@@ -221,9 +221,9 @@ class ManyMatrixBindings {
   }
 
   late final _manymatrix_new_with_custom_caPtr = _lookup<
-          ffi.NativeFunction<
-              FfiResult Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>,
-                  ffi.Pointer<ffi.Char>)>>('manymatrix_new_with_custom_ca');
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>>('manymatrix_new_with_custom_ca');
   late final _manymatrix_new_with_custom_ca =
       _manymatrix_new_with_custom_caPtr.asFunction<
           FfiResult Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>,
@@ -978,6 +978,23 @@ class ManyMatrixBindings {
           FfiResult Function(
               ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
 
+  /// Download media from a serialized plain or encrypted Matrix `MediaSource`.
+  FfiResult manymatrix_download_media_source(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> media_source_json,
+  ) {
+    return _manymatrix_download_media_source(handle, media_source_json);
+  }
+
+  late final _manymatrix_download_media_sourcePtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>)>>('manymatrix_download_media_source');
+  late final _manymatrix_download_media_source =
+      _manymatrix_download_media_sourcePtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
+
   /// Fetch a thumbnail of media content by its mxc:// URI.
   ///
   /// Returns an `FfiBuffer` pointer in `FfiResult.data`. Free with `ffi_free_buffer`.
@@ -1363,12 +1380,14 @@ class ManyMatrixBindings {
     ffi.Pointer<ManyMatrixClient> handle,
     ffi.Pointer<ffi.Char> room_id,
     ffi.Pointer<ffi.Char> thread_root_id,
+    ffi.Pointer<ffi.Char> in_reply_to_id,
     ffi.Pointer<ffi.Char> body,
   ) {
     return _manymatrix_send_thread_reply(
       handle,
       room_id,
       thread_root_id,
+      in_reply_to_id,
       body,
     );
   }
@@ -1379,11 +1398,13 @@ class ManyMatrixBindings {
               ffi.Pointer<ManyMatrixClient>,
               ffi.Pointer<ffi.Char>,
               ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
               ffi.Pointer<ffi.Char>)>>('manymatrix_send_thread_reply');
   late final _manymatrix_send_thread_reply =
       _manymatrix_send_thread_replyPtr.asFunction<
           FfiResult Function(
               ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
               ffi.Pointer<ffi.Char>,
               ffi.Pointer<ffi.Char>,
               ffi.Pointer<ffi.Char>)>();
@@ -1472,6 +1493,85 @@ class ManyMatrixBindings {
   late final _manymatrix_get_messages = _manymatrix_get_messagesPtr.asFunction<
       FfiResult Function(ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>,
           ffi.Pointer<ffi.Char>, int)>();
+
+  /// Return a JSON array of recent server-aggregated thread summaries.
+  FfiResult manymatrix_thread_index(
+    ffi.Pointer<ManyMatrixClient> handle,
+    int limit_per_room,
+  ) {
+    return _manymatrix_thread_index(handle, limit_per_room);
+  }
+
+  late final _manymatrix_thread_indexPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              ffi.Uint32)>>('manymatrix_thread_index');
+  late final _manymatrix_thread_index = _manymatrix_thread_indexPtr
+      .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>, int)>();
+
+  /// Load a JSON-serialized page of messages from one thread.
+  FfiResult manymatrix_get_thread_messages(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+    ffi.Pointer<ffi.Char> thread_root_event_id,
+    ffi.Pointer<ffi.Char> from_token,
+    int limit,
+  ) {
+    return _manymatrix_get_thread_messages(
+      handle,
+      room_id,
+      thread_root_event_id,
+      from_token,
+      limit,
+    );
+  }
+
+  late final _manymatrix_get_thread_messagesPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Uint32)>>('manymatrix_get_thread_messages');
+  late final _manymatrix_get_thread_messages =
+      _manymatrix_get_thread_messagesPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              int)>();
+
+  /// Send a read receipt scoped to one thread.
+  FfiResult manymatrix_send_thread_read_receipt(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+    ffi.Pointer<ffi.Char> thread_root_event_id,
+    ffi.Pointer<ffi.Char> event_id,
+  ) {
+    return _manymatrix_send_thread_read_receipt(
+      handle,
+      room_id,
+      thread_root_event_id,
+      event_id,
+    );
+  }
+
+  late final _manymatrix_send_thread_read_receiptPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>>('manymatrix_send_thread_read_receipt');
+  late final _manymatrix_send_thread_read_receipt =
+      _manymatrix_send_thread_read_receiptPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>();
 
   /// Create a new room with the given name and topic.
   ///

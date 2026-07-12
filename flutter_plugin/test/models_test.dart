@@ -14,6 +14,7 @@ void main() {
           'timestamp': 1234567890,
         },
         'unread_count': 5,
+        'is_synced': false,
       };
       final room = RoomSummary.fromJson(json);
       expect(room.roomId, '!abc:matrix.org');
@@ -21,6 +22,7 @@ void main() {
       expect(room.avatarUrl, 'mxc://matrix.org/abc');
       expect(room.lastMessage?.body, 'Hello');
       expect(room.unreadCount, 5);
+      expect(room.isSynced, isFalse);
     });
 
     test('fromJson with null optional fields', () {
@@ -34,6 +36,7 @@ void main() {
       final room = RoomSummary.fromJson(json);
       expect(room.avatarUrl, isNull);
       expect(room.lastMessage, isNull);
+      expect(room.isSynced, isTrue);
     });
 
     test('toJson round-trip', () {
@@ -47,6 +50,7 @@ void main() {
           timestamp: 9999999,
         ),
         unreadCount: 3,
+        isSynced: false,
       );
       final json = original.toJson();
       final restored = RoomSummary.fromJson(json);
@@ -56,6 +60,7 @@ void main() {
       expect(restored.lastMessage?.sender, original.lastMessage?.sender);
       expect(restored.lastMessage?.body, original.lastMessage?.body);
       expect(restored.unreadCount, original.unreadCount);
+      expect(restored.isSynced, original.isSynced);
     });
   });
 
@@ -99,6 +104,10 @@ void main() {
         'thread_root': '\$thread',
         'replaces_event_id': '\$original',
         'edited_at': 1234567900,
+        'mxc_uri': 'mxc://matrix.org/media',
+        'media_source': {'url': 'mxc://matrix.org/media'},
+        'filename': 'proof.txt',
+        'file_size': 12,
       };
       final msg = MessageEvent.fromJson(json);
       expect(msg.eventId, '\$event1');
@@ -111,6 +120,10 @@ void main() {
       expect(msg.threadRoot, '\$thread');
       expect(msg.replacesEventId, '\$original');
       expect(msg.editedAt, 1234567900);
+      expect(msg.mxcUri, 'mxc://matrix.org/media');
+      expect(msg.mediaSource, {'url': 'mxc://matrix.org/media'});
+      expect(msg.filename, 'proof.txt');
+      expect(msg.fileSize, 12);
     });
 
     test('fromJson with null optional fields', () {
@@ -144,6 +157,9 @@ void main() {
         msgtype: 'm.text',
         timestamp: 500,
         editedAt: 600,
+        mxcUri: 'mxc://m.org/file',
+        filename: 'file.bin',
+        fileSize: 42,
       );
       final json = original.toJson();
       final restored = MessageEvent.fromJson(json);
@@ -151,6 +167,9 @@ void main() {
       expect(restored.body, original.body);
       expect(restored.formattedBody, isNull);
       expect(restored.editedAt, 600);
+      expect(restored.mxcUri, original.mxcUri);
+      expect(restored.filename, original.filename);
+      expect(restored.fileSize, original.fileSize);
     });
   });
 
@@ -190,6 +209,111 @@ void main() {
     });
   });
 
+  group('ThreadSummary', () {
+    test('round-trips authoritative counts and latest activity', () {
+      final summary = ThreadSummary.fromJson({
+        'room_id': '!product:example.org',
+        'room_name': 'Product',
+        'root': {
+          'event_id': r'$root',
+          'room_id': '!product:example.org',
+          'sender': '@alice:example.org',
+          'body': 'Design review',
+          'formatted_body': null,
+          'msgtype': 'm.text',
+          'timestamp': 100,
+          'in_reply_to': null,
+          'thread_root': null,
+          'replaces_event_id': null,
+          'edited_at': null,
+        },
+        'latest_reply': {
+          'event_id': r'$latest',
+          'room_id': '!product:example.org',
+          'sender': '@bob:example.org',
+          'body': 'Ready to ship',
+          'formatted_body': null,
+          'msgtype': 'm.text',
+          'timestamp': 250,
+          'in_reply_to': r'$root',
+          'thread_root': r'$root',
+          'replaces_event_id': null,
+          'edited_at': null,
+        },
+        'reply_count': 3,
+        'unread_count': 2,
+        'current_user_participated': true,
+      });
+
+      expect(summary.root.eventId, r'$root');
+      expect(summary.latestReply?.eventId, r'$latest');
+      expect(summary.replyCount, 3);
+      expect(summary.unreadCount, 2);
+      expect(summary.currentUserParticipated, isTrue);
+      expect(summary.lastActivityTimestamp, 250);
+      expect(ThreadSummary.fromJson(summary.toJson()).unreadCount, 2);
+      expect(summary.copyWith(unreadCount: 0).unreadCount, 0);
+    });
+
+    test('preserves unavailable unread state', () {
+      final summary = ThreadSummary.fromJson({
+        'room_id': '!room:example.org',
+        'room_name': 'Room',
+        'root': {
+          'event_id': r'$root',
+          'room_id': '!room:example.org',
+          'sender': '@alice:example.org',
+          'body': 'Root',
+          'formatted_body': null,
+          'msgtype': 'm.text',
+          'timestamp': 1,
+          'in_reply_to': null,
+          'thread_root': null,
+          'replaces_event_id': null,
+          'edited_at': null,
+        },
+        'latest_reply': null,
+        'reply_count': 1,
+        'unread_count': null,
+        'current_user_participated': false,
+      });
+
+      expect(summary.unreadCount, isNull);
+      expect(summary.toJson()['unread_count'], isNull);
+    });
+
+    test('paginated thread messages preserve root and token', () {
+      final root = MessageEvent(
+        eventId: r'$root',
+        roomId: '!room:example.org',
+        sender: '@alice:example.org',
+        body: 'Root',
+        msgtype: 'm.text',
+        timestamp: 1,
+      );
+      final page = PaginatedThreadMessages(
+        root: root,
+        messages: [
+          MessageEvent(
+            eventId: r'$reply',
+            roomId: root.roomId,
+            sender: '@bob:example.org',
+            body: 'Reply',
+            msgtype: 'm.text',
+            timestamp: 2,
+            threadRoot: root.eventId,
+          ),
+        ],
+        endToken: 'older',
+      );
+
+      final restored = PaginatedThreadMessages.fromJson(page.toJson());
+      expect(restored.root.eventId, r'$root');
+      expect(restored.messages.single.threadRoot, r'$root');
+      expect(restored.endToken, 'older');
+    });
+  });
+
   group('ReceiptEvent', () {
     test('fromJson with all fields', () {
       final json = {
@@ -197,6 +321,7 @@ void main() {
         'user_id': '@bob:matrix.org',
         'event_id': '\$event1',
         'receipt_type': 'm.read',
+        'thread_id': '\$root',
         'timestamp': 1234567892,
       };
       final receipt = ReceiptEvent.fromJson(json);
@@ -204,6 +329,7 @@ void main() {
       expect(receipt.userId, '@bob:matrix.org');
       expect(receipt.eventId, '\$event1');
       expect(receipt.receiptType, 'm.read');
+      expect(receipt.threadId, '\$root');
       expect(receipt.timestamp, 1234567892);
     });
 
@@ -224,6 +350,7 @@ void main() {
         userId: '@a:m.org',
         eventId: '\$target',
         receiptType: 'm.read',
+        threadId: 'main',
         timestamp: 700,
       );
       final json = original.toJson();
@@ -231,6 +358,7 @@ void main() {
       expect(restored.userId, original.userId);
       expect(restored.eventId, original.eventId);
       expect(restored.receiptType, original.receiptType);
+      expect(restored.threadId, original.threadId);
       expect(restored.timestamp, original.timestamp);
     });
   });

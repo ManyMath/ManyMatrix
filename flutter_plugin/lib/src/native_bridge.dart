@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -194,6 +195,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
       case 'redact':
         return _execRedact(bindings, args);
       case 'send_thread_reply':
+        return _execWithHandleAndFourStrings(bindings, method, args);
+      case 'send_thread_read_receipt':
         return _execWithHandleAndThreeStrings(bindings, method, args);
       case 'send_custom_event':
         return _execWithHandleAndThreeStrings(bindings, method, args);
@@ -205,6 +208,10 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execSendTyping(bindings, args);
       case 'get_messages':
         return _execGetMessages(bindings, args);
+      case 'thread_index':
+        return _execThreadIndex(bindings, args);
+      case 'get_thread_messages':
+        return _execGetThreadMessages(bindings, args);
       case 'enable_encryption':
         return _execWithHandleAndOneString(bindings, method, args);
       case 'start_verification':
@@ -235,6 +242,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execUploadMedia(bindings, args);
       case 'download_media':
         return _execDownloadMedia(bindings, args);
+      case 'download_media_source':
+        return _execDownloadMediaSource(bindings, args);
       case 'get_thumbnail':
         return _execGetThumbnail(bindings, args);
       case 'register_pusher':
@@ -252,10 +261,10 @@ class ManyMatrixBridge implements ffi.Finalizable {
     final path = (args['store_path'] as String).toNativeUtf8();
     final customCaCertificatePath =
         args['custom_ca_certificate_path'] as String?;
-    final customCa = customCaCertificatePath == null ||
-            customCaCertificatePath.isEmpty
-        ? null
-        : customCaCertificatePath.toNativeUtf8();
+    final customCa =
+        customCaCertificatePath == null || customCaCertificatePath.isEmpty
+            ? null
+            : customCaCertificatePath.toNativeUtf8();
     try {
       final result = customCa == null
           ? bindings.manymatrix_new(url.cast(), path.cast())
@@ -506,8 +515,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
             s2.cast(),
             s3.cast(),
           );
-        case 'send_thread_reply':
-          result = bindings.manymatrix_send_thread_reply(
+        case 'send_thread_read_receipt':
+          result = bindings.manymatrix_send_thread_read_receipt(
             handle,
             s1.cast(),
             s2.cast(),
@@ -535,6 +544,37 @@ class ManyMatrixBridge implements ffi.Finalizable {
       calloc.free(s1);
       calloc.free(s2);
       calloc.free(s3);
+    }
+  }
+
+  static String? _execWithHandleAndFourStrings(
+    ManyMatrixBindings bindings,
+    String method,
+    Map<String, dynamic> args,
+  ) {
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final s1 = (args['s1'] as String).toNativeUtf8();
+    final s2 = (args['s2'] as String).toNativeUtf8();
+    final s3 = (args['s3'] as String).toNativeUtf8();
+    final s4 = (args['s4'] as String).toNativeUtf8();
+    try {
+      if (method != 'send_thread_reply') {
+        throw Exception('Unknown four-string method: $method');
+      }
+      final result = bindings.manymatrix_send_thread_reply(
+        handle,
+        s1.cast(),
+        s2.cast(),
+        s3.cast(),
+        s4.cast(),
+      );
+      return _extractStringResult(bindings, result);
+    } finally {
+      calloc.free(s1);
+      calloc.free(s2);
+      calloc.free(s3);
+      calloc.free(s4);
     }
   }
 
@@ -690,6 +730,45 @@ class ManyMatrixBridge implements ffi.Finalizable {
     }
   }
 
+  static String? _execThreadIndex(
+    ManyMatrixBindings bindings,
+    Map<String, dynamic> args,
+  ) {
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final result = bindings.manymatrix_thread_index(
+      handle,
+      args['limit_per_room'] as int,
+    );
+    return _extractStringResult(bindings, result);
+  }
+
+  static String? _execGetThreadMessages(
+    ManyMatrixBindings bindings,
+    Map<String, dynamic> args,
+  ) {
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final roomId = (args['room_id'] as String).toNativeUtf8();
+    final rootId = (args['thread_root_event_id'] as String).toNativeUtf8();
+    final fromToken = args['from_token'] as String?;
+    final fromTokenPtr = fromToken?.toNativeUtf8() ?? ffi.nullptr;
+    try {
+      final result = bindings.manymatrix_get_thread_messages(
+        handle,
+        roomId.cast(),
+        rootId.cast(),
+        fromTokenPtr.cast(),
+        args['limit'] as int,
+      );
+      return _extractStringResult(bindings, result);
+    } finally {
+      calloc.free(roomId);
+      calloc.free(rootId);
+      if (fromToken != null) calloc.free(fromTokenPtr);
+    }
+  }
+
   static String? _execUploadMedia(
     ManyMatrixBindings bindings,
     Map<String, dynamic> args,
@@ -741,6 +820,32 @@ class ManyMatrixBridge implements ffi.Finalizable {
       return copy;
     } finally {
       calloc.free(mxcUri);
+    }
+  }
+
+  static List<int>? _execDownloadMediaSource(
+    ManyMatrixBindings bindings,
+    Map<String, dynamic> args,
+  ) {
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    final mediaSourceJson =
+        (args['media_source_json'] as String).toNativeUtf8();
+    try {
+      final result = bindings.manymatrix_download_media_source(
+        handle,
+        mediaSourceJson.cast(),
+      );
+      _checkResult(bindings, result);
+      if (result.data == ffi.nullptr) return null;
+      final bufPtr = result.data.cast<FfiBuffer>();
+      final buf = bufPtr.ref;
+      final bytes = buf.data.cast<ffi.Uint8>().asTypedList(buf.len);
+      final copy = Uint8List.fromList(bytes);
+      bindings.ffi_free_buffer(buf);
+      return copy;
+    } finally {
+      calloc.free(mediaSourceJson);
     }
   }
 
@@ -906,7 +1011,13 @@ class ManyMatrixBridge implements ffi.Finalizable {
   }
 
   /// Login with username and password. Returns JSON session string.
-  Future<String> login(String username, String password) async {
+  Future<String> login(
+    String username,
+    String password, {
+    String? deviceId,
+  }) async {
+    // Native reauthentication support will use the matching FFI entry point;
+    // existing native callers retain the current login behavior.
     final result = await _call('login', {
       'username': username,
       'password': password,
@@ -923,6 +1034,28 @@ class ManyMatrixBridge implements ffi.Finalizable {
   Future<String?> currentSession() async {
     return await _call('current_session', {}) as String?;
   }
+
+  /// Native session persistence is owned by the host application.
+  Future<void> persistSession(String sessionJson) async {}
+
+  /// Native session persistence is owned by the host application.
+  Future<String?> loadPersistedSession() async => null;
+
+  /// Native session persistence is owned by the host application.
+  Future<void> clearPersistedSession() async {}
+
+  static Future<void> clearStoredAccount(
+    String homeserverUrl,
+    String storePath,
+  ) async {
+    final directory = Directory(storePath);
+    if (await directory.exists()) await directory.delete(recursive: true);
+  }
+
+  static Future<void> clearStoredSession(
+    String homeserverUrl,
+    String storePath,
+  ) async {}
 
   /// Perform a single sync round.
   Future<void> syncOnce({Duration? timeout}) async {
@@ -983,7 +1116,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
   }
 
   /// Logout and invalidate the server token.
-  Future<void> logout() async {
+  Future<void> logout({bool clearPersistedSession = true}) async {
     await _call('logout', {});
   }
 
@@ -1190,14 +1323,61 @@ class ManyMatrixBridge implements ffi.Finalizable {
   Future<String> sendThreadReply(
     String roomId,
     String threadRootId,
-    String body,
-  ) async {
+    String body, {
+    String? inReplyToEventId,
+  }) async {
     final result = await _call('send_thread_reply', {
       's1': roomId,
       's2': threadRootId,
-      's3': body,
+      's3': inReplyToEventId ?? threadRootId,
+      's4': body,
     });
     return result as String;
+  }
+
+  /// Recent server-aggregated threads across joined rooms.
+  Future<List<ThreadSummary>> threadIndex({int limitPerRoom = 50}) async {
+    final json = await _call('thread_index', {
+      'limit_per_room': limitPerRoom,
+    }) as String?;
+    if (json == null) return const <ThreadSummary>[];
+    return (jsonDecode(json) as List<dynamic>)
+        .map((value) => ThreadSummary.fromJson(value as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Load a page of replies for one thread.
+  Future<PaginatedThreadMessages> getThreadMessages(
+    String roomId,
+    String threadRootEventId, {
+    String? fromToken,
+    int limit = 50,
+  }) async {
+    final json = await _call('get_thread_messages', {
+      'room_id': roomId,
+      'thread_root_event_id': threadRootEventId,
+      'from_token': fromToken,
+      'limit': limit,
+    }) as String?;
+    if (json == null) {
+      throw StateError('ManyMatrix returned no thread timeline');
+    }
+    return PaginatedThreadMessages.fromJson(
+      jsonDecode(json) as Map<String, dynamic>,
+    );
+  }
+
+  /// Mark one thread read through a thread-specific Matrix receipt.
+  Future<void> sendThreadReadReceipt(
+    String roomId,
+    String threadRootEventId,
+    String eventId,
+  ) async {
+    await _call('send_thread_read_receipt', {
+      's1': roomId,
+      's2': threadRootEventId,
+      's3': eventId,
+    });
   }
 
   /// Send a read receipt for an event.
@@ -1324,6 +1504,17 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Download media by mxc:// URI. Returns raw bytes.
   Future<Uint8List?> downloadMedia(String mxcUri) async {
     final result = await _call('download_media', {'mxc_uri': mxcUri});
+    if (result == null) return null;
+    return Uint8List.fromList(result as List<int>);
+  }
+
+  /// Download and, when required, decrypt a complete Matrix media source.
+  Future<Uint8List?> downloadMediaSource(
+    Map<String, dynamic> mediaSource,
+  ) async {
+    final result = await _call('download_media_source', {
+      'media_source_json': jsonEncode(mediaSource),
+    });
     if (result == null) return null;
     return Uint8List.fromList(result as List<int>);
   }
@@ -1523,4 +1714,6 @@ class ManyMatrixBridge implements ffi.Finalizable {
       callable.close();
     }
   }
+
+  Future<void> close() async => dispose();
 }

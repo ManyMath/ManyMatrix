@@ -477,7 +477,10 @@ mod tests {
         let store_path = CString::new(store_path).unwrap();
         let missing_ca = CString::new(
             std::env::temp_dir()
-                .join(format!("manymatrix-missing-ca-ffi-{}.pem", std::process::id()))
+                .join(format!(
+                    "manymatrix-missing-ca-ffi-{}.pem",
+                    std::process::id()
+                ))
                 .to_string_lossy()
                 .into_owned(),
         )
@@ -487,7 +490,11 @@ mod tests {
             manymatrix_new_with_custom_ca(url.as_ptr(), store_path.as_ptr(), missing_ca.as_ptr())
         };
         assert!(!result.ok);
-        let error = unsafe { CStr::from_ptr(result.error_msg).to_string_lossy().into_owned() };
+        let error = unsafe {
+            CStr::from_ptr(result.error_msg)
+                .to_string_lossy()
+                .into_owned()
+        };
         assert!(error.contains("could not read custom root certificate"));
         ffi_free_result(result);
     }

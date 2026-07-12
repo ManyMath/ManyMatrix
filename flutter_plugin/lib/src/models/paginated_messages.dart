@@ -2,6 +2,7 @@ import 'message_event.dart';
 
 /// Result of paginating messages in a room.
 class PaginatedMessages {
+  /// Message-like events in chronological order, oldest to newest.
   final List<MessageEvent> messages;
   final String? endToken;
 
@@ -16,7 +17,7 @@ class PaginatedMessages {
       );
 
   Map<String, dynamic> toJson() => {
-    'messages': messages.map((e) => e.toJson()).toList(),
-    'end_token': endToken,
-  };
+        'messages': messages.map((e) => e.toJson()).toList(),
+        'end_token': endToken,
+      };
 }

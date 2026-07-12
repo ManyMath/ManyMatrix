@@ -180,6 +180,11 @@ async fn read_receipt_round_trip(kind: ServerKind) -> Result<()> {
         "receipt should be from bob_rcpt, got: {}",
         receipt.user_id
     );
+    assert_eq!(
+        receipt.thread_id.as_deref(),
+        Some("main"),
+        "ordinary room receipts should preserve their explicit main scope"
+    );
 
     Ok(())
 }
@@ -224,8 +229,13 @@ async fn threaded_message_round_trip(kind: ServerKind) -> Result<()> {
     alice.sync_once().await?;
 
     // Alice sends a thread reply
-    let _reply_event_id = alice
-        .send_thread_reply(&room_id, &root_event_id, "thread reply body")
+    let reply_event_id = alice
+        .send_thread_reply(
+            &room_id,
+            &root_event_id,
+            &root_event_id,
+            "thread reply body",
+        )
         .await?;
     eprintln!("Alice sent thread reply");
 
@@ -272,6 +282,63 @@ async fn threaded_message_round_trip(kind: ServerKind) -> Result<()> {
         "Thread reply verified: thread_root={:?}",
         thread_reply.thread_root
     );
+
+    // The dedicated relations path must return the authoritative root and
+    // replies without relying on whatever room-history page the UI loaded.
+    let thread_page = bob
+        .get_thread_messages(&room_id, &root_event_id, None, 20)
+        .await?;
+    assert_eq!(thread_page.root.event_id, root_event_id);
+    assert_eq!(thread_page.messages.len(), 1);
+    assert_eq!(thread_page.messages[0].event_id, reply_event_id);
+    assert_eq!(
+        thread_page.messages[0].thread_root.as_deref(),
+        Some(root_event_id.as_str())
+    );
+
+    // Opening the room advances only its explicit `main` receipt. It must not
+    // consume the unread notification belonging to this thread.
+    bob.send_read_receipt(&room_id, &root_event_id).await?;
+
+    // `/threads` is not implemented by every homeserver in the compatibility
+    // matrix. Synapse and supporting servers must expose the bundled count;
+    // known non-Synapse variants may skip only this capability assertion.
+    let index = match bob.thread_index(20).await {
+        Ok(index) => index,
+        Err(error) if !kind.slug().contains("synapse") => {
+            bob.send_thread_read_receipt(&room_id, &root_event_id, &reply_event_id)
+                .await?;
+            eprintln!(
+                "{} does not expose the Matrix thread index; relations and scoped receipt passed: {error}",
+                kind.slug()
+            );
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let summary = index
+        .iter()
+        .find(|thread| thread.room_id == room_id && thread.root.event_id == root_event_id)
+        .expect("thread index should include the new root");
+    assert_eq!(summary.reply_count, 1);
+    assert_eq!(
+        summary
+            .latest_reply
+            .as_ref()
+            .map(|reply| reply.event_id.as_str()),
+        Some(reply_event_id.as_str())
+    );
+    if kind.slug().contains("synapse") {
+        assert!(
+            summary.unread_count.unwrap_or(0) > 0,
+            "Synapse should map the unread thread notification to its root"
+        );
+    }
+
+    // A thread-aware client advances a receipt scoped to this root rather than
+    // accidentally clearing the room's main timeline.
+    bob.send_thread_read_receipt(&room_id, &root_event_id, &reply_event_id)
+        .await?;
 
     Ok(())
 }

@@ -519,6 +519,18 @@ struct FfiResult manymatrix_upload_media(struct ManyMatrixClient *handle,
  struct FfiResult manymatrix_download_media(struct ManyMatrixClient *handle, const char *mxc_uri);
 
 /**
+ * Download media from a serialized plain or encrypted Matrix `MediaSource`.
+ *
+ * Returns an `FfiBuffer` pointer in `FfiResult.data`. Free with `ffi_free_buffer`.
+ *
+ * # Safety
+ * `handle` must be valid and `media_source_json` must be NUL-terminated UTF-8.
+ */
+
+struct FfiResult manymatrix_download_media_source(struct ManyMatrixClient *handle,
+                                                  const char *media_source_json);
+
+/**
  * Fetch a thumbnail of media content by its mxc:// URI.
  *
  * Returns an `FfiBuffer` pointer in `FfiResult.data`. Free with `ffi_free_buffer`.
@@ -664,6 +676,7 @@ struct FfiResult manymatrix_redact(struct ManyMatrixClient *handle,
 struct FfiResult manymatrix_send_thread_reply(struct ManyMatrixClient *handle,
                                               const char *room_id,
                                               const char *thread_root_id,
+                                              const char *in_reply_to_id,
                                               const char *body);
 
 /**
@@ -704,6 +717,40 @@ struct FfiResult manymatrix_get_messages(struct ManyMatrixClient *handle,
                                          const char *room_id,
                                          const char *from_token,
                                          uint32_t limit);
+
+/**
+ * Return a JSON array of recent server-aggregated thread summaries.
+ *
+ * # Safety
+ * `handle` must be a valid `ManyMatrixClient` pointer.
+ */
+ struct FfiResult manymatrix_thread_index(struct ManyMatrixClient *handle, uint32_t limit_per_room);
+
+/**
+ * Load a JSON-serialized page of messages from one thread.
+ *
+ * # Safety
+ * `handle` must be valid. String pointers must be valid UTF-8 C strings;
+ * `from_token` may be null.
+ */
+
+struct FfiResult manymatrix_get_thread_messages(struct ManyMatrixClient *handle,
+                                                const char *room_id,
+                                                const char *thread_root_event_id,
+                                                const char *from_token,
+                                                uint32_t limit);
+
+/**
+ * Send a read receipt scoped to one thread.
+ *
+ * # Safety
+ * `handle` and all string pointers must be valid.
+ */
+
+struct FfiResult manymatrix_send_thread_read_receipt(struct ManyMatrixClient *handle,
+                                                     const char *room_id,
+                                                     const char *thread_root_event_id,
+                                                     const char *event_id);
 
 /**
  * Create a new room with the given name and topic.

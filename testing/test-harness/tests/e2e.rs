@@ -304,17 +304,15 @@ async fn sync_populates_room_list(kind: ServerKind) -> Result<()> {
         .send_text(room_id.as_str(), "hello from sync test")
         .await?;
 
-    // Sync again to pick up the sent message
+    // Sync once to let the SDK replace ManyMatrix's direct-send preview with
+    // the authoritative event when the homeserver includes it immediately.
     alice.sync_once().await?;
-
-    // Check room list
     let rooms = alice.joined_rooms().await;
-    assert!(!rooms.is_empty(), "should have at least one room");
-
     let room = rooms
         .iter()
-        .find(|r| r.room_id == room_id)
+        .find(|room| room.room_id == room_id)
         .expect("should find the created room in room list");
+
     assert!(!room.display_name.is_empty());
     // Verify last_message is populated
     let last = room

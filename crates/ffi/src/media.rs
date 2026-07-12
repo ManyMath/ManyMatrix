@@ -57,6 +57,38 @@ pub unsafe extern "C" fn manymatrix_download_media(
     }
 }
 
+/// Download media from a serialized plain or encrypted Matrix `MediaSource`.
+///
+/// Returns an `FfiBuffer` pointer in `FfiResult.data`. Free with `ffi_free_buffer`.
+///
+/// # Safety
+/// `handle` must be valid and `media_source_json` must be NUL-terminated UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_download_media_source(
+    handle: *mut ManyMatrixClient,
+    media_source_json: *const c_char,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let media_source_json = str_from_ptr(media_source_json);
+    let media_source: serde_json::Value = match serde_json::from_str(media_source_json) {
+        Ok(value) => value,
+        Err(error) => {
+            return FfiResult::error(&format!("invalid media source JSON: {error}"));
+        }
+    };
+    match RUNTIME.block_on(client.download_media_source(&media_source)) {
+        Ok(data) => {
+            let mut boxed = data.into_boxed_slice();
+            let ptr = boxed.as_mut_ptr();
+            let len = boxed.len();
+            std::mem::forget(boxed);
+            let buf = Box::new(FfiBuffer { data: ptr, len });
+            FfiResult::success(Box::into_raw(buf) as *mut c_void)
+        }
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
 /// Fetch a thumbnail of media content by its mxc:// URI.
 ///
 /// Returns an `FfiBuffer` pointer in `FfiResult.data`. Free with `ffi_free_buffer`.

@@ -96,6 +96,7 @@ struct LoginArgs {
     homeserver_url: String,
     username: String,
     password: String,
+    device_id: Option<String>,
     store_name: String,
 }
 
@@ -156,6 +157,7 @@ struct RedactArgs {
 struct ThreadReplyArgs {
     room_id: String,
     thread_root_event_id: String,
+    in_reply_to_event_id: String,
     body: String,
 }
 
@@ -164,6 +166,26 @@ struct GetMessagesArgs {
     room_id: String,
     from_token: Option<String>,
     limit: u32,
+}
+
+#[derive(Deserialize)]
+struct ThreadIndexArgs {
+    limit_per_room: u32,
+}
+
+#[derive(Deserialize)]
+struct GetThreadMessagesArgs {
+    room_id: String,
+    thread_root_event_id: String,
+    from_token: Option<String>,
+    limit: u32,
+}
+
+#[derive(Deserialize)]
+struct ThreadReadReceiptArgs {
+    room_id: String,
+    thread_root_event_id: String,
+    event_id: String,
 }
 
 #[derive(Deserialize)]
@@ -238,7 +260,8 @@ struct UploadMediaArgs {
 
 #[derive(Deserialize)]
 struct DownloadMediaArgs {
-    mxc_uri: String,
+    mxc_uri: Option<String>,
+    media_source: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -319,7 +342,7 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .map_err(sdk_err)?;
             attach_session_update_sink(&mm);
             let session = mm
-                .login(&args.username, &args.password)
+                .login_with_device_id(&args.username, &args.password, args.device_id.as_deref())
                 .await
                 .map_err(sdk_err)?;
             let session_json = serde_json::to_string(&session).map_err(serde_err)?;
@@ -575,6 +598,19 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let rooms_json = serde_json::to_string(&rooms).map_err(serde_err)?;
             Ok(serde_json::json!({"rooms_json": rooms_json}))
         }
+        "rooms.invited" => {
+            let client = get_client()?;
+            let invites = client.invited_rooms().await;
+            let invites_json = serde_json::to_string(&invites).map_err(serde_err)?;
+            Ok(serde_json::json!({"invites_json": invites_json}))
+        }
+        "rooms.details" => {
+            let args: RoomIdArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let details = client.room_details(&args.room_id).map_err(sdk_err)?;
+            let details_json = serde_json::to_string(&details).map_err(serde_err)?;
+            Ok(serde_json::json!({"details_json": details_json}))
+        }
         "messages.get" => {
             let args: GetMessagesArgs = serde_json::from_str(args_json).map_err(serde_err)?;
             let client = get_client()?;
@@ -584,6 +620,40 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .map_err(sdk_err)?;
             let paginated_json = serde_json::to_string(&paginated).map_err(serde_err)?;
             Ok(serde_json::json!({"paginated_json": paginated_json}))
+        }
+        "threads.index" => {
+            let args: ThreadIndexArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let threads = client
+                .thread_index(args.limit_per_room)
+                .await
+                .map_err(sdk_err)?;
+            let threads_json = serde_json::to_string(&threads).map_err(serde_err)?;
+            Ok(serde_json::json!({"threads_json": threads_json}))
+        }
+        "threads.messages" => {
+            let args: GetThreadMessagesArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let paginated = client
+                .get_thread_messages(
+                    &args.room_id,
+                    &args.thread_root_event_id,
+                    args.from_token.as_deref(),
+                    args.limit,
+                )
+                .await
+                .map_err(sdk_err)?;
+            let paginated_json = serde_json::to_string(&paginated).map_err(serde_err)?;
+            Ok(serde_json::json!({"paginated_json": paginated_json}))
+        }
+        "threads.read_receipt" => {
+            let args: ThreadReadReceiptArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            client
+                .send_thread_read_receipt(&args.room_id, &args.thread_root_event_id, &args.event_id)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({}))
         }
         "messages.send_text" => {
             let args: SendTextArgs = serde_json::from_str(args_json).map_err(serde_err)?;
@@ -661,7 +731,12 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let args: ThreadReplyArgs = serde_json::from_str(args_json).map_err(serde_err)?;
             let client = get_client()?;
             let event_id = client
-                .send_thread_reply(&args.room_id, &args.thread_root_event_id, &args.body)
+                .send_thread_reply(
+                    &args.room_id,
+                    &args.thread_root_event_id,
+                    &args.in_reply_to_event_id,
+                    &args.body,
+                )
                 .await
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({"event_id": event_id}))
@@ -683,10 +758,20 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             use base64::Engine as _;
             let args: DownloadMediaArgs = serde_json::from_str(args_json).map_err(serde_err)?;
             let client = get_client()?;
-            let data = client
-                .download_media(&args.mxc_uri)
-                .await
-                .map_err(sdk_err)?;
+            let data = if let Some(source) = args.media_source.as_ref() {
+                client
+                    .download_media_source(source)
+                    .await
+                    .map_err(sdk_err)?
+            } else if let Some(mxc_uri) = args.mxc_uri.as_deref() {
+                client.download_media(mxc_uri).await.map_err(sdk_err)?
+            } else {
+                return Err(ErrEnvelope {
+                    kind: ErrKind::SerdeError,
+                    message: "media.download requires media_source or mxc_uri".to_owned(),
+                    details: serde_json::json!({}),
+                });
+            };
             let data_base64 = base64::engine::general_purpose::STANDARD.encode(data);
             Ok(serde_json::json!({"data_base64": data_base64}))
         }

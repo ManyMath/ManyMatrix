@@ -4,6 +4,7 @@ class ReceiptEvent {
   final String userId;
   final String eventId;
   final String receiptType;
+  final String? threadId;
   final int? timestamp;
 
   ReceiptEvent({
@@ -11,6 +12,7 @@ class ReceiptEvent {
     required this.userId,
     required this.eventId,
     required this.receiptType,
+    this.threadId,
     this.timestamp,
   });
 
@@ -19,6 +21,7 @@ class ReceiptEvent {
         userId: json['user_id'] as String,
         eventId: json['event_id'] as String,
         receiptType: json['receipt_type'] as String,
+        threadId: json['thread_id'] as String?,
         timestamp: json['timestamp'] as int?,
       );
 
@@ -27,6 +30,7 @@ class ReceiptEvent {
         'user_id': userId,
         'event_id': eventId,
         'receipt_type': receiptType,
+        'thread_id': threadId,
         'timestamp': timestamp,
       };
 }

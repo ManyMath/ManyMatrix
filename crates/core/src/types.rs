@@ -87,6 +87,21 @@ mod tests {
         assert_eq!(json["supports_refresh_tokens"], true);
         assert_eq!(json["capabilities_authenticated"], false);
     }
+
+    #[test]
+    fn room_summary_serializes_full_sync_readiness() {
+        let summary = RoomSummary {
+            room_id: "!new:example.org".to_owned(),
+            display_name: "New room".to_owned(),
+            avatar_url: None,
+            last_message: None,
+            unread_count: 0,
+            is_synced: false,
+        };
+
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["is_synced"], false);
+    }
 }
 
 /// Summary of a joined room for display in room lists.
@@ -97,6 +112,8 @@ pub struct RoomSummary {
     pub avatar_url: Option<String>,
     pub last_message: Option<LastMessage>,
     pub unread_count: u64,
+    /// Whether the room's full state has arrived through sync.
+    pub is_synced: bool,
 }
 
 /// Stable identity details for a room.
@@ -162,8 +179,13 @@ pub struct MessageEvent {
     pub in_reply_to: Option<String>,
     pub thread_root: Option<String>,
     pub replaces_event_id: Option<String>,
+    pub redacts_event_id: Option<String>,
     pub edited_at: Option<u64>,
     pub mxc_uri: Option<String>,
+    /// Complete Matrix media source. Plain attachments use `{ "url": ... }`;
+    /// encrypted attachments retain `{ "file": { url, key, iv, hashes, v } }`
+    /// so the SDK can authenticate and decrypt the download later.
+    pub media_source: Option<Value>,
     pub filename: Option<String>,
     pub file_size: Option<u64>,
 }
@@ -185,6 +207,31 @@ pub struct CustomEvent {
 /// Result of paginating messages in a room.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedMessages {
+    /// Message-like events in chronological order, oldest to newest.
+    pub messages: Vec<MessageEvent>,
+    pub end_token: Option<String>,
+}
+
+/// One server-aggregated thread root for the cross-room thread index.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadSummary {
+    pub room_id: String,
+    pub room_name: String,
+    pub root: MessageEvent,
+    pub latest_reply: Option<MessageEvent>,
+    /// Authoritative reply count from the homeserver's bundled `m.thread` relation.
+    pub reply_count: u32,
+    /// Unread notifications in this thread, matching Matrix's room unread semantics.
+    /// `None` means the homeserver's unread-thread aggregate could not be read.
+    pub unread_count: Option<u64>,
+    pub current_user_participated: bool,
+}
+
+/// Result of paginating replies for one thread.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedThreadMessages {
+    pub root: MessageEvent,
+    /// Thread relations in chronological order, oldest to newest.
     pub messages: Vec<MessageEvent>,
     pub end_token: Option<String>,
 }
@@ -220,5 +267,8 @@ pub struct ReceiptEvent {
     pub user_id: String,
     pub event_id: String,
     pub receipt_type: String,
+    /// Matrix `thread_id`: `main`, a thread root event ID, or absent for a
+    /// legacy receipt that applies across the room.
+    pub thread_id: Option<String>,
     pub timestamp: Option<u64>,
 }

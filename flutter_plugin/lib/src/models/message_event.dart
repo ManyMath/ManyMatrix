@@ -10,7 +10,12 @@ class MessageEvent {
   final String? inReplyTo;
   final String? threadRoot;
   final String? replacesEventId;
+  final String? redactsEventId;
   final int? editedAt;
+  final String? mxcUri;
+  final Map<String, dynamic>? mediaSource;
+  final String? filename;
+  final int? fileSize;
 
   MessageEvent({
     required this.eventId,
@@ -23,7 +28,12 @@ class MessageEvent {
     this.inReplyTo,
     this.threadRoot,
     this.replacesEventId,
+    this.redactsEventId,
     this.editedAt,
+    this.mxcUri,
+    this.mediaSource,
+    this.filename,
+    this.fileSize,
   });
 
   factory MessageEvent.fromJson(Map<String, dynamic> json) => MessageEvent(
@@ -37,7 +47,14 @@ class MessageEvent {
         inReplyTo: json['in_reply_to'] as String?,
         threadRoot: json['thread_root'] as String?,
         replacesEventId: json['replaces_event_id'] as String?,
+        redactsEventId: json['redacts_event_id'] as String?,
         editedAt: json['edited_at'] as int?,
+        mxcUri: json['mxc_uri'] as String?,
+        mediaSource: json['media_source'] == null
+            ? null
+            : Map<String, dynamic>.from(json['media_source'] as Map),
+        filename: json['filename'] as String?,
+        fileSize: json['file_size'] as int?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -51,6 +68,11 @@ class MessageEvent {
         'in_reply_to': inReplyTo,
         'thread_root': threadRoot,
         'replaces_event_id': replacesEventId,
+        'redacts_event_id': redactsEventId,
         'edited_at': editedAt,
+        'mxc_uri': mxcUri,
+        'media_source': mediaSource,
+        'filename': filename,
+        'file_size': fileSize,
       };
 }

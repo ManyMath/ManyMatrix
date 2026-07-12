@@ -22,6 +22,12 @@ pub enum Error {
     #[error("ID parse error: {0}")]
     IdParse(String),
 
+    #[error("attachment is {actual_bytes} bytes; downloads are limited to {max_bytes} bytes")]
+    MediaTooLarge {
+        actual_bytes: usize,
+        max_bytes: usize,
+    },
+
     #[error("{0}")]
     Other(String),
 }
@@ -42,6 +48,14 @@ impl Error {
                 .as_client_api_error()
                 .map(client_api_error_details)
                 .unwrap_or_else(|| serde_json::json!({})),
+            Self::MediaTooLarge {
+                actual_bytes,
+                max_bytes,
+            } => serde_json::json!({
+                "reason": "media_too_large",
+                "actual_bytes": actual_bytes,
+                "max_bytes": max_bytes,
+            }),
             _ => serde_json::json!({}),
         }
     }
