@@ -1,12 +1,11 @@
 {
-    "name": "manymatrix",
-    "short_name": "manymatrix",
+    "name": "ManyMatrix",
+    "short_name": "ManyMatrix",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#f7faf9",
+    "theme_color": "#0f766e",
+    "description": "A focused Matrix client for rooms, conversations, encrypted media, and multiple accounts.",
     "prefer_related_applications": false,
     "icons": [
         {
