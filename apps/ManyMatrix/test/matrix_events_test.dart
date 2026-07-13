@@ -18,6 +18,7 @@ Map<String, dynamic> _eventJson({
   'in_reply_to': null,
   'thread_root': null,
   'replaces_event_id': null,
+  'redacts_event_id': null,
   'edited_at': null,
 };
 
@@ -36,12 +37,14 @@ Map<String, dynamic> _reactionJson({
 Map<String, dynamic> _receiptJson({
   String eventId = r'$evt1',
   String userId = '@bob:example.org',
+  String? threadId = 'main',
   int? timestamp = 1700000000002,
 }) => <String, dynamic>{
   'room_id': '!room:example.org',
   'user_id': userId,
   'event_id': eventId,
   'receipt_type': 'm.read',
+  'thread_id': threadId,
   'timestamp': timestamp,
 };
 
@@ -151,6 +154,7 @@ void main() {
       expect(event.userId, '@bob:example.org');
       expect(event.eventId, r'$evt1');
       expect(event.receiptType, 'm.read');
+      expect(event.threadId, 'main');
       expect(event.timestamp, 1700000000002);
     });
 
@@ -175,14 +179,17 @@ void main() {
       final events = receiptEventStream(raw.stream).toList();
 
       raw
-        ..add(jsonEncode(_receiptJson(eventId: r'$a')))
+        ..add(jsonEncode(_receiptJson(eventId: r'$a', threadId: 'main')))
         ..add('garbage')
-        ..add(jsonEncode(_receiptJson(eventId: r'$b')))
+        ..add(
+          jsonEncode(_receiptJson(eventId: r'$b', threadId: r'$thread-root')),
+        )
         ..add('{"partial": true}');
       await raw.close();
 
       final received = await events;
       expect(received.map((e) => e.eventId), [r'$a', r'$b']);
+      expect(received.map((e) => e.threadId), ['main', r'$thread-root']);
     });
   });
 }
