@@ -86,6 +86,7 @@ void main() {
   });
 
   testWidgets('shows reply, thread, and attachment context', (tester) async {
+    var downloads = 0;
     await tester.pumpWidget(
       ProviderScope(
         child: MWidgetsApp(
@@ -100,8 +101,14 @@ void main() {
               timestamp: 1700000000000,
               inReplyTo: r'$parent-event-with-a-long-id',
               threadRoot: r'$thread-root-with-a-long-id',
+              mediaSource: const <String, dynamic>{
+                'file': <String, dynamic>{'url': 'mxc://example.org/photo'},
+              },
+              filename: 'photo.png',
+              fileSize: 12,
             ),
             isMine: false,
+            onDownloadAttachment: () => downloads += 1,
           ),
         ),
       ),
@@ -110,6 +117,14 @@ void main() {
     expect(find.text('Thread reply'), findsOneWidget);
     expect(find.textContaining(r'$parent-event'), findsNothing);
     expect(find.textContaining(r'$thread-root'), findsNothing);
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is MIconButton && widget.label == 'Download attachment',
+      ),
+    );
+    expect(downloads, 1);
+    await _openActions(tester);
     expect(find.text('Copy reply link'), findsOneWidget);
     expect(find.text('Copy thread link'), findsOneWidget);
     expect(find.text('Image attachment'), findsOneWidget);
@@ -159,7 +174,8 @@ void main() {
     expect(find.textContaining('jbabb'), findsOneWidget);
     expect(find.textContaining('@jbabb:cypherstack.com'), findsNothing);
 
-    await tester.tap(find.text('Copy link'));
+    await _openActions(tester);
+    await tester.tap(find.text('Copy message link'));
     await tester.pump();
 
     expect(copiedText, 'https://matrix.to/#/!room%3Aexample.org/%24event-1');
@@ -185,6 +201,7 @@ void main() {
             ),
             isMine: false,
             threadReplyCount: 2,
+            threadUnreadCount: 1,
             onOpenThread: () => opens++,
             onThreadReply: () => replies++,
           ),
@@ -192,11 +209,46 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('Open thread (2)'));
-    await tester.tap(find.text('Thread'));
+    final threadButton = find.bySemanticsLabel(
+      'Open thread, 2 replies, 1 unread',
+    );
+    expect(threadButton, findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    await tester.tap(threadButton);
+    await _openActions(tester);
+    await tester.tap(find.text('Reply in thread'));
 
     expect(opens, 1);
     expect(replies, 1);
+  });
+
+  testWidgets('keeps a visible 40px thread action before any replies', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MWidgetsApp(
+          debugShowCheckedModeBanner: false,
+          home: MessageBubble(
+            message: MessageEvent(
+              eventId: 'event-1',
+              roomId: '!room:example.org',
+              sender: '@alice:example.org',
+              body: 'Root',
+              msgtype: 'm.text',
+              timestamp: 1700000000000,
+            ),
+            isMine: false,
+            onOpenThread: () {},
+          ),
+        ),
+      ),
+    );
+
+    final action = find.bySemanticsLabel('Open thread, no replies');
+    expect(action, findsOneWidget);
+    expect(find.text('Thread'), findsOneWidget);
+    expect(tester.getSize(action).height, greaterThanOrEqualTo(40));
   });
 
   testWidgets('marks edited messages', (tester) async {
@@ -223,4 +275,34 @@ void main() {
     expect(find.text('Edited text'), findsOneWidget);
     expect(find.textContaining('edited'), findsOneWidget);
   });
+
+  testWidgets('renders a stable placeholder for a blank valid message', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MWidgetsApp(
+          debugShowCheckedModeBanner: false,
+          home: MessageBubble(
+            message: MessageEvent(
+              eventId: 'event-1',
+              roomId: '!room:example.org',
+              sender: '@alice:example.org',
+              body: '   ',
+              msgtype: 'm.text',
+              timestamp: 1700000000000,
+            ),
+            isMine: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Empty message'), findsOneWidget);
+  });
+}
+
+Future<void> _openActions(WidgetTester tester) async {
+  await tester.tap(find.bySemanticsLabel('More message actions').first);
+  await tester.pump();
 }

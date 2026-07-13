@@ -15,6 +15,7 @@ dependencies:
   flutter_riverpod: ^2.5.0
   flutter_hooks: ^0.20.5
   hooks_riverpod: ^2.5.0
+  file_selector: ^1.0.3
   manymatrix:
     path: ../../flutter_plugin
   manyui:
@@ -40,4 +41,4 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
-  uses-material-design: false
+  uses-material-design: true
