@@ -3,6 +3,12 @@ import 'dart:io';
 /// Whether the manymatrix runtime works on this platform.
 const bool matrixRuntimeSupported = true;
 
+/// Native hosts persist the exported session through the app layer.
+const bool matrixBridgeOwnsSessionPersistence = false;
+
+/// Native clients are not subject to browser mixed-content restrictions.
+String? homeserverSecurityError(String value) => null;
+
 /// Human-readable reason shown when [matrixRuntimeSupported] is false.
 const String? matrixRuntimeUnsupportedReason = null;
 

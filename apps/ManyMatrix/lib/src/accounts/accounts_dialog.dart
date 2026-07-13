@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
 
@@ -23,6 +24,8 @@ class _AccountsDialogContent extends ConsumerWidget {
     final theme = MTheme.of(context);
     final accounts = ref.watch(accountsProvider);
     final activeId = ref.watch(activeAccountIdProvider);
+    final auth = ref.watch(authControllerProvider);
+    final busy = auth is AuthAuthenticating || auth is AuthRestoring;
 
     return MDialogContent(
       title: 'Accounts',
@@ -43,21 +46,27 @@ class _AccountsDialogContent extends ConsumerWidget {
             )
           else
             for (final SavedAccount a in accounts)
-              _AccountRow(account: a, active: a.id == activeId),
+              _AccountRow(account: a, active: a.id == activeId, busy: busy),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
             child: MButton(
               variant: MButtonVariant.outline,
-              onPressed: () => _addAccount(context),
+              onPressed: busy ? null : () => _addAccount(context),
               child: const Text('Add account'),
             ),
           ),
         ],
       ),
       actions: <Widget>[
+        if (activeId != null)
+          MButton(
+            variant: MButtonVariant.ghost,
+            onPressed: busy ? null : () => _signOut(context, ref),
+            child: const Text('Sign out'),
+          ),
         MButton(
-          variant: MButtonVariant.ghost,
+          variant: MButtonVariant.outline,
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),
         ),
@@ -74,48 +83,85 @@ class _AccountsDialogContent extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showMConfirmDialog(
+      context,
+      title: 'Sign out of this account?',
+      message:
+          'This removes the saved session from this device. Other saved accounts remain available.',
+      confirmLabel: 'Sign out',
+      confirmVariant: MButtonVariant.destructive,
+    );
+    if (!confirmed || !context.mounted) return;
+    Navigator.of(context).pop();
+    await ref.read(authControllerProvider.notifier).signOut();
+  }
 }
 
 /// Hosts [LoginPage] as a pushed route (rather than swapping `AuthGate`'s
 /// child) so signing in to a second account doesn't disrupt whichever
 /// account was already active. Pops itself once sign-in succeeds.
-class _AddAccountRoute extends ConsumerWidget {
+class _AddAccountRoute extends HookConsumerWidget {
   const _AddAccountRoute();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final originalAccountId = useMemoized(
+      () => ref.read(activeAccountIdProvider),
+      const <Object?>[],
+    );
+    final auth = ref.watch(authControllerProvider);
+    final busy = auth is AuthAuthenticating || auth is AuthRestoring;
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
-      if (next is AuthAuthenticated && Navigator.canPop(context)) {
+      if (next is AuthAuthenticated &&
+          ref.read(activeAccountIdProvider) != originalAccountId &&
+          Navigator.canPop(context)) {
         Navigator.of(context).pop();
       }
     });
-    return const LoginPage();
+    return PopScope(
+      canPop: !busy,
+      child: LoginPage(
+        restorePreviousAccountOnFailure: true,
+        onCancel: () => Navigator.of(context).maybePop(),
+      ),
+    );
   }
 }
 
 class _AccountRow extends ConsumerWidget {
-  const _AccountRow({required this.account, required this.active});
+  const _AccountRow({
+    required this.account,
+    required this.active,
+    required this.busy,
+  });
 
   final SavedAccount account;
   final bool active;
+  final bool busy;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accounts = ref.watch(accountsProvider);
     final auth = ref.watch(authControllerProvider);
     final recovery = auth is AuthRecoveryNeeded ? auth : null;
+    final allowForgetActive = auth is AuthUnauthenticated;
 
     return MListTile(
       title: Text(account.label),
       subtitle: Text(account.homeserverUrl),
       selected: active,
-      onTap: active
+      onTap: active || busy
           ? null
-          : () => ref
-                .read(authControllerProvider.notifier)
-                .switchAccount(account.id),
+          : () async {
+              Navigator.of(context).pop();
+              await ref
+                  .read(authControllerProvider.notifier)
+                  .switchAccount(account.id);
+            },
       semanticLabel: 'Switch to ${account.label}',
-      trailing: _trailing(context, ref, accounts, recovery),
+      trailing: _trailing(context, ref, accounts, recovery, allowForgetActive),
     );
   }
 
@@ -124,9 +170,14 @@ class _AccountRow extends ConsumerWidget {
     WidgetRef ref,
     List<SavedAccount> accounts,
     AuthRecoveryNeeded? recovery,
+    bool allowForgetActive,
   ) {
     final recoveryForThisAccount = active && recovery?.accountId == account.id;
-    final showForget = accounts.length > 1 || !active || recoveryForThisAccount;
+    final showForget =
+        accounts.length > 1 ||
+        !active ||
+        recoveryForThisAccount ||
+        (active && allowForgetActive);
     if (!recoveryForThisAccount && !showForget) return null;
 
     return Row(
@@ -136,7 +187,9 @@ class _AccountRow extends ConsumerWidget {
           MButton(
             variant: MButtonVariant.outline,
             size: MButtonSize.sm,
-            onPressed: recovery is AuthNeedsReconnect
+            onPressed: busy
+                ? null
+                : recovery is AuthNeedsReconnect
                 ? () {
                     Navigator.of(context).pop();
                     ref.read(authControllerProvider.notifier).reconnectActive();
@@ -157,25 +210,54 @@ class _AccountRow extends ConsumerWidget {
       variant: MButtonVariant.ghost,
       size: MButtonSize.sm,
       semanticLabel: 'Forget ${account.label}',
-      onPressed: () async {
-        final confirmed = await showMConfirmDialog(
-          context,
-          title: 'Forget account?',
-          content: Builder(
-            builder: (BuildContext ctx) =>
-                Text(account.label, style: MTheme.of(ctx).typography.code),
-          ),
-          confirmLabel: 'Forget',
-          confirmVariant: MButtonVariant.destructive,
-        );
-        if (confirmed) {
-          if (active) {
-            await ref.read(authControllerProvider.notifier).signOut();
-          } else {
-            ref.read(accountsControllerProvider).forget(account.id);
-          }
-        }
-      },
+      onPressed: busy
+          ? null
+          : () async {
+              final confirmed = await showMConfirmDialog(
+                context,
+                title: 'Forget account?',
+                content: Builder(
+                  builder: (BuildContext ctx) => Text(
+                    account.label,
+                    style: MTheme.of(ctx).typography.code,
+                  ),
+                ),
+                confirmLabel: 'Forget',
+                confirmVariant: MButtonVariant.destructive,
+              );
+              if (confirmed) {
+                try {
+                  if (active) {
+                    await ref.read(authControllerProvider.notifier).signOut();
+                  } else {
+                    await ref
+                        .read(accountsControllerProvider)
+                        .forget(account.id);
+                  }
+                } on Object catch (error) {
+                  if (!context.mounted) return;
+                  await showMDialog<void>(
+                    context,
+                    builder: (ctx) => MDialogContent(
+                      title: 'Forget failed',
+                      maxWidth: 380,
+                      content: MAlert(
+                        variant: MAlertVariant.destructive,
+                        message:
+                            'Local account data could not be removed. Close other '
+                            'ManyMatrix tabs and try again.\n\n$error',
+                      ),
+                      actions: <Widget>[
+                        MButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              }
+            },
       child: MIcon(MIconData.close),
     );
   }

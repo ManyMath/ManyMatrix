@@ -16,15 +16,13 @@ class ManyMatrixApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watchMThemeMode(themeModeProvider);
-    // Neither provider holds widget-visible state -- watching just
-    // instantiates them: one loads persisted accounts at startup, the other
-    // listens for changes and writes them back.
+    // This provider loads persisted accounts once at startup. Mutations write
+    // durably through AccountsController before publishing provider state.
     ref.watch(accountsLoaderProvider);
-    ref.watch(accountsPersistenceProvider);
     return MWidgetsApp(
       title: 'ManyMatrix',
-      theme: MThemeData.light(),
-      darkTheme: MThemeData.dark(),
+      theme: manyMatrixLightTheme(),
+      darkTheme: manyMatrixDarkTheme(),
       themeMode: mode,
       debugShowCheckedModeBanner: false,
       home: const AuthGate(),

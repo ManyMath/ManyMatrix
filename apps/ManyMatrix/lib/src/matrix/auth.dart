@@ -93,6 +93,25 @@ String friendlyLoginError(Object error) {
   if (lower.contains('m_limit_exceeded') || lower.contains('rate limit')) {
     return 'Too many attempts. Wait a moment and try again.';
   }
+  if (lower.contains('manymatrix web worker') ||
+      lower.contains('manymatrix_worker.js') ||
+      lower.contains('application/wasm') ||
+      lower.contains('wasm runtime')) {
+    return 'The ManyMatrix browser runtime could not start. Deploy the '
+        'complete web release, including the worker and pkg directory, and '
+        'serve it over HTTP or HTTPS.';
+  }
+  if (lower.contains('mixed content')) {
+    return 'This HTTPS page cannot connect to an HTTP homeserver. Use the '
+        'homeserver\'s HTTPS URL.';
+  }
+  if (lower.contains('cors') ||
+      lower.contains('cross-origin') ||
+      lower.contains('access-control') ||
+      lower.contains('failed to fetch')) {
+    return 'The homeserver blocked this browser request. Verify its HTTPS '
+        'URL and Matrix CORS configuration.';
+  }
   if (lower.contains('dns') ||
       lower.contains('connection refused') ||
       lower.contains('connection reset') ||

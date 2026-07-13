@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manymatrix/manymatrix.dart';
 import 'package:manyui/manyui.dart';
 import 'package:manymatrix_app/src/app.dart';
+import 'package:manymatrix_app/src/matrix/account.dart';
 import 'package:manymatrix_app/src/matrix/bridge_service.dart';
 import 'package:manymatrix_app/src/matrix/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,13 +17,14 @@ class FakeMatrixService implements MatrixService {
   FakeMatrixService({this.failLoginWith});
 
   /// When non-null, [login] throws this string (as an exception message).
-  final String? failLoginWith;
+  String? failLoginWith;
 
   String? lastHomeserverUrl;
   String? lastUsername;
   String? lastPassword;
 
   final _messages = StreamController<MessageEvent>.broadcast();
+  final _sessionProblems = StreamController<SessionProblem>.broadcast();
   String? _userId;
 
   @override
@@ -35,14 +38,13 @@ class FakeMatrixService implements MatrixService {
   Stream<ReceiptEvent> get receiptEvents => const Stream<ReceiptEvent>.empty();
 
   @override
-  Stream<SessionProblem> get sessionProblems =>
-      const Stream<SessionProblem>.empty();
+  Stream<SessionProblem> get sessionProblems => _sessionProblems.stream;
 
   @override
   String? get currentUserId => _userId;
 
   @override
-  Future<String?> restoreSession() async => null;
+  Future<String?> restoreSession() async => _userId;
 
   @override
   Future<String> login({
@@ -108,6 +110,22 @@ class FakeMatrixService implements MatrixService {
   Future<String> sendEmote(String roomId, String body) async => r'$emote';
 
   @override
+  Future<String> uploadMedia(
+    String roomId,
+    String filename,
+    String mimeType,
+    Uint8List data,
+  ) async => r'$media';
+
+  @override
+  Future<Uint8List?> downloadMedia(String mxcUri) async => null;
+
+  @override
+  Future<Uint8List?> downloadMediaSource(
+    Map<String, dynamic> mediaSource,
+  ) async => null;
+
+  @override
   Future<void> editMessage(
     String roomId,
     String eventId,
@@ -122,8 +140,9 @@ class FakeMatrixService implements MatrixService {
   Future<String> sendThreadReply(
     String roomId,
     String threadRootId,
-    String body,
-  ) async => r'$thread';
+    String body, {
+    String? inReplyToEventId,
+  }) async => r'$thread';
 
   @override
   Future<void> sendTyping(String roomId, bool typing) async {}
@@ -167,12 +186,16 @@ class FakeMatrixService implements MatrixService {
   @override
   void dispose() {
     _messages.close();
+    _sessionProblems.close();
   }
 }
 
 Widget _app(FakeMatrixService service) {
   return ProviderScope(
-    overrides: [matrixServiceProvider.overrideWithValue(service)],
+    overrides: [
+      matrixServiceProvider.overrideWithValue(service),
+      accountLocalDataCleanerProvider.overrideWithValue((_) async {}),
+    ],
     child: const MWidgetsApp(
       debugShowCheckedModeBanner: false,
       home: AuthGate(),
@@ -197,6 +220,17 @@ Future<void> _pumpPastRestore(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 1));
   await tester.pump();
+}
+
+void _setViewSize(WidgetTester tester, Size size) {
+  final previousSize = tester.view.physicalSize;
+  final previousDevicePixelRatio = tester.view.devicePixelRatio;
+  addTearDown(() {
+    tester.view.physicalSize = previousSize;
+    tester.view.devicePixelRatio = previousDevicePixelRatio;
+  });
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
 }
 
 void main() {
@@ -230,6 +264,27 @@ void main() {
     expect(find.text('No rooms yet'), findsOneWidget);
   });
 
+  testWidgets('exposes browser autofill semantics for Matrix credentials', (
+    tester,
+  ) async {
+    final service = FakeMatrixService();
+    await tester.pumpWidget(_app(service));
+    await _pumpPastRestore(tester);
+
+    expect(find.byType(AutofillGroup), findsOneWidget);
+    final fields = tester.widgetList<EditableText>(find.byType(EditableText));
+    expect(fields, hasLength(3));
+    expect(fields.elementAt(0).autofillHints, const <String>[
+      AutofillHints.url,
+    ]);
+    expect(fields.elementAt(1).autofillHints, const <String>[
+      AutofillHints.username,
+    ]);
+    expect(fields.elementAt(2).autofillHints, const <String>[
+      AutofillHints.password,
+    ]);
+  });
+
   testWidgets('shows a friendly error when credentials are rejected', (
     tester,
   ) async {
@@ -247,5 +302,70 @@ void main() {
     expect(service.lastHomeserverUrl, 'https://example.org');
     expect(find.text('Incorrect username or password.'), findsOneWidget);
     expect(find.text('Sign in to Matrix'), findsOneWidget);
+  });
+
+  testWidgets('shows field validation instead of silently ignoring submit', (
+    tester,
+  ) async {
+    final service = FakeMatrixService();
+    await tester.pumpWidget(_app(service));
+    await _pumpPastRestore(tester);
+
+    await tester.tap(find.text('Sign in'));
+    await tester.pump();
+
+    expect(find.text('Enter your Matrix username.'), findsOneWidget);
+    expect(find.text('Enter your password.'), findsOneWidget);
+    expect(service.lastUsername, isNull);
+  });
+
+  testWidgets('uses a revealable password field', (tester) async {
+    final service = FakeMatrixService();
+    await tester.pumpWidget(_app(service));
+    await _pumpPastRestore(tester);
+
+    expect(find.byType(MSecretField), findsOneWidget);
+    expect(find.bySemanticsLabel('Show password'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Show password'));
+    await tester.pump();
+    expect(find.bySemanticsLabel('Hide password'), findsOneWidget);
+  });
+
+  testWidgets('sign-in surface fits a compact viewport', (tester) async {
+    _setViewSize(tester, const Size(320, 640));
+    final service = FakeMatrixService();
+    await tester.pumpWidget(_app(service));
+    await _pumpPastRestore(tester);
+
+    expect(find.text('Sign in to Matrix'), findsOneWidget);
+    expect(find.byType(MSecretField), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('add-account screen can cancel back to the current account', (
+    tester,
+  ) async {
+    final service = FakeMatrixService();
+    await tester.pumpWidget(_app(service));
+    await _pumpPastRestore(tester);
+
+    await _enterField(tester, 1, 'alice');
+    await _enterField(tester, 2, 'secret');
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
+    expect(find.text('@alice:example.org'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('Accounts').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add account'));
+    await tester.pumpAndSettle();
+
+    expect(find.bySemanticsLabel('Cancel adding account'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Cancel adding account'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('@alice:example.org'), findsOneWidget);
+    expect(find.text('No rooms yet'), findsOneWidget);
+    expect(find.text('Sign in to Matrix'), findsNothing);
   });
 }

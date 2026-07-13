@@ -1,16 +1,26 @@
-/// Web variant: the manymatrix web bridge compiles but cannot run yet.
-const bool matrixRuntimeSupported = false;
+import 'homeserver_policy.dart';
+
+/// Ordinary browsers run the Rust core in an account-scoped module Worker.
+const bool matrixRuntimeSupported = true;
+
+/// Web bridge secrets live in tab-scoped sessionStorage (ordinary site) or
+/// extension storage, never SharedPreferences/localStorage.
+const bool matrixBridgeOwnsSessionPersistence = true;
+
+String? homeserverSecurityError(String value) {
+  final pageError = matrixWebPageSecurityError(Uri.base);
+  if (pageError != null) return pageError;
+  return matrixHomeserverSecurityError(value);
+}
 
 /// Human-readable reason shown when [matrixRuntimeSupported] is false.
 ///
 /// Typed `String?` to mirror the native variant, where it is null.
 // ignore: unnecessary_nullable_for_final_variable_declarations
-const String? matrixRuntimeUnsupportedReason =
-    'Matrix on web is coming soon. The native Rust bridge is not yet '
-    'available in the browser.';
+const String? matrixRuntimeUnsupportedReason = null;
 
-/// Unused on web; present so callers compile on every platform.
+/// The web bridge resolves its packaged Worker and WASM assets itself.
 String defaultLibraryPath() => '';
 
-/// Unused on web; present so callers compile on every platform.
+/// Stable, account-specific IndexedDB namespace passed to the Worker.
 String defaultStorePath(String accountId) => 'manymatrix-web-store-$accountId';
