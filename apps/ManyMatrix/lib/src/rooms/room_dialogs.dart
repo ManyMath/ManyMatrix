@@ -24,6 +24,8 @@ class _CreateRoomDialogBody extends HookConsumerWidget {
     final topic = useState('');
     final creating = useState(false);
     final error = useState<String?>(null);
+    final status = useState<String?>(null);
+    final createdRoomId = useState<String?>(null);
     final nameFocus = useFocusNode();
     final topicFocus = useFocusNode();
 
@@ -32,72 +34,136 @@ class _CreateRoomDialogBody extends HookConsumerWidget {
       final trimmedName = name.value.trim();
       creating.value = true;
       error.value = null;
+      status.value = null;
       try {
         final service = ref.read(matrixServiceProvider);
-        final roomId = await service.createRoom(
+        var roomId = createdRoomId.value;
+        roomId ??= await service.createRoom(
           name: trimmedName.isEmpty ? null : trimmedName,
           topic: topic.value.trim().isEmpty ? null : topic.value.trim(),
         );
+        if (!context.mounted ||
+            !identical(ref.read(matrixServiceProvider), service)) {
+          return;
+        }
+        createdRoomId.value = roomId;
+        ref.read(roomListProvider.notifier).rememberRoom(roomId, trimmedName);
+        var ready = false;
+        for (var attempt = 0; attempt < 40; attempt += 1) {
+          if (!context.mounted ||
+              !identical(ref.read(matrixServiceProvider), service)) {
+            return;
+          }
+          try {
+            final rooms = await service.joinedRooms();
+            ready = rooms.any(
+              (room) =>
+                  room.roomId == roomId &&
+                  room.isSynced &&
+                  (trimmedName.isEmpty || room.displayName == trimmedName),
+            );
+          } on Object {
+            // The room already exists; background sync or Refresh retries.
+          }
+          if (!context.mounted ||
+              !identical(ref.read(matrixServiceProvider), service)) {
+            return;
+          }
+          if (ready) break;
+          if (attempt < 39) {
+            await Future<void>.delayed(const Duration(milliseconds: 250));
+          }
+        }
         await ref.read(roomListProvider.notifier).refresh();
+        if (!context.mounted ||
+            !identical(ref.read(matrixServiceProvider), service)) {
+          return;
+        }
+        if (!ready) {
+          status.value =
+              'Room created. Waiting for its first sync before opening it.';
+          return;
+        }
         ref.read(selectedRoomIdProvider.notifier).state = roomId;
         if (context.mounted) Navigator.of(context).pop(roomId);
       } on Object catch (err) {
-        error.value = 'Could not create room: $err';
+        if (context.mounted) {
+          error.value = createdRoomId.value == null
+              ? 'Could not create room: $err'
+              : 'The room was created, but its sync check failed: $err';
+        }
       } finally {
-        creating.value = false;
+        if (context.mounted) creating.value = false;
       }
     }
 
-    return MDialogContent(
-      title: 'Create room',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          MField(
-            label: 'Name',
-            focusNode: nameFocus,
-            enabled: !creating.value,
-            child: MTextField(
+    return PopScope(
+      canPop: !creating.value,
+      child: MDialogContent(
+        title: 'Create room',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            MField(
+              label: 'Name (optional)',
               focusNode: nameFocus,
-              placeholder: 'Room name',
-              semanticLabel: 'Room name',
-              enabled: !creating.value,
-              onChanged: (value) => name.value = value,
-              onSubmitted: (_) => submit(),
+              enabled: !creating.value && createdRoomId.value == null,
+              child: MTextField(
+                focusNode: nameFocus,
+                placeholder: 'Room name',
+                semanticLabel: 'Room name',
+                enabled: !creating.value && createdRoomId.value == null,
+                onChanged: (value) => name.value = value,
+                onSubmitted: (_) => submit(),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          MField(
-            label: 'Topic (optional)',
-            focusNode: topicFocus,
-            enabled: !creating.value,
-            child: MTextField(
+            const SizedBox(height: 16),
+            MField(
+              label: 'Topic (optional)',
               focusNode: topicFocus,
-              placeholder: 'Topic',
-              semanticLabel: 'Room topic',
-              enabled: !creating.value,
-              onChanged: (value) => topic.value = value,
-              onSubmitted: (_) => submit(),
+              enabled: !creating.value && createdRoomId.value == null,
+              child: MTextField(
+                focusNode: topicFocus,
+                placeholder: 'Topic',
+                semanticLabel: 'Room topic',
+                enabled: !creating.value && createdRoomId.value == null,
+                onChanged: (value) => topic.value = value,
+                onSubmitted: (_) => submit(),
+              ),
+            ),
+            if (error.value != null) ...<Widget>[
+              const SizedBox(height: 12),
+              MAlert(variant: MAlertVariant.destructive, message: error.value!),
+            ],
+            if (status.value != null) ...<Widget>[
+              const SizedBox(height: 12),
+              MAlert(message: status.value!),
+            ],
+          ],
+        ),
+        actions: <Widget>[
+          MButton(
+            variant: MButtonVariant.ghost,
+            onPressed: creating.value
+                ? null
+                : () => Navigator.of(context).pop(),
+            child: Text(createdRoomId.value == null ? 'Cancel' : 'Close'),
+          ),
+          MButton(
+            onPressed: creating.value ? null : submit,
+            child: Text(
+              creating.value
+                  ? createdRoomId.value == null
+                        ? 'Creating...'
+                        : 'Checking...'
+                  : createdRoomId.value == null
+                  ? 'Create'
+                  : 'Check again',
             ),
           ),
-          if (error.value != null) ...<Widget>[
-            const SizedBox(height: 12),
-            MAlert(variant: MAlertVariant.destructive, message: error.value!),
-          ],
         ],
       ),
-      actions: <Widget>[
-        MButton(
-          variant: MButtonVariant.ghost,
-          onPressed: creating.value ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        MButton(
-          onPressed: creating.value ? null : submit,
-          child: Text(creating.value ? 'Creating…' : 'Create'),
-        ),
-      ],
     );
   }
 }
@@ -132,54 +198,69 @@ class _JoinRoomDialogBody extends HookConsumerWidget {
       try {
         final service = ref.read(matrixServiceProvider);
         final roomId = await service.joinRoom(target);
-        await ref.read(roomListProvider.notifier).refresh();
+        if (!context.mounted ||
+            !identical(ref.read(matrixServiceProvider), service)) {
+          return;
+        }
+        final roomList = ref.read(roomListProvider.notifier);
+        roomList.rememberRoom(roomId, target);
+        await roomList.refresh();
+        if (!context.mounted ||
+            !identical(ref.read(matrixServiceProvider), service)) {
+          return;
+        }
         ref.read(selectedRoomIdProvider.notifier).state = roomId;
         if (context.mounted) Navigator.of(context).pop(roomId);
       } on Object catch (err) {
-        error.value = 'Could not join room: $err';
+        if (context.mounted) error.value = 'Could not join room: $err';
       } finally {
-        joining.value = false;
+        if (context.mounted) joining.value = false;
       }
     }
 
-    return MDialogContent(
-      title: 'Join room',
-      description:
-          'Enter a room ID (!abc:example.org) or alias (#room:example.org).',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          MField(
-            label: 'Room ID or alias',
-            focusNode: targetFocus,
-            enabled: !joining.value,
-            child: MTextField(
+    return PopScope(
+      canPop: !joining.value,
+      child: MDialogContent(
+        title: 'Join room',
+        description:
+            'Enter a room ID (!abc:example.org) or alias (#room:example.org).',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            MField(
+              label: 'Room ID or alias',
               focusNode: targetFocus,
-              placeholder: '#room:example.org',
-              semanticLabel: 'Room ID or alias',
               enabled: !joining.value,
-              onChanged: (value) => roomIdOrAlias.value = value,
-              onSubmitted: (_) => submit(),
+              child: MTextField(
+                focusNode: targetFocus,
+                placeholder: '#room:example.org',
+                semanticLabel: 'Room ID or alias',
+                enabled: !joining.value,
+                onChanged: (value) => roomIdOrAlias.value = value,
+                onSubmitted: (_) => submit(),
+              ),
             ),
-          ),
-          if (error.value != null) ...<Widget>[
-            const SizedBox(height: 12),
-            MAlert(variant: MAlertVariant.destructive, message: error.value!),
+            if (error.value != null) ...<Widget>[
+              const SizedBox(height: 12),
+              MAlert(variant: MAlertVariant.destructive, message: error.value!),
+            ],
           ],
+        ),
+        actions: <Widget>[
+          MButton(
+            variant: MButtonVariant.ghost,
+            onPressed: joining.value ? null : () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          MButton(
+            onPressed: joining.value || roomIdOrAlias.value.trim().isEmpty
+                ? null
+                : submit,
+            child: Text(joining.value ? 'Joining...' : 'Join'),
+          ),
         ],
       ),
-      actions: <Widget>[
-        MButton(
-          variant: MButtonVariant.ghost,
-          onPressed: joining.value ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        MButton(
-          onPressed: joining.value ? null : submit,
-          child: Text(joining.value ? 'Joining…' : 'Join'),
-        ),
-      ],
     );
   }
 }

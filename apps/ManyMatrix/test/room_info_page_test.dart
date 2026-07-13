@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,7 +12,10 @@ import 'package:manymatrix_app/src/room_info/room_info_page.dart';
 
 /// Minimal fake for RoomInfoPage's MatrixService calls.
 class _FakeModerationService implements MatrixService {
-  _FakeModerationService({this.roomEncrypted = false});
+  _FakeModerationService({
+    this.roomEncrypted = false,
+    this.enableEncryptionResult,
+  });
 
   final List<({String userId, String? reason})> kicked =
       <({String userId, String? reason})>[];
@@ -21,7 +25,10 @@ class _FakeModerationService implements MatrixService {
   bool roomEncrypted;
   bool failEncryptionStatus = false;
   bool failEnableEncryption = false;
+  bool failLeave = false;
+  final Completer<void>? enableEncryptionResult;
   int enableEncryptionCalls = 0;
+  int leaveCalls = 0;
 
   @override
   Future<void> kick(String roomId, String userId, {String? reason}) async {
@@ -70,7 +77,11 @@ class _FakeModerationService implements MatrixService {
   Future<String> joinRoom(String roomIdOrAlias) async =>
       throw UnimplementedError();
   @override
-  Future<void> leaveRoom(String roomId) async {}
+  Future<void> leaveRoom(String roomId) async {
+    leaveCalls += 1;
+    if (failLeave) throw Exception('M_FORBIDDEN');
+  }
+
   @override
   Future<void> invite(String roomId, String userId) async {}
   @override
@@ -89,6 +100,20 @@ class _FakeModerationService implements MatrixService {
   @override
   Future<String> sendEmote(String roomId, String body) async => r'$emote';
   @override
+  Future<String> uploadMedia(
+    String roomId,
+    String filename,
+    String mimeType,
+    Uint8List data,
+  ) async => r'$media';
+  @override
+  Future<Uint8List?> downloadMedia(String mxcUri) async => null;
+
+  @override
+  Future<Uint8List?> downloadMediaSource(
+    Map<String, dynamic> mediaSource,
+  ) async => null;
+  @override
   Future<void> editMessage(
     String roomId,
     String eventId,
@@ -101,8 +126,9 @@ class _FakeModerationService implements MatrixService {
   Future<String> sendThreadReply(
     String roomId,
     String threadRootId,
-    String body,
-  ) async => r'$thread';
+    String body, {
+    String? inReplyToEventId,
+  }) async => r'$thread';
   @override
   Future<void> sendTyping(String roomId, bool typing) async {}
   @override
@@ -126,6 +152,7 @@ class _FakeModerationService implements MatrixService {
   @override
   Future<void> enableEncryption(String roomId) async {
     enableEncryptionCalls += 1;
+    await enableEncryptionResult?.future;
     if (failEnableEncryption) throw Exception('M_FORBIDDEN');
     roomEncrypted = true;
   }
@@ -157,6 +184,49 @@ Widget _app(
 }
 
 void main() {
+  group('RoomInfoPage leave room', () {
+    testWidgets('leaves only after confirmation', (tester) async {
+      final service = _FakeModerationService();
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(MButton, 'Leave room'));
+      await tester.pump();
+      expect(find.text('Leave "Test Room"?'), findsOneWidget);
+      expect(service.leaveCalls, 0);
+
+      await tester.tap(find.widgetWithText(MButton, 'Leave room').last);
+      await tester.pumpAndSettle();
+
+      expect(service.leaveCalls, 1);
+    });
+
+    testWidgets('keeps the page open and reports a leave failure', (
+      tester,
+    ) async {
+      final service = _FakeModerationService()..failLeave = true;
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(MButton, 'Leave room'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(MButton, 'Leave room').last);
+      await tester.pumpAndSettle();
+
+      expect(service.leaveCalls, 1);
+      expect(find.text('Could not leave room'), findsOneWidget);
+      expect(find.textContaining('M_FORBIDDEN'), findsOneWidget);
+    });
+  });
+
   group('RoomInfoPage room identity', () {
     testWidgets('shows room id and aliases', (tester) async {
       final service = _FakeModerationService(roomEncrypted: true);
@@ -256,6 +326,30 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Off'), findsOneWidget);
+    });
+
+    testWidgets('ignores encryption completion after navigating away', (
+      tester,
+    ) async {
+      final result = Completer<void>();
+      final service = _FakeModerationService(enableEncryptionResult: result);
+      await tester.pumpWidget(
+        _app(service, const [
+          '@alice:example.org',
+        ], currentUserId: '@alice:example.org'),
+      );
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(MButton, 'Enable encryption'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(MButton, 'Enable encryption').last);
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox.shrink());
+      result.complete();
+      await tester.pump();
+
+      expect(service.enableEncryptionCalls, 1);
+      expect(tester.takeException(), isNull);
     });
   });
 

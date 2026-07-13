@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:manyui/manyui.dart';
 import 'package:manymatrix/manymatrix.dart';
@@ -11,7 +12,7 @@ import '../matrix/providers.dart';
 /// behind confirmation dialogs. Unban and power-level/role management don't
 /// exist at the bridge layer yet (see ROADMAP.md's ManyMatrix section) so they
 /// are intentionally absent.
-class RoomInfoPage extends ConsumerWidget {
+class RoomInfoPage extends HookConsumerWidget {
   const RoomInfoPage({required this.roomId, required this.roomName, super.key});
 
   final String roomId;
@@ -22,6 +23,44 @@ class RoomInfoPage extends ConsumerWidget {
     final theme = MTheme.of(context);
     final currentUserId = ref.watch(currentUserIdProvider);
     final members = ref.watch(roomMembersProvider(roomId));
+    final leaving = useState(false);
+    final leaveError = useState<Object?>(null);
+
+    Future<void> leaveRoom() async {
+      if (leaving.value) return;
+      final confirmed = await showMConfirmDialog(
+        context,
+        title: 'Leave "$roomName"?',
+        message:
+            'You will stop receiving messages from this room. You may need another invitation to return.',
+        confirmLabel: 'Leave room',
+        confirmVariant: MButtonVariant.destructive,
+      );
+      if (!confirmed || !context.mounted) return;
+      leaving.value = true;
+      leaveError.value = null;
+      final service = ref.read(matrixServiceProvider);
+      try {
+        await service.leaveRoom(roomId);
+        if (!context.mounted ||
+            !identical(ref.read(matrixServiceProvider), service)) {
+          return;
+        }
+        final roomList = ref.read(roomListProvider.notifier);
+        roomList.forgetRoom(roomId);
+        ref.read(selectedRoomIdProvider.notifier).state = null;
+        await roomList.refresh();
+        if (!context.mounted ||
+            !identical(ref.read(matrixServiceProvider), service)) {
+          return;
+        }
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } on Object catch (error) {
+        if (context.mounted) leaveError.value = error;
+      } finally {
+        if (context.mounted) leaving.value = false;
+      }
+    }
 
     return MScaffold(
       header: MAppHeader(
@@ -33,9 +72,28 @@ class RoomInfoPage extends ConsumerWidget {
           semanticLabel: 'Back to chat',
           child: const Text('Back'),
         ),
+        actions: <Widget>[
+          MButton(
+            variant: MButtonVariant.destructive,
+            size: MButtonSize.sm,
+            onPressed: leaving.value ? null : leaveRoom,
+            child: Text(leaving.value ? 'Leaving...' : 'Leave room'),
+          ),
+        ],
       ),
       body: CustomScrollView(
         slivers: <Widget>[
+          if (leaveError.value != null)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              sliver: SliverToBoxAdapter(
+                child: MAlert(
+                  title: 'Could not leave room',
+                  variant: MAlertVariant.destructive,
+                  message: '${leaveError.value}',
+                ),
+              ),
+            ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             sliver: SliverToBoxAdapter(
@@ -332,11 +390,17 @@ class _EncryptionSectionState extends ConsumerState<_EncryptionSection> {
     if (!confirmed || !mounted) return;
 
     setState(() => _enabling = true);
+    final service = ref.read(matrixServiceProvider);
     try {
-      await ref.read(matrixServiceProvider).enableEncryption(widget.roomId);
+      await service.enableEncryption(widget.roomId);
+      if (!mounted || !identical(ref.read(matrixServiceProvider), service)) {
+        return;
+      }
       ref.invalidate(roomEncryptionProvider(widget.roomId));
     } on Object catch (error) {
-      if (!mounted) return;
+      if (!mounted || !identical(ref.read(matrixServiceProvider), service)) {
+        return;
+      }
       setState(() => _enableError = error);
     } finally {
       if (mounted) {
@@ -462,9 +526,16 @@ class _MemberTile extends ConsumerWidget {
           reason: reason.isEmpty ? null : reason,
         );
       }
+      if (!context.mounted ||
+          !identical(ref.read(matrixServiceProvider), service)) {
+        return;
+      }
       ref.invalidate(roomMembersProvider(roomId));
     } on Object catch (error) {
-      if (!context.mounted) return;
+      if (!context.mounted ||
+          !identical(ref.read(matrixServiceProvider), service)) {
+        return;
+      }
       await showMDialog<void>(
         context,
         builder: (BuildContext ctx) => MDialogContent(
