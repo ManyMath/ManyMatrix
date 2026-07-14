@@ -7,7 +7,7 @@
 // (offscreen -> chrome.runtime broadcast). Also exercises offscreen-document
 // recovery.
 //
-// Usage: node run.mjs <hosted-synapse|hosted-tuwunel>
+// Usage: node run.mjs <embedded|hosted-synapse|hosted-tuwunel>
 // Env:   MANYMATRIX_HOSTED_*   hosted-tier vars (consumed by the actor)
 //        CHROME_BIN            Chrome executable (default: puppeteer's bundled
 //                              Chrome for Testing, branded Chrome >=137 removed
@@ -25,8 +25,8 @@ import puppeteer from 'puppeteer';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const serverKind = process.argv[2];
-if (serverKind !== 'hosted-synapse' && serverKind !== 'hosted-tuwunel') {
-  console.error('usage: node run.mjs <hosted-synapse|hosted-tuwunel>');
+if (!['embedded', 'hosted-synapse', 'hosted-tuwunel'].includes(serverKind)) {
+  console.error('usage: node run.mjs <embedded|hosted-synapse|hosted-tuwunel>');
   process.exit(64);
 }
 
@@ -37,13 +37,20 @@ const ACTOR_BIN = process.env.ACTOR_BIN ?? join(repoRoot, 'target/debug/web_e2e_
 
 const E2E_PAGE_JS = `
 window.mmEvents = [];
+window.mmClientId = 'manymatrix-extension-e2e-account';
+window.mmOwnerId = crypto.randomUUID();
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'manymatrix-event') {
     window.mmEvents.push({kind: message.kind, payload: JSON.parse(message.payload)});
   }
 });
 window.mmCall = (method, args) => new Promise((resolve, reject) => {
-  chrome.runtime.sendMessage({method, args: args ?? {}}, (reply) => {
+  chrome.runtime.sendMessage({
+    client_id: window.mmClientId,
+    owner_id: window.mmOwnerId,
+    method,
+    args: args ?? {},
+  }, (reply) => {
     if (chrome.runtime.lastError) {
       reject(new Error(chrome.runtime.lastError.message));
     } else {
@@ -119,7 +126,9 @@ class Actor {
 
   async stop() {
     await this.cmd('stop');
-    await new Promise((resolveExit) => this.child.on('exit', resolveExit));
+    const code = await new Promise((resolveExit) =>
+      this.child.once('exit', resolveExit));
+    if (code !== 0) fail(`actor exited with code ${code}`);
   }
 
   kill() {
@@ -185,9 +194,10 @@ try {
   const info = await actor.ready();
   log('actor ready', `${info.actor_user_id} on ${info.base_url}`);
 
-  const page = await browser.newPage();
+  let page = await browser.newPage();
   page.on('console', (msg) => console.error(`[page console] ${msg.text()}`));
   await page.goto(`chrome-extension://${extensionId}/e2e.html`);
+  await call(page, 'bridge.claim');
 
   // 1. Envelope basics: echo through sw -> offscreen -> wasm and back.
   const echo = await call(page, 'dispatcher.echo', {message: 'ping'});
@@ -261,6 +271,15 @@ try {
   // so the client is logged out afterwards).
   const worker = await swTarget.worker();
   await worker.evaluate(() => chrome.offscreen.closeDocument());
+  await call(page, 'bridge.claim', {recovering: true});
+  const blocked = await page.evaluate(
+    () => window.mmCall('dispatcher.echo', {message: 'must-not-run'}));
+  if (blocked?.err?.details?.reason !== 'recovery_pending') {
+    fail(`normal RPC was not blocked during recovery: ${JSON.stringify(blocked)}`);
+  }
+  // This is the no-session branch used by the Dart bridge: even without an
+  // auth.restore call, recovery_complete must release the replacement Worker.
+  await call(page, 'bridge.recovery_complete');
   const echo2 = await call(page, 'dispatcher.echo', {message: 'post-recovery'});
   if (echo2.message !== 'post-recovery') fail('echo after offscreen recovery failed');
   const status = await call(page, 'sync.status');
@@ -290,9 +309,30 @@ try {
     page, 'message', (p) => p.event_id === sent2.event_id, 'post-recovery message');
   log('8/8 restore + post-recovery push ok');
 
+  // Abrupt view loss cannot send bridge.dispose. Once its short owner lease
+  // expires, a fresh page must drain the orphan before claiming the account.
+  await page.close();
+  await new Promise((resolveWait) => setTimeout(resolveWait, 3_000));
+  page = await browser.newPage();
+  await page.goto(`chrome-extension://${extensionId}/e2e.html`);
+  await call(page, 'bridge.claim');
+  const reloadEcho = await call(page, 'dispatcher.echo', {message: 'after-abrupt-reload'});
+  if (reloadEcho.message !== 'after-abrupt-reload') {
+    fail('echo after abrupt extension page reload failed');
+  }
+  log('abrupt page reload drained the prior account Worker');
+
+  await call(page, 'bridge.dispose');
+  await page.close();
+  page = null;
+  await browser.close();
+  browser = null;
+  // A sync request already accepted by the homeserver can retain its
+  // server-side handle until the dispatcher's bounded long-poll expires.
+  await new Promise((resolveWait) => setTimeout(resolveWait, 31_000));
   await actor.stop();
   actor = null;
-  log('PASS');
+  log('PASS', 'login, restore, recovery, owner replacement, and teardown');
 } catch (error) {
   console.error(error?.stack ?? String(error));
   process.exitCode = 1;

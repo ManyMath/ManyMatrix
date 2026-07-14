@@ -15,7 +15,6 @@ hosted-tests = []
 [[bin]]
 name = "web_e2e_actor"
 path = "src/bin/web_e2e_actor.rs"
-required-features = ["hosted-tests"]
 
 [[bin]]
 name = "spike_homeserver"
