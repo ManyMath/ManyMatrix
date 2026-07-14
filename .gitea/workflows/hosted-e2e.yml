@@ -35,21 +35,47 @@ jobs:
   web-e2e:
     name: Web/extension E2E
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ManyMatrix
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout ManyMatrix
+        uses: actions/checkout@v4
+        with:
+          path: ManyMatrix
+      - name: Require pinned ManyUI ref
+        env:
+          MANYUI_CHECKOUT_REF: ${{ vars.MANYUI_CHECKOUT_REF }}
+        run: |
+          if [[ ! "$MANYUI_CHECKOUT_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "MANYUI_CHECKOUT_REF must be the full SHA of a pushed compatible ManyUI commit" >&2
+            exit 1
+          fi
+      - name: Checkout sibling ManyUI dependency
+        uses: actions/checkout@v4
+        with:
+          repository: sneurlax/manyui
+          ref: ${{ vars.MANYUI_CHECKOUT_REF }}
+          path: ManyUI
+          token: ${{ secrets.MANYUI_CHECKOUT_TOKEN }}
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.89.0
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "ManyMatrix -> target"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: Build wasm
         run: wasm-pack build --target web --release crates/web
       - name: Assemble minimal extension
         run: bash scripts/assemble_web_e2e_extension.sh "$RUNNER_TEMP/min-extension"
-      - name: Build web_e2e_actor
-        run: cargo build -p test-harness --bin web_e2e_actor --no-default-features --features hosted-tests
+      - name: Build embedded web_e2e_actor
+        run: cargo build -p test-harness --bin web_e2e_actor
       - name: Install harness deps and Chrome
         run: |
           # The runner image ships with stale apt lists; --install-deps runs
@@ -58,6 +84,18 @@ jobs:
           cd testing/web-e2e
           npm install --no-audit --no-fund
           npx puppeteer browsers install chrome --install-deps
+      - name: Build complete Flutter web release
+        run: scripts/build_manymatrix_web.sh
+      - name: Ordinary browser Worker smoke
+        run: node testing/web-e2e/ordinary_worker_smoke.mjs
+      - name: Ordinary browser Matrix E2E against embedded Tuwunel
+        run: node testing/web-e2e/ordinary_matrix.mjs
+      - name: Full Flutter web E2E against embedded Tuwunel
+        run: node testing/web-e2e/full_app.mjs
+      - name: Extension E2E against embedded Tuwunel
+        run: EXTENSION_DIR="$RUNNER_TEMP/min-extension" node testing/web-e2e/run.mjs embedded
+      - name: Build hosted web_e2e_actor
+        run: cargo build -p test-harness --bin web_e2e_actor --no-default-features --features hosted-tests
       - name: Web E2E against hosted Synapse
         run: EXTENSION_DIR="$RUNNER_TEMP/min-extension" node testing/web-e2e/run.mjs hosted-synapse
       - name: Web E2E against hosted Tuwunel

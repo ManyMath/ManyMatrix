@@ -3,7 +3,8 @@ name: Core CI
 # Runs the fast, infra-free verification gates (no Docker, no hosted
 # homeservers) on every push and PR against dev: cargo check across the
 # native workspace, the wasm target check + build for manymatrix-web, the
-# default embedded-Tuwunel test suite, and flutter analyze. Complements
+# default embedded-Tuwunel test suite, and Flutter analysis/tests for the
+# plugin and ManyMatrix app. Complements
 # docker-compat.yml (Docker-tier homeservers) and hosted-e2e.yml (permanently
 # hosted homeservers + web/extension E2E), which cover slower, infra-backed
 # tiers on push to dev only.
@@ -55,15 +56,42 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: wasm-pack build --target web --release crates/web
         run: wasm-pack build --target web --release crates/web
+      - name: Browser Worker protocol tests
+        run: node --test apps/ManyMatrix/test_web/*.mjs
 
-  flutter-analyze:
-    name: flutter analyze
+  flutter-test:
+    name: Flutter analyze + test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Require pinned ManyUI ref
+        env:
+          MANYUI_CHECKOUT_REF: ${{ vars.MANYUI_CHECKOUT_REF }}
+        run: |
+          if [[ ! "$MANYUI_CHECKOUT_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "MANYUI_CHECKOUT_REF must be the full SHA of a pushed compatible ManyUI commit" >&2
+            exit 1
+          fi
+      - name: Checkout ManyMatrix
+        uses: actions/checkout@v4
+        with:
+          path: ManyMatrix
+      - name: Checkout sibling ManyUI dependency
+        uses: actions/checkout@v4
+        with:
+          repository: sneurlax/manyui
+          ref: ${{ vars.MANYUI_CHECKOUT_REF }}
+          path: ManyUI
+          token: ${{ secrets.MANYUI_CHECKOUT_TOKEN }}
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - name: flutter analyze
-        working-directory: flutter_plugin
-        run: flutter analyze
+      - name: Analyze and test Flutter plugin
+        working-directory: ManyMatrix/flutter_plugin
+        run: |
+          flutter analyze
+          flutter test
+      - name: Analyze and test ManyMatrix app
+        working-directory: ManyMatrix/apps/ManyMatrix
+        run: |
+          flutter analyze
+          flutter test
