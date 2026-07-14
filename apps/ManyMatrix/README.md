@@ -12,11 +12,9 @@ Requirements: Flutter, Rust with `wasm32-unknown-unknown`, `wasm-pack`, Node.js
 dependencies. Browser E2E uses Puppeteer's bundled Chrome.
 
 CI reproduces that sibling layout with the read-only
-`MANYUI_CHECKOUT_TOKEN` secret. Set the `MANYUI_CHECKOUT_REF` repository
-variable to the full 40-character SHA of a pushed compatible ManyUI commit;
-the Flutter and web E2E lanes reject floating branches and abbreviated SHAs.
-Push coordinated ManyUI changes before the ManyMatrix changes that consume
-them.
+`MANYUI_CHECKOUT_TOKEN` secret and pins the compatible ManyUI revision directly
+as a full commit SHA. Push coordinated ManyUI changes before the ManyMatrix
+changes that consume them, then update the workflow pin.
 
 Build the complete development bundle from the repository root:
 
