@@ -16,6 +16,7 @@ trap cleanup EXIT
 
 required_site_assets=(
   index.html
+  404.html
   styles.css
   assets/manymatrix-mark.svg
   assets/manymatrix-app.png

@@ -524,6 +524,32 @@ footer {
   }
 }
 
+.not-found {
+  width: min(720px, calc(100% - 36px));
+  min-height: calc(100svh - 68px);
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 auto;
+  padding: 64px 0;
+}
+
+.not-found h1 {
+  font-size: 56px;
+}
+
+.not-found > p:not(.eyebrow) {
+  max-width: 560px;
+  margin: 20px 0 0;
+  color: var(--muted-foreground);
+  font-size: 18px;
+}
+
+.not-found .button {
+  margin-top: 28px;
+}
+
 @media (max-width: 780px) {
   .site-header {
     padding-inline: 14px;
