@@ -52,6 +52,20 @@ for relative_path in "${required_files[@]}"; do
   }
 done
 
+required_site_links=(
+  'href="/chat/"'
+  'href="https://manymath.com/"'
+  'href="https://manykee.com/"'
+  'href="https://manytype.com/"'
+  'href="https://manytier.com/"'
+)
+for site_link in "${required_site_links[@]}"; do
+  grep -Fq "$site_link" "$dist_dir/index.html" || {
+    echo "missing required ecosystem link in distribution: $site_link" >&2
+    exit 1
+  }
+done
+
 grep -Fq '<base href="/chat/">' "$dist_dir/chat/index.html" || {
   echo "composed chat app does not have the required /chat/ base href" >&2
   exit 1

@@ -265,18 +265,21 @@ h1 {
   left: max(18px, calc((100vw - 1180px) / 2));
   display: flex;
   gap: 30px;
+  margin: 0;
+  padding: 0;
   color: #b9cec6;
   font-size: 13px;
   font-weight: 650;
+  list-style: none;
 }
 
-.hero-facts span {
+.hero-facts li {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.hero-facts span::before {
+.hero-facts li::before {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -531,8 +534,8 @@ footer {
   }
 
   .hero {
-    height: calc(100svh - 148px);
-    min-height: 540px;
+    height: min(660px, calc(100svh - 132px));
+    min-height: min(540px, calc(100svh - 132px));
     max-height: 660px;
   }
 
@@ -621,7 +624,7 @@ footer {
     width: 100%;
   }
 
-  .hero-facts span:last-child {
+  .hero-facts li:last-child {
     display: none;
   }
 
