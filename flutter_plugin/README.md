@@ -14,10 +14,37 @@ This is the core Flutter plugin package for ManyMatrix. It provides the Dart FFI
 - **macOS**: via FFI (Rust shared library)
 - **Windows**: via FFI (Rust shared library)
 
-- **Web / Chrome extension**: via `lib/src/web_bridge.dart` (WASM bridge over an offscreen document +
-  `chrome.runtime` broadcast for the event push channel). The canonical example app at
-  `flutter_plugin/example/` owns the web scaffold, Linux integration smoke, and MV3 extension packaging
-  workflow used for E2E regression verification (see `testing/web-e2e/`).
+- **Web**: via `lib/src/web_bridge.dart`. Ordinary sites use a dedicated module
+  Worker and WASM instance per client. Chrome extensions are capability-detected
+  and retain the MV3 offscreen-document transport. The canonical example app at
+  `flutter_plugin/example/` owns the extension packaging and E2E regression
+  workflow (see `testing/web-e2e/`); `apps/ManyMatrix/tool/build_web.dart`
+  packages the ordinary browser release.
+
+Ordinary-site sessions are stored in `sessionStorage`, not `localStorage`, so
+they survive reload only within the current tab. Extension sessions use the
+extension's isolated storage. `ManyMatrixBridge.close()` is awaitable; account
+cleanup waits for Worker acknowledgement before removing the Matrix SDK's
+account-scoped IndexedDB databases.
+Upgrading from the former single-session extension storage forces one new
+sign-in: extension startup removes the legacy global bearer token and its
+URL-derived state/crypto/backup databases before opening a Worker. It does not
+copy that token into an empty account-scoped crypto store. The offscreen host
+and WASM resources are extension-internal and must not be declared as
+web-accessible resources.
+Cleanup attempts every discovered state/crypto/backup database even if one is
+blocked. Browsers without `indexedDB.databases()` cannot enumerate timestamped
+SDK backup stores, so they return a retryable cleanup error after deleting all
+deterministic stores rather than claiming complete removal.
+
+`MessageEvent.mediaSource` preserves either the plain MXC source or the full
+encrypted attachment descriptor. `ManyMatrixBridge.downloadMediaSource()`
+passes that descriptor to the Rust core for authenticated, refresh-aware
+streaming download and verified decryption on native and web runtimes. The
+response stream is capped at 25 MiB before bridge/base64 amplification.
+Media RPCs use a five-minute transport deadline across ordinary Worker and MV3
+offscreen layers so slow uploads are not reported as failed while continuing in
+the background.
 
 ## Local Consumption Policy
 
@@ -46,4 +73,17 @@ import 'package:manymatrix/manymatrix.dart';
 
 Exposed core classes:
 - `ManyMatrixBridge`: The main interface to the Rust core.
-- Models: `RoomSummary`, `MessageEvent`, `PaginatedMessages`, etc.
+- Models: `RoomSummary`, `MessageEvent`, `PaginatedMessages`,
+  `ThreadSummary`, and `PaginatedThreadMessages`.
+
+Thread APIs are available on native and web bridges:
+
+- `threadIndex()` returns homeserver-authoritative reply aggregates across
+  joined rooms. `ThreadSummary.unreadCount == null` means unread-thread state
+  could not be established; consumers must not present it as zero.
+- `getThreadMessages()` pages a root's recursive relations, including edits.
+- `sendThreadReadReceipt()` advances a receipt scoped to the supplied thread
+  root rather than the room's main timeline.
+
+Servers may omit `/threads`. Treat a thread-index error as a capability failure;
+room timelines and direct `/relations` thread access remain usable.

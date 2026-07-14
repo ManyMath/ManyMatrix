@@ -67,6 +67,14 @@ running `cargo check` against it.
 
 This project uses a Dart/Flutter workspace at the repository root.
 
+The ManyMatrix app also resolves `../../../ManyUI` as a sibling checkout. CI
+must define `MANYUI_CHECKOUT_TOKEN` as a read-only token that can clone the
+private `sneurlax/manyui` repository. It must also define the repository
+variable `MANYUI_CHECKOUT_REF` as the full 40-character SHA of a pushed,
+compatible ManyUI commit. Push coordinated ManyUI changes first, then update
+that variable before running the Matrix Flutter or web E2E lanes. The jobs
+checkout this repository as `ManyMatrix/` and ManyUI beside it as `ManyUI/`.
+
 See [docs/LOCAL_CONSUMPTION.md](docs/LOCAL_CONSUMPTION.md) for a guide on how to use the `manymatrix` plugin in your own local app.
 
 ### Tools

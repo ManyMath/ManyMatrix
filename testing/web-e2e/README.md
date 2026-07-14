@@ -1,5 +1,34 @@
 # manymatrix web/extension E2E harness
 
+`ordinary_matrix.mjs` launches the in-process Tuwunel homeserver and a fresh
+headless browser profile. It exercises the ordinary module-Worker transport
+without hosted secrets: two isolated account Workers, login, invitation and
+room details, create/join, send/receive events, plain and encrypted byte-for-byte media
+upload/download round trip, IndexedDB session restoration, and explicit Worker
+teardown.
+
+`full_app.mjs` drives the built Flutter application through its accessibility
+DOM and real Flutter pointer/keyboard input in a fresh browser profile. It
+verifies tab-scoped secret storage with no localStorage token copy, reload
+restoration, a nonblank/overflow-free mobile viewport, room creation and
+sending, per-message threads and the global unread thread index, adding and
+switching accounts, and final session/IndexedDB cleanup.
+
+```sh
+scripts/build_manymatrix_web.sh
+cargo build -p test-harness --bin web_e2e_actor
+(cd testing/web-e2e && npm ci)
+node testing/web-e2e/ordinary_matrix.mjs
+node testing/web-e2e/full_app.mjs
+```
+
+The same embedded actor can verify the MV3 coordinator without hosted secrets:
+
+```sh
+bash scripts/assemble_web_e2e_extension.sh /tmp/manymatrix-extension
+EXTENSION_DIR=/tmp/manymatrix-extension node testing/web-e2e/run.mjs embedded
+```
+
 End-to-end test of the Chrome extension web bridge, including the event push
 channel (offscreen -> `chrome.runtime` broadcast), against the permanently
 hosted homeservers (roadmap v1.3, Phase 25).
@@ -26,6 +55,9 @@ the system Chrome won't work). It then:
 4. Kills the offscreen document from the service worker and verifies
    transparent recovery: the next envelope recreates it, `auth.restore` from
    the IndexedDB store succeeds, and the push channel works again.
+5. Assembles a manifest with no web-accessible privileged host/WASM resources;
+   extension startup also scrubs the former global session key and legacy
+   URL-derived IndexedDB namespaces before any Matrix Worker is opened.
 
 The actor cleans up on exit (leave + forget all rooms for both users; hosted
 usernames are per-run unique).
