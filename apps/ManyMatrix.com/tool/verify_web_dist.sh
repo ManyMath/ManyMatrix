@@ -35,9 +35,9 @@ with socket.socket() as server:
 required_files=(
   index.html
   404.html
-  styles.css
-  assets/manymatrix-mark.svg
-  assets/manymatrix-app.png
+  assets/site.css
+  assets/brand/marks/manymatrix.svg
+  assets/brand/og.png
   chat/index.html
   chat/flutter_bootstrap.js
   chat/main.dart.js
@@ -106,11 +106,11 @@ fi
 
 curl --fail --silent --show-error "http://127.0.0.1:$port/chat/" \
   --output "$download_dir/chat.html"
-curl --fail --silent --show-error "http://127.0.0.1:$port/styles.css" \
+curl --fail --silent --show-error "http://127.0.0.1:$port/assets/site.css" \
   --output "$download_dir/styles.css"
-curl --fail --silent --show-error "http://127.0.0.1:$port/assets/manymatrix-mark.svg" \
+curl --fail --silent --show-error "http://127.0.0.1:$port/assets/brand/marks/manymatrix.svg" \
   --output "$download_dir/manymatrix-mark.svg"
-curl --fail --silent --show-error "http://127.0.0.1:$port/assets/manymatrix-app.png" \
+curl --fail --silent --show-error "http://127.0.0.1:$port/assets/brand/og.png" \
   --output "$download_dir/manymatrix-app.png"
 curl --fail --silent --show-error "http://127.0.0.1:$port/chat/main.dart.js" \
   --output "$download_dir/main.dart.js"
@@ -123,16 +123,16 @@ curl --fail --silent --show-error "http://127.0.0.1:$port/chat/pkg/manymatrix_we
 
 grep -Fq '<base href="/chat/">' "$download_dir/chat.html"
 if grep -Eiq '<!doctype html|<html' "$download_dir/styles.css"; then
-  echo "/styles.css returned HTML" >&2
+  echo "/assets/site.css returned HTML" >&2
   exit 1
 fi
 if ! grep -Fq '<svg' "$download_dir/manymatrix-mark.svg"; then
-  echo "/assets/manymatrix-mark.svg is not an SVG image" >&2
+  echo "/assets/brand/marks/manymatrix.svg is not an SVG image" >&2
   exit 1
 fi
 preview_magic="$(od -An -tx1 -N8 "$download_dir/manymatrix-app.png" | tr -d '[:space:]')"
 if [[ "$preview_magic" != "89504e470d0a1a0a" ]]; then
-  echo "served manymatrix-app.png is not a valid PNG image" >&2
+  echo "served assets/brand/og.png is not a valid PNG image" >&2
   exit 1
 fi
 for javascript in main.dart.js manymatrix_worker.js manymatrix_web.js; do

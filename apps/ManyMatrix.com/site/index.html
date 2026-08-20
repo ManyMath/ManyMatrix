@@ -1,200 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0f766e">
-    <meta
-      name="description"
-      content="ManyMatrix is a focused Matrix client for rooms, threaded conversations, encrypted media, and multiple accounts."
-    >
-    <meta property="og:title" content="ManyMatrix">
-    <meta
-      property="og:description"
-      content="A calm, private-minded Matrix client for conversations that matter."
-    >
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://manymatrix.com/">
-    <meta property="og:image" content="https://manymatrix.com/assets/manymatrix-app.png">
-    <meta name="twitter:card" content="summary_large_image">
-    <link rel="canonical" href="https://manymatrix.com/">
-    <link rel="icon" type="image/svg+xml" href="/assets/manymatrix-mark.svg">
-    <link rel="stylesheet" href="/styles.css">
-    <title>ManyMatrix | A focused Matrix client</title>
-  </head>
-  <body>
-    <a class="skip-link" href="#main-content">Skip to content</a>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ManyMatrix | Matrix chat client</title>
+  <meta name="description" content="Use ManyMatrix for Matrix rooms, direct messages, and threads, with support for encrypted media and multiple accounts.">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3f6f4">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#101512">
+  <link rel="canonical" href="https://manymatrix.com/">
+  <meta property="og:title" content="ManyMatrix">
+  <meta property="og:description" content="Use ManyMatrix for Matrix rooms, direct messages, and threads, with support for encrypted media and multiple accounts.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://manymatrix.com/">
+  <meta property="og:image" content="https://manymatrix.com/assets/brand/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/svg+xml" href="/assets/brand/marks/manymatrix.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/raster/favicon-32.png">
+  <link rel="preload" href="/assets/brand/fonts/latinmodern/lmroman10-regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/brand/fonts/inter/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/brand/tokens/manymath-brand.css">
+  <link rel="stylesheet" href="/assets/brand/tokens/fonts.css">
+  <link rel="stylesheet" href="/assets/brand/tokens/fallbacks.css">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="ManyMatrix home"><img src="/assets/brand/marks/manymatrix.svg" alt="" width="30" height="30"><span>ManyMatrix</span></a>
+    <nav aria-label="Primary">
+      <a href="#capabilities">Capabilities</a>
+      <a href="#family">Products</a>
+      <a class="cta" href="/chat/">Open ManyMatrix</a>
+    </nav>
+  </header>
 
-    <header class="site-header">
-      <a class="brand" href="/" aria-label="ManyMatrix home">
-        <img src="/assets/manymatrix-mark.svg" alt="" width="34" height="34">
-        <span>ManyMatrix</span>
-      </a>
-      <nav aria-label="Primary navigation">
-        <a href="#capabilities">Capabilities</a>
-        <a href="#ecosystem">Ecosystem</a>
-        <a class="nav-app" href="/chat/">Open chat</a>
-      </nav>
-    </header>
-
-    <main id="main-content">
-      <section class="hero" aria-labelledby="hero-title">
-        <img
-          class="hero-media"
-          src="/assets/manymatrix-app.png"
-          alt="ManyMatrix open to a Matrix room, with rooms on the left and threaded messages in the conversation"
-          width="1280"
-          height="800"
-        >
-        <div class="hero-scrim" aria-hidden="true"></div>
-        <div class="hero-inner">
-          <div class="hero-copy">
-            <p class="eyebrow">A private-minded Matrix client</p>
-            <h1 id="hero-title">ManyMatrix</h1>
-            <p class="hero-summary">
-              Rooms, threads, and encrypted media in a calm workbench that
-              keeps the conversation in view.
-            </p>
-            <div class="hero-actions">
-              <a class="button button-primary" href="/chat/">
-                Open ManyMatrix
-                <span aria-hidden="true">&rarr;</span>
-              </a>
-              <a class="button button-quiet" href="#capabilities">Explore the client</a>
-            </div>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">Matrix chat client</p>
+          <h1 id="hero-title">Follow the conversation.</h1>
+          <p class="summary">Chat in Matrix rooms, reply in threads, share encrypted media, and switch between accounts.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="/chat/">Open ManyMatrix <span aria-hidden="true">→</span></a>
+            <a class="button button-quiet" href="#family">Explore our tools</a>
           </div>
         </div>
-        <ul class="hero-facts">
-          <li>Open Matrix protocol</li>
-          <li>Thread-aware</li>
-          <li>Multiple accounts</li>
-        </ul>
-      </section>
-
-      <section class="capabilities-band" id="capabilities" aria-labelledby="capabilities-title">
-        <div class="section-inner">
-          <div class="section-heading">
-            <p class="eyebrow">Communication, kept legible</p>
-            <h2 id="capabilities-title">The useful parts of Matrix, brought forward.</h2>
-            <p>
-              ManyMatrix is built for people who want an open network without
-              carrying the visual noise of a sprawling collaboration suite.
-            </p>
+        <figure class="app-frame" aria-label="ManyMatrix preview">
+          <div class="titlebar" aria-hidden="true"><i></i><i></i><i></i><span>manymatrix - #general:example.org</span></div>
+          <div class="mock" role="img" aria-label="Example Matrix conversation about a release, with a thread reply count">
+            <div class="msg"><b>ada · 09:41</b><p>I put the release checklist in the v2.3 thread.</p></div>
+            <div class="msg"><b>lin · 09:43</b><p>Thanks. I added the screenshots there.</p></div>
+            <div class="msg self"><b>you · 09:44</b><p>I’ll check the deployment steps this afternoon.</p></div>
+            <div class="msg"><b>ada · 09:45</b><p>3 replies in the release thread</p></div>
           </div>
+        </figure>
+      </div>
+    </section>
 
-          <div class="capability-grid">
-            <article class="capability">
-              <p class="capability-number" aria-hidden="true">01</p>
-              <h3>Rooms that scan quickly</h3>
-              <p>
-                Search, unread filters, invitations, and recent activity keep
-                a busy account navigable.
-              </p>
-            </article>
-            <article class="capability">
-              <p class="capability-number" aria-hidden="true">02</p>
-              <h3>Threads stay connected</h3>
-              <p>
-                Reply counts and a global thread index surface side
-                conversations without losing their room context.
-              </p>
-            </article>
-            <article class="capability">
-              <p class="capability-number" aria-hidden="true">03</p>
-              <h3>Your account, your server</h3>
-              <p>
-                Connect to your Matrix homeserver, switch between accounts,
-                and exchange encrypted media from the same focused client.
-              </p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="protocol-band" aria-labelledby="protocol-title">
-        <div class="section-inner protocol-layout">
-          <div>
-            <p class="eyebrow">Built on Matrix</p>
-            <h2 id="protocol-title">Choose where the conversation lives.</h2>
-          </div>
-          <div class="protocol-copy">
-            <p>
-              ManyMatrix connects directly to a Matrix homeserver. It gives
-              the open protocol a restrained interface for daily rooms,
-              direct conversations, threads, and shared files.
-            </p>
-            <a class="text-link" href="/chat/">Connect your homeserver <span aria-hidden="true">&rarr;</span></a>
-          </div>
-        </div>
-      </section>
-
-      <section class="ecosystem-band" id="ecosystem" aria-labelledby="ecosystem-title">
-        <div class="section-inner">
-          <div class="section-heading ecosystem-heading">
-            <p class="eyebrow">The ManyMath ecosystem</p>
-            <h2 id="ecosystem-title">Focused tools, one shared language.</h2>
-            <p>
-              ManyMatrix is one part of a family of practical tools for
-              technical work, private data, and connected knowledge.
-            </p>
-          </div>
-
-          <div class="product-grid">
-            <article class="product-card product-current">
-              <div class="product-mark matrix-mark" aria-hidden="true">
-                <span></span><span></span><span></span><span></span><span></span>
-                <span></span><span></span><span></span><span></span>
-              </div>
-              <p class="product-category">Communication</p>
-              <h3>ManyMatrix</h3>
-              <p>Rooms, threads, and Matrix accounts in a focused client.</p>
-              <a href="/chat/">Open chat <span aria-hidden="true">&rarr;</span></a>
-            </article>
-
-            <article class="product-card">
-              <div class="product-mark math-mark" aria-hidden="true">&Sigma;</div>
-              <p class="product-category">Mathematics</p>
-              <h3>ManyMath</h3>
-              <p>A focused LaTeX editor and the wider product company.</p>
-              <a href="https://manymath.com/">Visit ManyMath <span aria-hidden="true">&nearr;</span></a>
-            </article>
-
-            <article class="product-card">
-              <div class="product-mark kee-mark" aria-hidden="true">K</div>
-              <p class="product-category">Credentials</p>
-              <h3>ManyKee</h3>
-              <p>An exact workspace for organizing and using KeePass vaults.</p>
-              <a href="https://manykee.com/">Visit ManyKee <span aria-hidden="true">&nearr;</span></a>
-            </article>
-
-            <article class="product-card">
-              <div class="product-mark type-mark" aria-hidden="true">T</div>
-              <p class="product-category">Knowledge</p>
-              <h3>ManyType</h3>
-              <p>Local-first documents, types, and connected information.</p>
-              <a href="https://manytype.com/">Visit ManyType <span aria-hidden="true">&nearr;</span></a>
-            </article>
-
-            <article class="product-card">
-              <div class="product-mark tier-mark" aria-hidden="true">N</div>
-              <p class="product-category">Networking</p>
-              <h3>ManyTier</h3>
-              <p>Private networks, peers, and controllers in one console.</p>
-              <a href="https://manytier.com/">Visit ManyTier <span aria-hidden="true">&nearr;</span></a>
-            </article>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <footer>
-      <div class="section-inner footer-inner">
-        <span>ManyMatrix by ManyMath LLC</span>
-        <div class="footer-links">
-          <a href="https://manymath.com/">ManyMath</a>
-          <a href="/chat/">Open chat</a>
+    <section class="band" id="capabilities" aria-labelledby="cap-title">
+      <div class="wrap">
+        <p class="eyebrow">Capabilities</p>
+        <h2 id="cap-title">Find your rooms and follow their threads</h2>
+        <div class="cols">
+          <div class="col"><h3>Rooms</h3><p>Search your rooms, filter unread messages, and manage invitations.</p></div>
+          <div class="col"><h3>Threads</h3><p>See reply counts and browse threads across rooms. Open a thread to return to its conversation.</p></div>
+          <div class="col"><h3>Accounts</h3><p>Connect to your homeserver, switch between accounts, and exchange encrypted media.</p></div>
         </div>
       </div>
-    </footer>
-  </body>
+    </section>
+
+    <section class="dark-band" aria-labelledby="principle-title">
+      <div class="wrap">
+        <p class="eyebrow">Your Matrix account</p>
+        <h2 id="principle-title">Built on Matrix.</h2>
+        <p>Connect with an account on your Matrix homeserver. You can use the same account in other Matrix clients.</p>
+      </div>
+    </section>
+
+    <section class="band" id="family" aria-labelledby="family-title">
+      <div class="wrap">
+        <p class="eyebrow">From ManyMath</p>
+        <h2 id="family-title">Explore our tools</h2>
+        <div class="eco-grid">
+          <article class="eco-card featured">
+            <img src="/assets/brand/marks/manymatrix.svg" alt=""><p class="cat">Communication</p><h3>ManyMatrix</h3>
+            <p>A Matrix client for rooms, direct messages, and threads.</p>
+            <a href="/chat/">Open ManyMatrix <span aria-hidden="true">→</span></a>
+          </article>
+          <article class="eco-card">
+            <img src="/assets/brand/marks/manymath.svg" alt=""><p class="cat">Mathematics</p><h3>ManyMath</h3>
+            <p>Write LaTeX and preview the typeset document on your device.</p>
+            <a href="https://manymath.com/">Visit ManyMath <span aria-hidden="true">↗</span></a>
+          </article>
+          <article class="eco-card">
+            <img src="/assets/brand/marks/manykee.svg" alt=""><p class="cat">Credentials</p><h3>ManyKee</h3>
+            <p>Open and edit KeePass vaults in your browser.</p>
+            <a href="https://manykee.com/">Visit ManyKee <span aria-hidden="true">↗</span></a>
+          </article>
+          <article class="eco-card">
+            <img src="/assets/brand/marks/manytype.svg" alt=""><p class="cat">Knowledge</p><h3>ManyType</h3>
+            <p>Organize pages with types, properties, and links, stored on your device.</p>
+            <a href="https://manytype.com/">Visit ManyType <span aria-hidden="true">↗</span></a>
+          </article>
+          <article class="eco-card">
+            <img src="/assets/brand/marks/manytier.svg" alt=""><p class="cat">Networking</p><h3>ManyTier</h3>
+            <p>Manage ZeroTier-compatible networks, peers, and controllers.</p>
+            <a href="https://manytier.com/">Visit ManyTier <span aria-hidden="true">↗</span></a>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap foot">
+      <span>ManyMatrix by ManyMath LLC</span>
+      <img src="/assets/brand/marks/family-lockup.svg" alt="ManyMath product family">
+    </div>
+  </footer>
+</body>
 </html>
