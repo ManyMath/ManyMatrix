@@ -455,6 +455,11 @@ pub struct ManyMatrixClient {
     /// memory after the logout request, so this is what makes
     /// `logged_in()` and `current_session_json()` stop advertising them.
     session_revoked: Arc<AtomicBool>,
+    /// Whether the message-logging event handler used by the sync loops has
+    /// been attached. matrix-sdk keeps handlers for the client's lifetime, so
+    /// attaching one per `sync_forever`/`sync_until_cancelled` call logged
+    /// every message once per restart.
+    sync_logging_attached: Arc<AtomicBool>,
     optimistic_last_messages: Arc<StdMutex<HashMap<String, LastMessageCandidate>>>,
     thread_unread_cache: Arc<Mutex<ThreadUnreadCache>>,
 }
@@ -628,7 +633,17 @@ impl ManyMatrixClient {
     /// Run the sync loop, printing incoming messages to the log.
     /// Runs until an error occurs.
     pub async fn sync_forever(&self) -> Result<(), Error> {
-        // Register a handler for incoming room messages.
+        self.attach_sync_logging();
+        info!("starting sync...");
+        self.client.sync(SyncSettings::default()).await?;
+        Ok(())
+    }
+
+    /// Log incoming room messages. Attached at most once per client.
+    fn attach_sync_logging(&self) {
+        if self.sync_logging_attached.swap(true, Ordering::SeqCst) {
+            return;
+        }
         self.client
             .add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
                 if let SyncRoomMessageEvent::Original(msg) = ev {
@@ -641,10 +656,6 @@ impl ManyMatrixClient {
                     info!("[{}] {}: {}", room_name, msg.sender, msg.content.body());
                 }
             });
-
-        info!("starting sync...");
-        self.client.sync(SyncSettings::default()).await?;
-        Ok(())
     }
 
     /// Run the sync loop until `cancelled` becomes true.
@@ -652,19 +663,7 @@ impl ManyMatrixClient {
     /// Used by the FFI bridge so disposal can stop the background sync thread
     /// before Dart callback trampolines are closed.
     pub async fn sync_until_cancelled(&self, cancelled: Arc<AtomicBool>) -> Result<(), Error> {
-        self.client
-            .add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
-                if let SyncRoomMessageEvent::Original(msg) = ev {
-                    let room_name = room
-                        .display_name()
-                        .await
-                        .ok()
-                        .map(|n| n.to_string())
-                        .unwrap_or_else(|| room.room_id().to_string());
-                    info!("[{}] {}: {}", room_name, msg.sender, msg.content.body());
-                }
-            });
-
+        self.attach_sync_logging();
         info!("starting low-latency sync...");
         while !cancelled.load(Ordering::SeqCst) {
             tokio::select! {
@@ -2240,6 +2239,7 @@ impl ManyMatrixClient {
             latest_session_json,
             session_update_callback,
             session_revoked: Arc::new(AtomicBool::new(false)),
+            sync_logging_attached: Arc::new(AtomicBool::new(false)),
             optimistic_last_messages: Arc::new(StdMutex::new(HashMap::new())),
             thread_unread_cache: Arc::new(Mutex::new(ThreadUnreadCache::default())),
             store_path: store_path.to_owned(),
@@ -3882,6 +3882,7 @@ impl ManyMatrixClient {
             latest_session_json,
             session_update_callback,
             session_revoked: Arc::new(AtomicBool::new(false)),
+            sync_logging_attached: Arc::new(AtomicBool::new(false)),
             optimistic_last_messages: Arc::new(StdMutex::new(HashMap::new())),
             thread_unread_cache: Arc::new(Mutex::new(ThreadUnreadCache::default())),
             store_path: PathBuf::from(store_name),
