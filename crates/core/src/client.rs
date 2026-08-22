@@ -1961,10 +1961,19 @@ impl ManyMatrixClient {
                         let body = content_msgtype.body().to_owned();
                         let formatted_body = formatted_body_for_msgtype(content_msgtype);
                         let in_reply_to = msg.content.relates_to.as_ref().and_then(|rel| {
-                            if let Relation::Reply { in_reply_to } = rel {
-                                Some(in_reply_to.event_id.to_string())
-                            } else {
-                                None
+                            match rel {
+                                Relation::Reply { in_reply_to } => {
+                                    Some(in_reply_to.event_id.to_string())
+                                }
+                                // A thread reply carries `m.in_reply_to` too, but
+                                // only as a real reply target when it is not the
+                                // fallback pointer that plain thread messages set
+                                // for clients without thread support.
+                                Relation::Thread(thread) if !thread.is_falling_back => thread
+                                    .in_reply_to
+                                    .as_ref()
+                                    .map(|reply| reply.event_id.to_string()),
+                                _ => None,
                             }
                         });
                         let thread_root = msg.content.relates_to.as_ref().and_then(|rel| {
@@ -2688,9 +2697,13 @@ fn message_event_from_json(event: &serde_json::Value, room_id: &str) -> Option<M
             .map(|s| s.to_owned()),
         msgtype: message_content["msgtype"].as_str()?.to_owned(),
         timestamp: event["origin_server_ts"].as_u64().unwrap_or(0),
-        in_reply_to: relates_to["m.in_reply_to"]["event_id"]
-            .as_str()
-            .map(|s| s.to_owned()),
+        in_reply_to: (relates_to["is_falling_back"].as_bool() != Some(true))
+            .then(|| {
+                relates_to["m.in_reply_to"]["event_id"]
+                    .as_str()
+                    .map(|s| s.to_owned())
+            })
+            .flatten(),
         thread_root: (relates_to["rel_type"].as_str() == Some("m.thread"))
             .then(|| relates_to["event_id"].as_str().map(|s| s.to_owned()))
             .flatten(),
@@ -3653,6 +3666,48 @@ mod tests {
             );
             assert_ne!(json["m.relates_to"]["is_falling_back"], true);
         }
+    }
+
+    #[test]
+    fn paginated_thread_replies_only_report_explicit_reply_targets() {
+        let event = |relates_to: serde_json::Value| {
+            serde_json::json!({
+                "event_id": "$reply:example.org",
+                "sender": "@bob:example.org",
+                "type": "m.room.message",
+                "origin_server_ts": 1,
+                "content": {
+                    "msgtype": "m.text",
+                    "body": "Answer",
+                    "m.relates_to": relates_to,
+                },
+            })
+        };
+
+        let explicit = message_event_from_json(
+            &event(serde_json::json!({
+                "rel_type": "m.thread",
+                "event_id": "$root:example.org",
+                "m.in_reply_to": {"event_id": "$nested:example.org"},
+            })),
+            "!room:example.org",
+        )
+        .unwrap();
+        assert_eq!(explicit.thread_root.as_deref(), Some("$root:example.org"));
+        assert_eq!(explicit.in_reply_to.as_deref(), Some("$nested:example.org"));
+
+        let fallback = message_event_from_json(
+            &event(serde_json::json!({
+                "rel_type": "m.thread",
+                "event_id": "$root:example.org",
+                "m.in_reply_to": {"event_id": "$latest:example.org"},
+                "is_falling_back": true,
+            })),
+            "!room:example.org",
+        )
+        .unwrap();
+        assert_eq!(fallback.thread_root.as_deref(), Some("$root:example.org"));
+        assert_eq!(fallback.in_reply_to, None);
     }
 
     #[test]
