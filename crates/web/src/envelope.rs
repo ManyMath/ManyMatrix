@@ -1,5 +1,8 @@
 use serde::Serialize;
 
+// The variant names are the wire format: the Dart web bridge matches on
+// "MatrixSdkError" etc., and the FFI envelope uses the same strings.
+#[allow(clippy::enum_variant_names)]
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum ErrKind {

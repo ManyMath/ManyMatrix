@@ -4,7 +4,7 @@ pub enum Error {
     Sdk(#[from] matrix_sdk::Error),
 
     #[error("client build error: {0}")]
-    ClientBuild(#[from] matrix_sdk::ClientBuildError),
+    ClientBuild(Box<matrix_sdk::ClientBuildError>),
 
     #[error("HTTP error: {0}")]
     Http(#[from] matrix_sdk::HttpError),
@@ -30,6 +30,13 @@ pub enum Error {
 
     #[error("{0}")]
     Other(String),
+}
+
+impl From<matrix_sdk::ClientBuildError> for Error {
+    fn from(error: matrix_sdk::ClientBuildError) -> Self {
+        // Boxed so the variant does not dominate the size of every `Result`.
+        Self::ClientBuild(Box::new(error))
+    }
 }
 
 impl Error {

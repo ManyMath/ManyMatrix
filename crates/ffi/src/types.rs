@@ -113,7 +113,7 @@ impl FfiResult {
 
     /// Create a structured error result from a known SDK-side error type.
     pub(crate) fn error_from<E: FfiErrorSource + ?Sized>(error: &E) -> Self {
-        Self::error_with_kind(&error.ffi_kind(), &error.to_string(), error.ffi_details())
+        Self::error_with_kind(error.ffi_kind(), &error.to_string(), error.ffi_details())
     }
 
     /// Create a structured validation/serialization error from an ad-hoc message.
@@ -173,7 +173,7 @@ mod tests {
 
     fn take_error_message(result: FfiResult) -> String {
         assert!(!result.ok);
-        assert!(result.error_msg.is_null() == false);
+        assert!(!result.error_msg.is_null());
         unsafe { CString::from_raw(result.error_msg) }
             .into_string()
             .expect("FFI error should be valid UTF-8")

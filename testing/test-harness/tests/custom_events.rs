@@ -52,7 +52,7 @@ async fn sync_pair_retry(alice: &ManyMatrixClient, bob: &ManyMatrixClient) -> Re
 fn enforces_local_media_latency_tolerance(kind: ServerKind) -> bool {
     #[cfg(feature = "embedded-tests")]
     {
-        return kind == ServerKind::TuwunelEmbedded;
+        kind == ServerKind::TuwunelEmbedded
     }
 
     #[cfg(not(feature = "embedded-tests"))]

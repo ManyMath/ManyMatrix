@@ -439,6 +439,9 @@ fn merge_last_message_candidates(
     }
 }
 
+/// Callback invoked with the serialized session whenever tokens change.
+type SessionUpdateCallback = Arc<StdMutex<Option<Box<dyn Fn(String) + Send + Sync>>>>;
+
 /// High-level Matrix client wrapping [`matrix_sdk::Client`].
 #[derive(Clone)]
 pub struct ManyMatrixClient {
@@ -447,7 +450,7 @@ pub struct ManyMatrixClient {
     store_path: PathBuf,
     sync_token: Arc<Mutex<Option<String>>>,
     latest_session_json: Arc<StdMutex<Option<String>>>,
-    session_update_callback: Arc<StdMutex<Option<Box<dyn Fn(String) + Send + Sync>>>>,
+    session_update_callback: SessionUpdateCallback,
     optimistic_last_messages: Arc<StdMutex<HashMap<String, LastMessageCandidate>>>,
     thread_unread_cache: Arc<Mutex<ThreadUnreadCache>>,
 }
@@ -525,7 +528,7 @@ impl ManyMatrixClient {
 
     fn publish_session_json(
         latest_session_json: &Arc<StdMutex<Option<String>>>,
-        session_update_callback: &Arc<StdMutex<Option<Box<dyn Fn(String) + Send + Sync>>>>,
+        session_update_callback: &SessionUpdateCallback,
         session: &StoredSession,
     ) -> Result<(), Error> {
         let json = serde_json::to_string(session)?;
@@ -1739,8 +1742,8 @@ impl ManyMatrixClient {
     ) -> Result<String, Error> {
         let user_id = <&UserId>::try_from(user_id)
             .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
-        let device_id = <&DeviceId>::try_from(device_id)
-            .map_err(|e| Error::IdParse(format!("invalid device ID: {e}")))?;
+        // Device IDs are opaque strings in the spec; ruma does not validate them.
+        let device_id = <&DeviceId>::from(device_id);
         let device = self
             .client
             .encryption()
@@ -2243,10 +2246,12 @@ fn create_room_request_from_options(
 }
 
 fn plain_media_source_from_mxc(mxc_uri: &str) -> Result<MediaSource, Error> {
-    let uri = <&MxcUri>::try_from(mxc_uri)
-        .map_err(|e| Error::IdParse(format!("invalid MXC URI: {e}")))?
-        .to_owned();
-    Ok(MediaSource::Plain(uri))
+    // `&str -> &MxcUri` never fails (ruma only wraps the string), so the
+    // actual syntax check has to be an explicit `validate()`.
+    let uri = <&MxcUri>::from(mxc_uri);
+    uri.validate()
+        .map_err(|e| Error::IdParse(format!("invalid MXC URI: {e}")))?;
+    Ok(MediaSource::Plain(uri.to_owned()))
 }
 
 fn formatted_body_for_msgtype(msgtype: &MessageType) -> Option<String> {
@@ -3023,7 +3028,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&empty, []).unwrap();
-        let empty_file_error = custom_root_certificates_from_paths(&[empty.clone()]).unwrap_err();
+        let empty_file_error = custom_root_certificates_from_paths(std::slice::from_ref(&empty)).unwrap_err();
         let _ = std::fs::remove_file(empty);
         assert!(empty_file_error
             .to_string()
@@ -3186,9 +3191,7 @@ mod tests {
 
         for (mime_type, expected_msgtype) in cases {
             let mime: mime::Mime = mime_type.parse().unwrap();
-            let content_uri = <&MxcUri>::try_from("mxc://media.example.org/uploaded")
-                .unwrap()
-                .to_owned();
+            let content_uri = <&MxcUri>::from("mxc://media.example.org/uploaded").to_owned();
             let content = plain_attachment_content("proof.bin", &mime, content_uri, 42);
             let body = serde_json::to_value(content).unwrap();
 
@@ -3202,6 +3205,17 @@ mod tests {
             );
             assert!(body.get("filename").is_none(), "{mime_type}");
             assert!(body.get("file").is_none(), "{mime_type}");
+        }
+    }
+
+    #[test]
+    fn plain_media_source_rejects_malformed_mxc_uris() {
+        for bad in ["https://example.org/file", "mxc://", "mxc://example.org", "not a uri"] {
+            let error = plain_media_source_from_mxc(bad).unwrap_err();
+            assert!(
+                matches!(error, Error::IdParse(_)),
+                "{bad:?} should be rejected as an ID parse error, got {error:?}"
+            );
         }
     }
 

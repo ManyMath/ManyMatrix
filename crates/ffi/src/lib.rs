@@ -41,11 +41,9 @@ pub extern "C" fn ffi_free_result(result: FfiResult) {
 /// `s` must be a pointer previously returned as `data` in an `FfiResult`,
 /// or null (in which case this is a no-op).
 #[no_mangle]
-pub extern "C" fn ffi_free_string(s: *mut c_char) {
+pub unsafe extern "C" fn ffi_free_string(s: *mut c_char) {
     if !s.is_null() {
-        unsafe {
-            drop(CString::from_raw(s));
-        }
+        drop(CString::from_raw(s));
     }
 }
 

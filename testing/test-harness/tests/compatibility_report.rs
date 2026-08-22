@@ -58,6 +58,7 @@ async fn compatibility_report() -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::vec_init_then_push)]
 fn compiled_server_kinds() -> Vec<ServerKind> {
     let mut kinds = Vec::new();
 

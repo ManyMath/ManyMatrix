@@ -8,8 +8,8 @@ use crate::envelope::{ErrEnvelope, ErrKind};
 use manymatrix_core::{CreateRoomOptions, ManyMatrixClient, RoomVisibility, StoredSession};
 
 thread_local! {
-    static CLIENT: RefCell<Option<ManyMatrixClient>> = RefCell::new(None);
-    static EVENT_SINK: RefCell<Option<js_sys::Function>> = RefCell::new(None);
+    static CLIENT: RefCell<Option<ManyMatrixClient>> = const { RefCell::new(None) };
+    static EVENT_SINK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
 }
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
