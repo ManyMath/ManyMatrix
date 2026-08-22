@@ -451,6 +451,10 @@ pub struct ManyMatrixClient {
     sync_token: Arc<Mutex<Option<String>>>,
     latest_session_json: Arc<StdMutex<Option<String>>>,
     session_update_callback: SessionUpdateCallback,
+    /// Set by `logout()`: matrix-sdk keeps the (now revoked) tokens in
+    /// memory after the logout request, so this is what makes
+    /// `logged_in()` and `current_session_json()` stop advertising them.
+    session_revoked: Arc<AtomicBool>,
     optimistic_last_messages: Arc<StdMutex<HashMap<String, LastMessageCandidate>>>,
     thread_unread_cache: Arc<Mutex<ThreadUnreadCache>>,
 }
@@ -483,6 +487,7 @@ impl ManyMatrixClient {
             login = login.device_id(device_id);
         }
         login.send().await?;
+        self.session_revoked.store(false, Ordering::SeqCst);
 
         let session = self
             .client
@@ -513,6 +518,7 @@ impl ManyMatrixClient {
         self.client
             .restore_session(normalized.session.clone())
             .await?;
+        self.session_revoked.store(false, Ordering::SeqCst);
         self.remember_session_json(&normalized)?;
         Ok(())
     }
@@ -545,6 +551,9 @@ impl ManyMatrixClient {
     /// JSON-serialize the current Matrix session in the persisted
     /// [`StoredSession`] shape.
     pub fn current_session_json(&self) -> Result<Option<String>, Error> {
+        if self.session_revoked.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
         if let Some(session) = self.client.matrix_auth().session() {
             let stored = StoredSession {
                 homeserver: self.homeserver.clone(),
@@ -586,9 +595,30 @@ impl ManyMatrixClient {
             .clear();
         *self.thread_unread_cache.lock().await = ThreadUnreadCache::default();
 
-        // 3. Delete entire store directory (crypto keys + state).
+        // 3. Stop advertising the revoked tokens. matrix-sdk keeps them in
+        // memory after the logout request, so without this a caller that
+        // persists `current_session_json()` on teardown would save a dead
+        // session and fail with M_UNKNOWN_TOKEN on the next restore.
+        self.session_revoked.store(true, Ordering::SeqCst);
+        *self
+            .latest_session_json
+            .lock()
+            .expect("session mutex poisoned") = None;
+
+        // 4. Delete entire store directory (crypto keys + state).
         // On wasm the store is IndexedDB, not a directory, this is a no-op there.
-        let _ = std::fs::remove_dir_all(&self.store_path);
+        #[cfg(not(target_family = "wasm"))]
+        if let Err(error) = std::fs::remove_dir_all(&self.store_path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                // The SQLite pool is still open at this point, which on
+                // Windows is enough for the unlink to fail; the keys then
+                // survive until the store directory is removed by hand.
+                tracing::warn!(
+                    "could not remove the local store at {}: {error}",
+                    self.store_path.display()
+                );
+            }
+        }
 
         // If server-side failed, return the error after local cleanup
         server_result?;
@@ -680,7 +710,8 @@ impl ManyMatrixClient {
 
     /// Whether a session is currently active.
     pub fn logged_in(&self) -> bool {
-        self.client.matrix_auth().session().is_some()
+        !self.session_revoked.load(Ordering::SeqCst)
+            && self.client.matrix_auth().session().is_some()
     }
 
     /// Clone the current sync token.
@@ -2208,6 +2239,7 @@ impl ManyMatrixClient {
             sync_token: Arc::new(Mutex::new(None)),
             latest_session_json,
             session_update_callback,
+            session_revoked: Arc::new(AtomicBool::new(false)),
             optimistic_last_messages: Arc::new(StdMutex::new(HashMap::new())),
             thread_unread_cache: Arc::new(Mutex::new(ThreadUnreadCache::default())),
             store_path: store_path.to_owned(),
@@ -3041,7 +3073,8 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&empty, []).unwrap();
-        let empty_file_error = custom_root_certificates_from_paths(std::slice::from_ref(&empty)).unwrap_err();
+        let empty_file_error =
+            custom_root_certificates_from_paths(std::slice::from_ref(&empty)).unwrap_err();
         let _ = std::fs::remove_file(empty);
         assert!(empty_file_error
             .to_string()
@@ -3223,7 +3256,12 @@ mod tests {
 
     #[test]
     fn plain_media_source_rejects_malformed_mxc_uris() {
-        for bad in ["https://example.org/file", "mxc://", "mxc://example.org", "not a uri"] {
+        for bad in [
+            "https://example.org/file",
+            "mxc://",
+            "mxc://example.org",
+            "not a uri",
+        ] {
             let error = plain_media_source_from_mxc(bad).unwrap_err();
             assert!(
                 matches!(error, Error::IdParse(_)),
@@ -3843,6 +3881,7 @@ impl ManyMatrixClient {
             sync_token: Arc::new(Mutex::new(None)),
             latest_session_json,
             session_update_callback,
+            session_revoked: Arc::new(AtomicBool::new(false)),
             optimistic_last_messages: Arc::new(StdMutex::new(HashMap::new())),
             thread_unread_cache: Arc::new(Mutex::new(ThreadUnreadCache::default())),
             store_path: PathBuf::from(store_name),
