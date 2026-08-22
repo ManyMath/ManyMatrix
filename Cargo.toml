@@ -59,7 +59,7 @@ path = "vendor/event-listener-5.4.1"
 path = "vendor/async-channel-2.5.0"
 
 [patch.crates-io.ruma-client-api]
-path = "vendor/ruma-client-api-0.22.0"
+path = "vendor/ruma-client-api-0.22.1"
 
 [patch."https://github.com/sneurlax/tuwunel"]
 tuwunel-embed = { path = "testing/tuwunel/src/embed" }
