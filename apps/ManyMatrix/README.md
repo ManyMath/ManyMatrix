@@ -77,7 +77,7 @@ scripts/build_manymatrix_web.sh --base-href=/matrix/
   Message events retain the complete Matrix media source, so downloads in
   encrypted rooms use authenticated media endpoints, verify the ciphertext
   hash, and decrypt within the same bound. The cap is enforced again before
-  bridge base64 encoding; files above it are intentionally unsupported.
+  bridge base64 encoding; files above it are unsupported.
 - Sync runs only while the page is open. Closed-tab delivery requires a
   separately deployed push service and is not part of this browser runtime.
 

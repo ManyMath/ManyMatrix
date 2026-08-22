@@ -61,7 +61,7 @@ async fn finalize_servers(
 
 /// Alice (on `creator_kind`) creates a public, aliased room; Bob (on
 /// `joiner_kind`) joins it by full alias, a cross-domain join, which only
-/// succeeds if the two servers can actually federate over the open
+/// succeeds if the two servers can federate over the open
 /// internet, and Alice sends a message Bob must receive via federation.
 async fn federated_message(creator_kind: ServerKind, joiner_kind: ServerKind) -> Result<()> {
     let creator = TestHomeserver::start(creator_kind).await?;

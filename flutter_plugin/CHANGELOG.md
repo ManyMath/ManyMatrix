@@ -10,7 +10,7 @@ root [`CHANGELOG.md`](../CHANGELOG.md).
 ## [1.0.0+2], 2026-07-03
 
 - Rust core bumped to `0.2.0` (see root `CHANGELOG.md` `[0.2.0]`), most
-  notably a fix for key backup restore silently recovering zero room keys.
+  a fix for key backup restore silently recovering zero room keys.
   No Dart-facing API changes.
 
 ## [1.0.0+1]

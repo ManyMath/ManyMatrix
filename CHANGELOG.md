@@ -40,7 +40,7 @@ is workspace-wide (all publishable crates share one version, see
   export at all** (unlike the SAS/whoami gaps found previously, which at
   least had FFI+generated Dart C bindings), so neither the web dispatcher
   nor either Dart bridge could reach them either. Without `enable_recovery`
-  there was no way for an app to actually generate/obtain a recovery key in
+  there was no way for an app to generate/obtain a recovery key in
   the first place, even though `setupKeyBackup()`/`restoreKeyBackup()` were
   both already exposed; without `wait_for_backup_upload` there was no way to
   know when a freshly-created room key is safely durable in backup before a
@@ -70,7 +70,7 @@ is workspace-wide (all publishable crates share one version, see
   at all. Added `auth.whoami` / `e2ee.is_encrypted` dispatcher cases to
   `crates/web/src/dispatcher.rs`, and `whoami()` / `isRoomEncrypted()`
   methods to both `native_bridge.dart` and `web_bridge.dart`.
-- CI: `manytier-ci` runner environment gaps discovered by actually pushing
+- CI: `manytier-ci` runner environment gaps discovered by pushing
   `dev` for the first time since Phase 26 (previously-unpushed local work
   had never run on real CI). Fixed two: (1) missing `libclang-dev`, needed
   by `bindgen`/`zstd-sys` (pulled in transitively, likely via
@@ -100,11 +100,11 @@ is workspace-wide (all publishable crates share one version, see
   confirmed the actual mechanism: Continuwuity's own log showed it started
   and began "Listening on [0.0.0.0:6167]" in under a second, yet every one of
   the registration helper's 20 one-second retries against the mapped host
-  port still got `Connection refused`, the container was genuinely up, but
+  port still got `Connection refused`, the container was up, but
   the nested runner's Docker port-publish path hadn't propagated to the job
   container yet. Widened `post_json_with_retry`'s retry budget from 20 to 90
   attempts (20s -> 90s) to absorb that propagation delay; this only affects
-  the failure path; the happy-path registration flow used by every
+  the failure path; the successful registration flow used by every
   homeserver tier is unaffected. All 10 Continuwuity scenarios re-verified
   locally (`cargo test -p test-harness --test e2e --no-default-features
   --features docker-tests continuwuity_docker`).
@@ -123,12 +123,12 @@ is workspace-wide (all publishable crates share one version, see
 - **Fix: key backup restore silently recovered zero room keys.** `matrix-sdk`
   defaults `EncryptionSettings::backup_download_strategy` to `Manual`, so
   `ManyMatrixClient::restore_key_backup` (`client.encryption().recovery().recover()`)
-  imported cross-signing secrets but never actually downloaded any room keys
+  imported cross-signing secrets but never downloaded any room keys
   from the server-side backup, a new device recovering from a recovery key
   would report success while remaining unable to decrypt any pre-existing
   history. This was masked by the existing `key_backup_media.rs` test only
   asserting that `restore_key_backup` didn't error, never checking that the
-  restored client could actually decrypt anything (a known "stretch goal"
+  restored client could decrypt anything (a known "stretch goal"
   gap from Phase 7). Fixed by building every `ManyMatrixClient` with
   `BackupDownloadStrategy::OneShot`, and by adding `wait_for_backup_upload()`
   (wraps `backups().wait_for_steady_state()`) so tests/callers can
@@ -156,7 +156,7 @@ is workspace-wide (all publishable crates share one version, see
   file or directory`, so this closes the "Android NDK cross-check" gap noted
   previously. **Still not exercised live**: the `origin` GitHub remote
   (`sneurlax/manymatrix`) doesn't exist yet, so this workflow has never
-  actually run, creating that repository and pushing to it is a one-time
+  run, creating that repository and pushing to it is a one-time
   manual/account-level step, not something this automation can do for
   itself. Real device/simulator verification remains open regardless.
 - Expanded compatibility matrix (COMP-05): `ServerKind::ContinuwuityDocker`
@@ -194,7 +194,7 @@ version while the project was still finding its shape:
 
 ### Web Bridge Parity (2026-07-02)
 
-- Full native bridge API surfaced on web/WASM, including the event push
+- Full native bridge APId on web/WASM, including the event push
   channel (`events.subscribe` -> offscreen document -> `chrome.runtime`
   broadcast -> Dart).
 

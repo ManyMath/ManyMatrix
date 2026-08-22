@@ -47,7 +47,7 @@ async fn sync_pair(
 }
 
 /// TEST-04: Two clients complete SAS emoji device verification using the
-/// public `ManyMatrixClient` verification API surface.
+/// public `ManyMatrixClient` verification API.
 #[cfg(feature = "docker-tests")]
 async fn sas_verification(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;

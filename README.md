@@ -33,7 +33,7 @@ Deterministic compatibility commands are also available through the local wrappe
 - `scripts/compatibility.sh docker` runs the Docker opt-in report tier.
 - `scripts/compatibility.sh shadow` runs optional Shadow latency and encrypted-message scenarios.
 - `scripts/compatibility.sh shadow-multi` explicitly runs the ignored Shadow multi-homeserver scenario; expect a long run on some hosts.
-- `scripts/compatibility.sh all-local` runs embedded plus report only; it intentionally excludes Docker and Shadow.
+- `scripts/compatibility.sh all-local` runs embedded plus report only; it excludes Docker and Shadow.
 
 Shadow requirements:
 

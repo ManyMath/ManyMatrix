@@ -1343,8 +1343,8 @@ async fn post_json_with_retry(
     // publish propagation delay in this nested-runner environment is not a
     // fixed/bounded quantity; widening further only reduces the flake's
     // probability, it doesn't eliminate it. Widened again to 240 (4 min).
-    // This only extends time spent when something is actually unreachable;
-    // the happy path (registration succeeds immediately) is unaffected.
+    // This only extends time spent when something is unreachable;
+    // the successful path (registration succeeds immediately) is unaffected.
     const MAX_ATTEMPTS: usize = 240;
     const RETRY_DELAY: Duration = Duration::from_secs(1);
 

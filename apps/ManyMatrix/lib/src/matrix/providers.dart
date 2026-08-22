@@ -118,7 +118,7 @@ class AuthController extends Notifier<AuthState> {
       if (account.localCleanupRequired) {
         state = _reconnectState(
           account,
-          'Saved data for this account is invalid. Use Accounts > Forget to purge it from this browser.',
+          'Saved data for this account is invalid. Use Accounts > Forget to remove it from this browser.',
         );
         return;
       }

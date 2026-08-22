@@ -277,7 +277,7 @@ final accountsLoaderProvider = FutureProvider<void>((ref) async {
     for (final account in accounts) account.id: account,
   };
 
-  // The per-account homeserver is the URL that restore actually uses. When a
+  // The per-account homeserver is the URL that restore uses. When a
   // valid older value differs from list metadata, preserve that session's
   // authority and reconcile both copies to it. This also makes Forget delete
   // the same store that restore opened.

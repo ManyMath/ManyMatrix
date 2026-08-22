@@ -11,7 +11,7 @@ import '../matrix/providers.dart';
 /// Shows room encryption status plus joined members with kick/ban actions
 /// behind confirmation dialogs. Unban and power-level/role management don't
 /// exist at the bridge layer yet (see ROADMAP.md's ManyMatrix section) so they
-/// are intentionally absent.
+/// are absent.
 class RoomInfoPage extends HookConsumerWidget {
   const RoomInfoPage({required this.roomId, required this.roomName, super.key});
 
@@ -232,7 +232,7 @@ class _RoomIdentityDetails extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Register an alias by creating a Matrix room alias like #name:server on the homeserver and publishing it as the room canonical alias.',
+          'Create an alias such as #name:server on the homeserver, then set it as the main alias for this room.',
           style: theme.typography.caption.copyWith(
             color: theme.colors.mutedForeground,
           ),

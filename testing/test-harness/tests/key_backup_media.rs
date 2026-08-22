@@ -74,7 +74,7 @@ async fn key_backup_enable_and_restore(kind: ServerKind) -> Result<()> {
         // Send a message so there's something to back up
         alice.send_text(&room_id, "backup test message").await?;
 
-        // Block until the just-created room key has actually finished
+        // Block until the just-created room key has finished
         // uploading to the server-side backup. Backup upload runs on a
         // background task that sync only *signals*; polling sync_once in a
         // loop races that task and can proceed before the key is backed up.
@@ -93,11 +93,11 @@ async fn key_backup_enable_and_restore(kind: ServerKind) -> Result<()> {
             &recovery_key[..8.min(recovery_key.len())]
         );
 
-        // Prove the restored keys actually decrypt: a fresh device has no
+        // Prove the restored keys decrypt: a fresh device has no
         // Megolm session of its own for messages sent before it existed, so
         // fetching the historical message only comes back with the real body
         // (rather than an undecryptable ciphertext) if the backup restore
-        // actually recovered a usable session key.
+        // recovered a usable session key.
         let history = alice2.get_messages(&room_id, None, 10).await?;
         let restored_msg = history
             .messages

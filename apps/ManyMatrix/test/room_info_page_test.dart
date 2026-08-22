@@ -244,7 +244,7 @@ void main() {
         find.text('#test:example.org, #general:example.org'),
         findsOneWidget,
       );
-      expect(find.textContaining('Register an alias'), findsOneWidget);
+      expect(find.textContaining('Create an alias'), findsOneWidget);
     });
   });
 

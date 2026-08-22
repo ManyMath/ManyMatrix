@@ -34,7 +34,7 @@ cargo test -p test-harness --test shadow --no-default-features --features shadow
 scripts/compatibility.sh shadow
 ```
 
-`scripts/compatibility.sh all-local` runs only embedded and report tiers. It intentionally excludes Docker and Shadow so CI-like local automation stays deterministic on hosts without Docker or Shadow installed.
+`scripts/compatibility.sh all-local` runs only embedded and report tiers. It excludes Docker and Shadow so CI-like local automation stays deterministic on hosts without Docker or Shadow installed.
 
 ## Compatibility Report
 
@@ -64,7 +64,7 @@ Run the Docker-inclusive compatibility report when Docker is available:
 cargo test -p test-harness compatibility_report --features docker-tests
 ```
 
-Docker coverage includes Synapse and Docker Tuwunel in addition to embedded Tuwunel. Synapse is deliberately pinned as the reference homeserver image:
+Docker coverage includes Synapse and Docker Tuwunel in addition to embedded Tuwunel. Synapse is pinned as the reference homeserver image:
 
 ```text
 ghcr.io/matrix-org/synapse-service:v1.117.0
@@ -81,7 +81,7 @@ cargo test -p test-harness --test shadow --no-default-features --features shadow
 scripts/compatibility.sh shadow
 ```
 
-The standard Shadow tier includes single-homeserver latency scenarios and encrypted-message latency coverage. The multi-homeserver scenario with clients on distinct homeservers is intentionally ignored because upstream two-server Tuwunel federation under Shadow can take tens of minutes; run it explicitly when needed:
+The standard Shadow tier includes single-homeserver latency scenarios and encrypted-message latency coverage. The multi-homeserver scenario with clients on distinct homeservers is ignored because upstream two-server Tuwunel federation under Shadow can take tens of minutes; run it explicitly when needed:
 
 ```bash
 cargo test -p test-harness --test shadow --no-default-features --features shadow-tests -- multi_homeserver_message_delivery_over_shadow --ignored --nocapture
@@ -109,4 +109,4 @@ MANYMATRIX_HOSTED_TUWUNEL_REGISTRATION_TOKEN=... \
   scripts/compatibility.sh hosted
 ```
 
-This runs the standard E2E scenarios (`testing/test-harness/tests/e2e.rs`) against each hosted server individually, plus `testing/test-harness/tests/hosted_federation.rs` (COMP-06): a room created on one hosted server, joined by full alias from a client logged into the *other* hosted server, with a message sent across that join. Because the two servers are on genuinely distinct public domains, this only passes via real server-to-server federation over the open internet, unlike Shadow's simulated-network federation test above, or same-server tests where "federation" never leaves one homeserver.
+This runs the standard E2E scenarios (`testing/test-harness/tests/e2e.rs`) against each hosted server individually, plus `testing/test-harness/tests/hosted_federation.rs` (COMP-06): a room created on one hosted server, joined by full alias from a client logged into the *other* hosted server, with a message sent across that join. Because the two servers are on distinct public domains, this only passes via real server-to-server federation over the open internet, unlike Shadow's simulated-network federation test above, or same-server tests where "federation" never leaves one homeserver.

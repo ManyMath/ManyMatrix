@@ -707,7 +707,7 @@ impl ManyMatrixClient {
     /// `m.room.encryption`, then persists the negative result before sending; a stale IndexedDB
     /// lock can leave that persistence waiting indefinitely.
     ///
-    /// The bypass is deliberately limited to an explicit homeserver `M_NOT_FOUND`. A present
+    /// The bypass is limited to an explicit homeserver `M_NOT_FOUND`. A present
     /// encryption event fails closed until sync updates the local state; known local states remain
     /// on the SDK path, where encryption is applied as usual.
     async fn send_room_message_content(
@@ -1421,7 +1421,7 @@ impl ManyMatrixClient {
             .map_err(|e| Error::IdParse(format!("invalid event ID: {e}")))?;
         let annotation = Annotation::new(event_id.to_owned(), key.to_owned());
         let content = ReactionEventContent::new(annotation);
-        // matrix-sdk deliberately leaves reactions plaintext even in encrypted rooms, but its
+        // matrix-sdk leaves reactions plaintext even in encrypted rooms, but its
         // generic send path still resolves the room encryption state first. Sending the same
         // plaintext event directly avoids that unnecessary store lookup.
         self.send_direct_plaintext(&room, &content).await

@@ -110,7 +110,7 @@ class ThreadsPage extends HookConsumerWidget {
                     variant: MAlertVariant.destructive,
                     message:
                         'This homeserver did not provide the thread index. '
-                        'Threads already loaded in room conversations remain usable.\n\n$error',
+                        'You can still use threads already loaded in rooms.\n\n$error',
                     maxWidth: 520,
                     actions: <Widget>[
                       MButton(
