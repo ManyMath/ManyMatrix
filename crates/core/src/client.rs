@@ -2797,6 +2797,9 @@ fn thread_unread_sync_request() -> ThreadUnreadSyncRequest {
     definition.room.timeline.unread_thread_notifications = true;
     let mut request = ThreadUnreadSyncRequest::new();
     request.filter = Some(SyncFilter::FilterDefinition(definition));
+    // This is a bookkeeping request, not the app's real sync loop: `offline`
+    // tells the server to leave the user's presence exactly as it is.
+    request.set_presence = matrix_sdk::ruma::presence::PresenceState::Offline;
     // A secondary next_batch must never be stored or reused: doing so would
     // acknowledge unprocessed to-device events on the following request.
     debug_assert!(request.since.is_none());
@@ -3046,6 +3049,10 @@ mod tests {
         let request = thread_unread_sync_request();
 
         assert!(request.since.is_none());
+        assert_eq!(
+            request.set_presence,
+            matrix_sdk::ruma::presence::PresenceState::Offline
+        );
     }
 
     #[cfg(not(target_family = "wasm"))]
