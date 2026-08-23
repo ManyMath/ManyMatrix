@@ -122,6 +122,13 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Command::Login { server, user } => {
+            // The core only accepts URLs; a bare server name is assumed to
+            // serve the client API over HTTPS at its own domain.
+            let server = if server.contains("://") {
+                server
+            } else {
+                format!("https://{server}")
+            };
             let password = rpassword::prompt_password("Password: ")?;
             let client = ManyMatrixClient::new(&server, &store_path()).await?;
             let session = client.login(&user, &password).await?;
