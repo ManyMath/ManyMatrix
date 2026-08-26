@@ -1880,16 +1880,28 @@ impl ManyMatrixClient {
     pub async fn cancel_verification(&self, user_id: &str, flow_id: &str) -> Result<(), Error> {
         let user_id = <&UserId>::try_from(user_id)
             .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
-        let verification = self
+        // Between `start_verification`/`accept_verification` and `start_sas`
+        // there is only a `VerificationRequest`; `get_verification` returns
+        // nothing until the SAS stage exists, so look for both.
+        if let Some(verification) = self
             .client
             .encryption()
             .get_verification(user_id, flow_id)
             .await
+        {
+            let sas = verification
+                .sas()
+                .ok_or_else(|| Error::Other("not a SAS verification".into()))?;
+            sas.cancel().await?;
+            return Ok(());
+        }
+        let request = self
+            .client
+            .encryption()
+            .get_verification_request(user_id, flow_id)
+            .await
             .ok_or_else(|| Error::Other("verification not found".into()))?;
-        let sas = verification
-            .sas()
-            .ok_or_else(|| Error::Other("not a SAS verification".into()))?;
-        sas.cancel().await?;
+        request.cancel().await?;
         Ok(())
     }
 
@@ -2844,8 +2856,8 @@ async fn room_thread_index(
         {
             Ok(page) => page,
             // Returning only the first page would silently omit unread roots
-            // that the notification aggregate says exist on later pages.
-            Err(error) if !first_page => return Err(error.into()),
+            // that the notification aggregate says exist on later pages, so
+            // a failure on any page fails the whole index.
             Err(error) => return Err(error.into()),
         };
         for event in &page.chunk {
