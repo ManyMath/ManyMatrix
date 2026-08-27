@@ -9,9 +9,9 @@ pub use client::ManyMatrixClient;
 pub use error::Error;
 pub use session::StoredSession;
 pub use types::{
-    CreateRoomOptions, CustomEvent, LastMessage, MessageEvent, PaginatedMessages, ReactionEvent,
-    ReceiptEvent, RoomDetails, RoomInvite, RoomSummary, RoomVisibility, SasEmoji, SasEmojis,
-    ServerCapabilities,
+    CreateRoomOptions, CustomEvent, LastMessage, MessageEvent, PaginatedMessages,
+    PaginatedThreadMessages, ReactionEvent, ReceiptEvent, RoomDetails, RoomInvite, RoomSummary,
+    RoomVisibility, SasEmoji, SasEmojis, ServerCapabilities, ThreadSummary,
 };
 
 pub use matrix_sdk;
