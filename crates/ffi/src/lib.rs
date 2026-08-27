@@ -47,16 +47,21 @@ pub unsafe extern "C" fn ffi_free_string(s: *mut c_char) {
     }
 }
 
-/// Free an FfiBuffer, releasing the underlying byte array.
+/// Free an `FfiBuffer` returned as `data` in an `FfiResult`, releasing both
+/// the byte array and the buffer struct itself.
 ///
 /// # Safety
-/// `buf` must have been returned by one of the media FFI functions in this crate.
+/// `buf` must be a pointer previously returned by one of the media FFI
+/// functions in this crate, or null (in which case this is a no-op). It must
+/// not be used again afterwards.
 #[no_mangle]
-pub extern "C" fn ffi_free_buffer(buf: FfiBuffer) {
+pub unsafe extern "C" fn ffi_free_buffer(buf: *mut FfiBuffer) {
+    if buf.is_null() {
+        return;
+    }
+    let buf = Box::from_raw(buf);
     if !buf.data.is_null() {
-        unsafe {
-            drop(Vec::from_raw_parts(buf.data, buf.len, buf.len));
-        }
+        drop(Vec::from_raw_parts(buf.data, buf.len, buf.len));
     }
 }
 

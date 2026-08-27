@@ -31,6 +31,18 @@ pub unsafe extern "C" fn manymatrix_upload_media(
     }
 }
 
+/// Hand a byte vector to the caller as a heap-allocated `FfiBuffer`.
+///
+/// Both allocations are released by `ffi_free_buffer`.
+fn buffer_result(data: Vec<u8>) -> FfiResult {
+    let mut boxed = data.into_boxed_slice();
+    let ptr = boxed.as_mut_ptr();
+    let len = boxed.len();
+    std::mem::forget(boxed);
+    let buf = Box::new(FfiBuffer { data: ptr, len });
+    FfiResult::success(Box::into_raw(buf) as *mut c_void)
+}
+
 /// Download media content by its mxc:// URI.
 ///
 /// Returns an `FfiBuffer` pointer in `FfiResult.data`. Free with `ffi_free_buffer`.
@@ -45,14 +57,7 @@ pub unsafe extern "C" fn manymatrix_download_media(
     let client = client_from_handle(handle);
     let mxc_uri = str_from_ptr(mxc_uri);
     match RUNTIME.block_on(client.download_media(mxc_uri)) {
-        Ok(data) => {
-            let mut boxed = data.into_boxed_slice();
-            let ptr = boxed.as_mut_ptr();
-            let len = boxed.len();
-            std::mem::forget(boxed);
-            let buf = Box::new(FfiBuffer { data: ptr, len });
-            FfiResult::success(Box::into_raw(buf) as *mut c_void)
-        }
+        Ok(data) => buffer_result(data),
         Err(e) => FfiResult::error_from(&e),
     }
 }
@@ -77,14 +82,7 @@ pub unsafe extern "C" fn manymatrix_download_media_source(
         }
     };
     match RUNTIME.block_on(client.download_media_source(&media_source)) {
-        Ok(data) => {
-            let mut boxed = data.into_boxed_slice();
-            let ptr = boxed.as_mut_ptr();
-            let len = boxed.len();
-            std::mem::forget(boxed);
-            let buf = Box::new(FfiBuffer { data: ptr, len });
-            FfiResult::success(Box::into_raw(buf) as *mut c_void)
-        }
+        Ok(data) => buffer_result(data),
         Err(e) => FfiResult::error_from(&e),
     }
 }
@@ -105,14 +103,7 @@ pub unsafe extern "C" fn manymatrix_get_thumbnail(
     let client = client_from_handle(handle);
     let mxc_uri = str_from_ptr(mxc_uri);
     match RUNTIME.block_on(client.get_thumbnail(mxc_uri, width, height)) {
-        Ok(data) => {
-            let mut boxed = data.into_boxed_slice();
-            let ptr = boxed.as_mut_ptr();
-            let len = boxed.len();
-            std::mem::forget(boxed);
-            let buf = Box::new(FfiBuffer { data: ptr, len });
-            FfiResult::success(Box::into_raw(buf) as *mut c_void)
-        }
+        Ok(data) => buffer_result(data),
         Err(e) => FfiResult::error_from(&e),
     }
 }

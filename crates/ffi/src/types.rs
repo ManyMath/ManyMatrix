@@ -129,7 +129,8 @@ impl FfiResult {
 
 /// Buffer for passing binary data (media) across the FFI boundary.
 ///
-/// The caller must free this with `ffi_free_buffer`.
+/// Returned as a heap-allocated pointer in `FfiResult.data`; the caller must
+/// pass that pointer to `ffi_free_buffer`.
 #[repr(C)]
 pub struct FfiBuffer {
     pub data: *mut u8,

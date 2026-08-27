@@ -816,7 +816,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
       final buf = bufPtr.ref;
       final bytes = buf.data.cast<ffi.Uint8>().asTypedList(buf.len);
       final copy = Uint8List.fromList(bytes);
-      bindings.ffi_free_buffer(buf);
+      bindings.ffi_free_buffer(bufPtr);
       return copy;
     } finally {
       calloc.free(mxcUri);
@@ -842,7 +842,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
       final buf = bufPtr.ref;
       final bytes = buf.data.cast<ffi.Uint8>().asTypedList(buf.len);
       final copy = Uint8List.fromList(bytes);
-      bindings.ffi_free_buffer(buf);
+      bindings.ffi_free_buffer(bufPtr);
       return copy;
     } finally {
       calloc.free(mediaSourceJson);
@@ -871,7 +871,7 @@ class ManyMatrixBridge implements ffi.Finalizable {
       final buf = bufPtr.ref;
       final bytes = buf.data.cast<ffi.Uint8>().asTypedList(buf.len);
       final copy = Uint8List.fromList(bytes);
-      bindings.ffi_free_buffer(buf);
+      bindings.ffi_free_buffer(bufPtr);
       return copy;
     } finally {
       calloc.free(mxcUri);

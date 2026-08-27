@@ -59,12 +59,15 @@ class ManyMatrixBindings {
   late final _ffi_free_string =
       _ffi_free_stringPtr.asFunction<void Function(ffi.Pointer<ffi.Char>)>();
 
-  /// Free an FfiBuffer, releasing the underlying byte array.
+  /// Free an `FfiBuffer` returned as `data` in an `FfiResult`, releasing both
+  /// the byte array and the buffer struct itself.
   ///
   /// # Safety
-  /// `buf` must have been returned by one of the media FFI functions in this crate.
+  /// `buf` must be a pointer previously returned by one of the media FFI
+  /// functions in this crate, or null (in which case this is a no-op). It must
+  /// not be used again afterwards.
   void ffi_free_buffer(
-    FfiBuffer buf,
+    ffi.Pointer<FfiBuffer> buf,
   ) {
     return _ffi_free_buffer(
       buf,
@@ -72,13 +75,18 @@ class ManyMatrixBindings {
   }
 
   late final _ffi_free_bufferPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(FfiBuffer)>>(
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<FfiBuffer>)>>(
           'ffi_free_buffer');
   late final _ffi_free_buffer =
-      _ffi_free_bufferPtr.asFunction<void Function(FfiBuffer)>();
+      _ffi_free_bufferPtr.asFunction<void Function(ffi.Pointer<FfiBuffer>)>();
 
   /// Register a callback for incoming messages (JSON `MessageEvent`).
-  /// String pointer valid only during invocation.
+  ///
+  /// The pointer passed to `callback` is heap-allocated and owned by the callee:
+  /// the caller must free it with [`crate::ffi_free_string`] once done reading it.
+  /// `NativeCallable.listener` on the Dart side posts the call to another isolate's
+  /// event loop and returns before that isolate has read the pointee, so a pointer
+  /// into a temporary freed when this closure returns is not safe here.
   ///
   /// # Safety
   /// `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
@@ -101,7 +109,10 @@ class ManyMatrixBindings {
       void Function(ffi.Pointer<ManyMatrixClient>, MessageCallback)>();
 
   /// Register a callback for incoming reactions (JSON `ReactionEvent`).
-  /// String pointer valid only during invocation.
+  ///
+  /// The pointer passed to `callback` is heap-allocated and owned by the callee:
+  /// the caller must free it with [`crate::ffi_free_string`] once done reading it.
+  /// See [`manymatrix_on_message`] for why a temporary pointer is not safe here.
   ///
   /// # Safety
   /// `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
@@ -124,7 +135,10 @@ class ManyMatrixBindings {
       void Function(ffi.Pointer<ManyMatrixClient>, ReactionCallback)>();
 
   /// Register a callback for read receipts (JSON `ReceiptEvent`).
-  /// String pointer valid only during invocation.
+  ///
+  /// The pointer passed to `callback` is heap-allocated and owned by the callee:
+  /// the caller must free it with [`crate::ffi_free_string`] once done reading it.
+  /// See [`manymatrix_on_message`] for why a temporary pointer is not safe here.
   ///
   /// # Safety
   /// `handle` must be a valid ManyMatrixClient pointer. `callback` must remain
@@ -149,13 +163,18 @@ class ManyMatrixBindings {
   /// Register a callback for incoming custom message-like events (JSON `CustomEvent`) whose
   /// `event_type` matches `event_type` exactly.
   ///
+  /// The pointer passed to `callback` is heap-allocated and owned by the callee:
+  /// the caller must free it with [`crate::ffi_free_string`] once done reading it.
+  /// See [`manymatrix_on_message`] for why a temporary pointer is not safe here.
+  ///
   /// # Safety
   /// `handle` must be a valid ManyMatrixClient pointer. `event_type` must be a valid C string.
   /// `callback` must remain valid for the lifetime of the client.
   void manymatrix_on_custom_event(
     ffi.Pointer<ManyMatrixClient> handle,
     ffi.Pointer<ffi.Char> event_type,
-    CustomEventCallback callback,
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>
+        callback,
   ) {
     return _manymatrix_on_custom_event(
       handle,
@@ -165,15 +184,22 @@ class ManyMatrixBindings {
   }
 
   late final _manymatrix_on_custom_eventPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Void Function(
-              ffi.Pointer<ManyMatrixClient>,
-              ffi.Pointer<ffi.Char>,
-              CustomEventCallback)>>('manymatrix_on_custom_event');
+          ffi.NativeFunction<
+              ffi.Void Function(
+                  ffi.Pointer<ManyMatrixClient>,
+                  ffi.Pointer<ffi.Char>,
+                  ffi.Pointer<
+                      ffi.NativeFunction<
+                          ffi.Void Function(ffi.Pointer<ffi.Char>)>>)>>(
+      'manymatrix_on_custom_event');
   late final _manymatrix_on_custom_event =
       _manymatrix_on_custom_eventPtr.asFunction<
-          void Function(ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>,
-              CustomEventCallback)>();
+          void Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<
+                  ffi.NativeFunction<
+                      ffi.Void Function(ffi.Pointer<ffi.Char>)>>)>();
 
   /// Create a new ManyMatrixClient pointing at the given homeserver URL.
   ///
@@ -308,7 +334,8 @@ class ManyMatrixBindings {
   /// `callback` must remain valid for the lifetime of the client.
   FfiResult manymatrix_on_session_update(
     ffi.Pointer<ManyMatrixClient> handle,
-    SessionUpdateCallback callback,
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>
+        callback,
   ) {
     return _manymatrix_on_session_update(
       handle,
@@ -317,13 +344,20 @@ class ManyMatrixBindings {
   }
 
   late final _manymatrix_on_session_updatePtr = _lookup<
-      ffi.NativeFunction<
-          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
-              SessionUpdateCallback)>>('manymatrix_on_session_update');
+          ffi.NativeFunction<
+              FfiResult Function(
+                  ffi.Pointer<ManyMatrixClient>,
+                  ffi.Pointer<
+                      ffi.NativeFunction<
+                          ffi.Void Function(ffi.Pointer<ffi.Char>)>>)>>(
+      'manymatrix_on_session_update');
   late final _manymatrix_on_session_update =
       _manymatrix_on_session_updatePtr.asFunction<
           FfiResult Function(
-              ffi.Pointer<ManyMatrixClient>, SessionUpdateCallback)>();
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<
+                  ffi.NativeFunction<
+                      ffi.Void Function(ffi.Pointer<ffi.Char>)>>)>();
 
   /// Perform a single sync round.
   ///
@@ -392,7 +426,8 @@ class ManyMatrixBindings {
   /// `callback` must remain valid for the lifetime of the client.
   FfiResult manymatrix_sync_forever_with_status(
     ffi.Pointer<ManyMatrixClient> handle,
-    SyncStatusCallback callback,
+    ffi.Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>
+        callback,
   ) {
     return _manymatrix_sync_forever_with_status(
       handle,
@@ -401,13 +436,20 @@ class ManyMatrixBindings {
   }
 
   late final _manymatrix_sync_forever_with_statusPtr = _lookup<
-      ffi.NativeFunction<
-          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
-              SyncStatusCallback)>>('manymatrix_sync_forever_with_status');
+          ffi.NativeFunction<
+              FfiResult Function(
+                  ffi.Pointer<ManyMatrixClient>,
+                  ffi.Pointer<
+                      ffi.NativeFunction<
+                          ffi.Void Function(ffi.Pointer<ffi.Char>)>>)>>(
+      'manymatrix_sync_forever_with_status');
   late final _manymatrix_sync_forever_with_status =
       _manymatrix_sync_forever_with_statusPtr.asFunction<
           FfiResult Function(
-              ffi.Pointer<ManyMatrixClient>, SyncStatusCallback)>();
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<
+                  ffi.NativeFunction<
+                      ffi.Void Function(ffi.Pointer<ffi.Char>)>>)>();
 
   /// Stop the background sync loop if it is running.
   ///
@@ -979,11 +1021,19 @@ class ManyMatrixBindings {
               ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
 
   /// Download media from a serialized plain or encrypted Matrix `MediaSource`.
+  ///
+  /// Returns an `FfiBuffer` pointer in `FfiResult.data`. Free with `ffi_free_buffer`.
+  ///
+  /// # Safety
+  /// `handle` must be valid and `media_source_json` must be NUL-terminated UTF-8.
   FfiResult manymatrix_download_media_source(
     ffi.Pointer<ManyMatrixClient> handle,
     ffi.Pointer<ffi.Char> media_source_json,
   ) {
-    return _manymatrix_download_media_source(handle, media_source_json);
+    return _manymatrix_download_media_source(
+      handle,
+      media_source_json,
+    );
   }
 
   late final _manymatrix_download_media_sourcePtr = _lookup<
@@ -1099,9 +1149,8 @@ class ManyMatrixBindings {
       FfiResult Function(ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>,
           ffi.Pointer<ffi.Char>)>();
 
-  /// Send a message-like event of an arbitrary `event_type` with arbitrary JSON
-  /// `content_json` to a room. Returns the event ID string. `content_json` must be
-  /// valid JSON.
+  /// Send a message-like event of an arbitrary `event_type` with arbitrary JSON `content_json`
+  /// to a room. Returns the event ID string. `content_json` must be valid JSON.
   ///
   /// # Safety
   /// `handle` must be a valid ManyMatrixClient pointer.
@@ -1128,43 +1177,6 @@ class ManyMatrixBindings {
               ffi.Pointer<ffi.Char>)>>('manymatrix_send_custom_event');
   late final _manymatrix_send_custom_event =
       _manymatrix_send_custom_eventPtr.asFunction<
-          FfiResult Function(
-              ffi.Pointer<ManyMatrixClient>,
-              ffi.Pointer<ffi.Char>,
-              ffi.Pointer<ffi.Char>,
-              ffi.Pointer<ffi.Char>)>();
-
-  /// Configure the power level required to send a custom event type in a room.
-  ///
-  /// `config_json` must be a JSON object with `requiredPowerLevel` and optional
-  /// `userPowerLevels` map of Matrix user ID to power level.
-  ///
-  /// # Safety
-  /// `handle` must be a valid ManyMatrixClient pointer.
-  FfiResult manymatrix_set_custom_event_power_levels(
-    ffi.Pointer<ManyMatrixClient> handle,
-    ffi.Pointer<ffi.Char> room_id,
-    ffi.Pointer<ffi.Char> event_type,
-    ffi.Pointer<ffi.Char> config_json,
-  ) {
-    return _manymatrix_set_custom_event_power_levels(
-      handle,
-      room_id,
-      event_type,
-      config_json,
-    );
-  }
-
-  late final _manymatrix_set_custom_event_power_levelsPtr = _lookup<
-          ffi.NativeFunction<
-              FfiResult Function(
-                  ffi.Pointer<ManyMatrixClient>,
-                  ffi.Pointer<ffi.Char>,
-                  ffi.Pointer<ffi.Char>,
-                  ffi.Pointer<ffi.Char>)>>(
-      'manymatrix_set_custom_event_power_levels');
-  late final _manymatrix_set_custom_event_power_levels =
-      _manymatrix_set_custom_event_power_levelsPtr.asFunction<
           FfiResult Function(
               ffi.Pointer<ManyMatrixClient>,
               ffi.Pointer<ffi.Char>,
@@ -1495,11 +1507,17 @@ class ManyMatrixBindings {
           ffi.Pointer<ffi.Char>, int)>();
 
   /// Return a JSON array of recent server-aggregated thread summaries.
+  ///
+  /// # Safety
+  /// `handle` must be a valid `ManyMatrixClient` pointer.
   FfiResult manymatrix_thread_index(
     ffi.Pointer<ManyMatrixClient> handle,
     int limit_per_room,
   ) {
-    return _manymatrix_thread_index(handle, limit_per_room);
+    return _manymatrix_thread_index(
+      handle,
+      limit_per_room,
+    );
   }
 
   late final _manymatrix_thread_indexPtr = _lookup<
@@ -1510,6 +1528,10 @@ class ManyMatrixBindings {
       .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>, int)>();
 
   /// Load a JSON-serialized page of messages from one thread.
+  ///
+  /// # Safety
+  /// `handle` must be valid. String pointers must be valid UTF-8 C strings;
+  /// `from_token` may be null.
   FfiResult manymatrix_get_thread_messages(
     ffi.Pointer<ManyMatrixClient> handle,
     ffi.Pointer<ffi.Char> room_id,
@@ -1544,6 +1566,9 @@ class ManyMatrixBindings {
               int)>();
 
   /// Send a read receipt scoped to one thread.
+  ///
+  /// # Safety
+  /// `handle` and all string pointers must be valid.
   FfiResult manymatrix_send_thread_read_receipt(
     ffi.Pointer<ManyMatrixClient> handle,
     ffi.Pointer<ffi.Char> room_id,
@@ -1650,6 +1675,95 @@ class ManyMatrixBindings {
   late final _manymatrix_invite = _manymatrix_invitePtr.asFunction<
       FfiResult Function(ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>,
           ffi.Pointer<ffi.Char>)>();
+
+  /// Configure the power level required to send a custom event type in a room.
+  ///
+  /// `config_json` must be a JSON object with `requiredPowerLevel` and optional
+  /// `userPowerLevels` map of Matrix user ID to power level.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_set_custom_event_power_levels(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+    ffi.Pointer<ffi.Char> event_type,
+    ffi.Pointer<ffi.Char> config_json,
+  ) {
+    return _manymatrix_set_custom_event_power_levels(
+      handle,
+      room_id,
+      event_type,
+      config_json,
+    );
+  }
+
+  late final _manymatrix_set_custom_event_power_levelsPtr = _lookup<
+          ffi.NativeFunction<
+              FfiResult Function(
+                  ffi.Pointer<ManyMatrixClient>,
+                  ffi.Pointer<ffi.Char>,
+                  ffi.Pointer<ffi.Char>,
+                  ffi.Pointer<ffi.Char>)>>(
+      'manymatrix_set_custom_event_power_levels');
+  late final _manymatrix_set_custom_event_power_levels =
+      _manymatrix_set_custom_event_power_levelsPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>();
+
+  /// Return the room power-level snapshot as a JSON string.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_room_power_levels(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+  ) {
+    return _manymatrix_room_power_levels(
+      handle,
+      room_id,
+    );
+  }
+
+  late final _manymatrix_room_power_levelsPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>)>>('manymatrix_room_power_levels');
+  late final _manymatrix_room_power_levels =
+      _manymatrix_room_power_levelsPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
+
+  /// Configure the room power level required to invite users.
+  ///
+  /// `config_json` must be a JSON object with `requiredPowerLevel` and optional
+  /// `userPowerLevels` map of Matrix user ID to power level.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer.
+  FfiResult manymatrix_set_room_invite_power_level(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> room_id,
+    ffi.Pointer<ffi.Char> config_json,
+  ) {
+    return _manymatrix_set_room_invite_power_level(
+      handle,
+      room_id,
+      config_json,
+    );
+  }
+
+  late final _manymatrix_set_room_invite_power_levelPtr = _lookup<
+          ffi.NativeFunction<
+              FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+                  ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>>(
+      'manymatrix_set_room_invite_power_level');
+  late final _manymatrix_set_room_invite_power_level =
+      _manymatrix_set_room_invite_power_levelPtr.asFunction<
+          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>();
 
   /// Leave a room.
   ///
@@ -1842,58 +1956,6 @@ class ManyMatrixBindings {
   late final _manymatrix_room_details = _manymatrix_room_detailsPtr.asFunction<
       FfiResult Function(
           ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
-
-  /// Return the room power-level snapshot as a JSON string.
-  ///
-  /// # Safety
-  /// `handle` must be a valid ManyMatrixClient pointer.
-  FfiResult manymatrix_room_power_levels(
-    ffi.Pointer<ManyMatrixClient> handle,
-    ffi.Pointer<ffi.Char> room_id,
-  ) {
-    return _manymatrix_room_power_levels(
-      handle,
-      room_id,
-    );
-  }
-
-  late final _manymatrix_room_power_levelsPtr = _lookup<
-      ffi.NativeFunction<
-          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
-              ffi.Pointer<ffi.Char>)>>('manymatrix_room_power_levels');
-  late final _manymatrix_room_power_levels =
-      _manymatrix_room_power_levelsPtr.asFunction<
-          FfiResult Function(
-              ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>)>();
-
-  /// Configure the room power level required to invite users.
-  ///
-  /// `config_json` must be a JSON object with `requiredPowerLevel` and optional
-  /// `userPowerLevels` map of Matrix user ID to power level.
-  ///
-  /// # Safety
-  /// `handle` must be a valid ManyMatrixClient pointer.
-  FfiResult manymatrix_set_room_invite_power_level(
-    ffi.Pointer<ManyMatrixClient> handle,
-    ffi.Pointer<ffi.Char> room_id,
-    ffi.Pointer<ffi.Char> config_json,
-  ) {
-    return _manymatrix_set_room_invite_power_level(
-      handle,
-      room_id,
-      config_json,
-    );
-  }
-
-  late final _manymatrix_set_room_invite_power_levelPtr = _lookup<
-          ffi.NativeFunction<
-              FfiResult Function(ffi.Pointer<ManyMatrixClient>,
-                  ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>>(
-      'manymatrix_set_room_invite_power_level');
-  late final _manymatrix_set_room_invite_power_level =
-      _manymatrix_set_room_invite_power_levelPtr.asFunction<
-          FfiResult Function(ffi.Pointer<ManyMatrixClient>,
-              ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>();
 }
 
 final class __atomic_wide_counter extends ffi.Union {
@@ -2099,7 +2161,8 @@ final class FfiResult extends ffi.Struct {
 
 /// Buffer for passing binary data (media) across the FFI boundary.
 ///
-/// The caller must free this with `ffi_free_buffer`.
+/// Returned as a heap-allocated pointer in `FfiResult.data`; the caller must
+/// pass that pointer to `ffi_free_buffer`.
 final class FfiBuffer extends ffi.Struct {
   external ffi.Pointer<ffi.Uint8> data;
 
@@ -2109,42 +2172,26 @@ final class FfiBuffer extends ffi.Struct {
 
 /// Callback type for incoming message events. Receives JSON-serialized MessageEvent.
 ///
-/// **Lifetime contract:** The string pointer is valid only for the duration of the
-/// callback invocation. The Dart side must copy the string before returning.
+/// **Lifetime contract:** the pointer is heap-allocated and owned by the receiver.
+/// `NativeCallable.listener` (the Dart-side registration mechanism) posts this call
+/// across isolates and returns before the target isolate reads the pointee, so a
+/// pointer valid only for the invocation's duration is not safe here: the receiver
+/// must free the pointer with `ffi_free_string` once done reading it.
 typedef MessageCallback
     = ffi.Pointer<ffi.NativeFunction<MessageCallbackFunction>>;
 typedef MessageCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
 typedef DartMessageCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
 
 /// Callback type for incoming reaction events. Receives JSON-serialized ReactionEvent.
+/// Same ownership contract as [`MessageCallback`].
 typedef ReactionCallback
     = ffi.Pointer<ffi.NativeFunction<ReactionCallbackFunction>>;
 typedef ReactionCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
 typedef DartReactionCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
 
 /// Callback type for incoming receipt events. Receives JSON-serialized ReceiptEvent.
+/// Same ownership contract as [`MessageCallback`].
 typedef ReceiptCallback
     = ffi.Pointer<ffi.NativeFunction<ReceiptCallbackFunction>>;
 typedef ReceiptCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
 typedef DartReceiptCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
-
-/// Callback type for incoming custom (non-standard) message-like events. Receives
-/// JSON-serialized CustomEvent.
-typedef CustomEventCallback
-    = ffi.Pointer<ffi.NativeFunction<CustomEventCallbackFunction>>;
-typedef CustomEventCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
-typedef DartCustomEventCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
-
-/// Callback type for sync-loop status events.
-typedef SyncStatusCallback
-    = ffi.Pointer<ffi.NativeFunction<SyncStatusCallbackFunction>>;
-typedef SyncStatusCallbackFunction = ffi.Void Function(ffi.Pointer<ffi.Char>);
-typedef DartSyncStatusCallbackFunction = void Function(ffi.Pointer<ffi.Char>);
-
-/// Callback type for refreshed session JSON updates.
-typedef SessionUpdateCallback
-    = ffi.Pointer<ffi.NativeFunction<SessionUpdateCallbackFunction>>;
-typedef SessionUpdateCallbackFunction = ffi.Void Function(
-    ffi.Pointer<ffi.Char>);
-typedef DartSessionUpdateCallbackFunction = void Function(
-    ffi.Pointer<ffi.Char>);

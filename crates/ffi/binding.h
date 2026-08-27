@@ -33,7 +33,8 @@ typedef struct FfiResult {
 /**
  * Buffer for passing binary data (media) across the FFI boundary.
  *
- * The caller must free this with `ffi_free_buffer`.
+ * Returned as a heap-allocated pointer in `FfiResult.data`; the caller must
+ * pass that pointer to `ffi_free_buffer`.
  */
 typedef struct FfiBuffer {
   uint8_t *data;
@@ -100,12 +101,15 @@ typedef void (*SyncStatusCallback)(char*);
  void ffi_free_string(char *s);
 
 /**
- * Free an FfiBuffer, releasing the underlying byte array.
+ * Free an `FfiBuffer` returned as `data` in an `FfiResult`, releasing both
+ * the byte array and the buffer struct itself.
  *
  * # Safety
- * `buf` must have been returned by one of the media FFI functions in this crate.
+ * `buf` must be a pointer previously returned by one of the media FFI
+ * functions in this crate, or null (in which case this is a no-op). It must
+ * not be used again afterwards.
  */
- void ffi_free_buffer(struct FfiBuffer buf);
+ void ffi_free_buffer(struct FfiBuffer *buf);
 
 /**
  * Register a callback for incoming messages (JSON `MessageEvent`).
