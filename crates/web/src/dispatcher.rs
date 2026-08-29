@@ -71,6 +71,17 @@ fn sync_status_json(state: &str, ok: bool, error: Option<String>) -> serde_json:
     status
 }
 
+/// Same shape as the native bridge's failed sync status: the structured
+/// `errorKind`/`errorDetails` fields are what lets the app detect a revoked
+/// token without parsing the message text.
+fn failed_sync_status_json(error: &manymatrix_core::Error) -> serde_json::Value {
+    let mut status = sync_status_json("exited", false, Some(error.to_string()));
+    status["errorKind"] =
+        serde_json::Value::String(ErrKind::for_core_error(error).as_str().to_owned());
+    status["errorDetails"] = error.details();
+    status
+}
+
 pub fn get_client() -> Result<ManyMatrixClient, ErrEnvelope> {
     CLIENT.with(|cell| {
         cell.borrow().as_ref().cloned().ok_or_else(|| ErrEnvelope {
@@ -301,7 +312,7 @@ struct ThumbnailArgs {
 fn sdk_err(e: manymatrix_core::Error) -> ErrEnvelope {
     let details = e.details();
     ErrEnvelope {
-        kind: ErrKind::MatrixSdkError,
+        kind: ErrKind::for_core_error(&e),
         message: e.to_string(),
         details,
     }
@@ -416,9 +427,8 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                         break sync_status_json("exited", true, None);
                     }
                     if let Err(e) = client.sync_once_with_timeout(Duration::from_secs(30)).await {
-                        let error = e.to_string();
-                        tracing::error!("sync loop exited: {}", error);
-                        break sync_status_json("exited", false, Some(error));
+                        tracing::error!("sync loop exited: {}", e);
+                        break failed_sync_status_json(&e);
                     }
                 };
                 SYNC_RUNNING.store(false, Ordering::Relaxed);
@@ -949,7 +959,8 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
 
 #[cfg(test)]
 mod tests {
-    use super::{sdk_err, sync_status_json};
+    use super::{failed_sync_status_json, sdk_err, sync_status_json};
+    use crate::envelope::ErrKind;
 
     #[test]
     fn sync_status_json_omits_error_for_running_state() {
@@ -975,5 +986,28 @@ mod tests {
 
         assert!(envelope.details.as_object().unwrap().is_empty());
         assert_eq!(envelope.message, "not ready");
+        assert_eq!(envelope.kind, ErrKind::MatrixSdkError);
+    }
+
+    #[test]
+    fn sdk_err_classifies_errors_like_the_native_bridge() {
+        let parse = sdk_err(manymatrix_core::Error::IdParse("bad room".to_owned()));
+        assert_eq!(parse.kind, ErrKind::SerdeError);
+
+        let io = sdk_err(manymatrix_core::Error::Io(std::io::Error::other("disk")));
+        assert_eq!(io.kind, ErrKind::StorageError);
+    }
+
+    #[test]
+    fn failed_sync_status_json_carries_structured_fields() {
+        let status = failed_sync_status_json(&manymatrix_core::Error::MediaTooLarge {
+            actual_bytes: 2,
+            max_bytes: 1,
+        });
+
+        assert_eq!(status["state"], "exited");
+        assert_eq!(status["ok"], false);
+        assert_eq!(status["errorKind"], "MatrixSdkError");
+        assert_eq!(status["errorDetails"]["reason"], "media_too_large");
     }
 }
