@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
@@ -124,6 +125,8 @@ class ManyMatrixBridge implements ffi.Finalizable {
     switch (method) {
       case 'client_new':
         return _execClientNew(bindings, args);
+      case 'free':
+        return _execFree(bindings, args);
       case 'login':
         return _execWithHandleAndStrings(bindings, method, args);
       case 'restore':
@@ -960,6 +963,19 @@ class ManyMatrixBridge implements ffi.Finalizable {
     }
   }
 
+  /// Free the native client on the worker isolate.
+  ///
+  /// The worker executes requests one at a time, so running the free here
+  /// (rather than on the main isolate) guarantees it happens after any FFI
+  /// call that is still blocked on the same handle, such as a periodic
+  /// `invitedRooms()` poll racing a sign-out.
+  static void _execFree(
+      ManyMatrixBindings bindings, Map<String, dynamic> args) {
+    final handle =
+        ffi.Pointer<ManyMatrixClient>.fromAddress(args['handle'] as int);
+    bindings.manymatrix_free(handle);
+  }
+
   static String? _extractStringResult(
     ManyMatrixBindings bindings,
     FfiResult result,
@@ -1713,10 +1729,23 @@ class ManyMatrixBridge implements ffi.Finalizable {
 
   /// Dispose the client, freeing native resources.
   ///
-  /// After calling dispose, this instance must not be used again.
+  /// After calling dispose, this instance must not be used again. The native
+  /// free is queued on the worker isolate behind any in-flight FFI call, so
+  /// prefer [close] when the caller needs to wait for it.
   void dispose() {
+    unawaited(close());
+  }
+
+  Future<void>? _closing;
+
+  /// Free the native client once every queued FFI call has finished.
+  Future<void> close() => _closing ??= _close();
+
+  Future<void> _close() async {
     _finalizer.detach(this);
-    _mainBindings.manymatrix_free(_handle);
+    // `manymatrix_free` also joins the sync thread, so no callback can fire
+    // after it returns and the trampolines below are safe to close.
+    await _call('free', {});
     _messageCallable?.close();
     _reactionCallable?.close();
     _receiptCallable?.close();
@@ -1726,6 +1755,4 @@ class ManyMatrixBridge implements ffi.Finalizable {
       callable.close();
     }
   }
-
-  Future<void> close() async => dispose();
 }
