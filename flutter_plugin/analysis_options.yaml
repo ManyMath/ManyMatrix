@@ -13,6 +13,7 @@ analyzer:
   exclude:
     - cargokit/**
     - lib/bridge/bindings.dart
+    - build/**
 
 linter:
   # The lint rules applied to this project can be customized in the
