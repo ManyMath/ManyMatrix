@@ -284,6 +284,48 @@ class ManyMatrixBindings {
       FfiResult Function(ffi.Pointer<ManyMatrixClient>, ffi.Pointer<ffi.Char>,
           ffi.Pointer<ffi.Char>)>();
 
+  /// Login with username and password, reusing an existing Matrix device.
+  ///
+  /// Passing the device ID of a previous session for the same user keeps the
+  /// crypto store bound to that device instead of registering a new one, which
+  /// is what a re-authentication after token expiry needs. `device_id` may be
+  /// null or empty to let the homeserver allocate a fresh device.
+  ///
+  /// Returns a JSON-serialized `StoredSession` string in `FfiResult.data`.
+  ///
+  /// # Safety
+  /// `handle` must be a valid ManyMatrixClient pointer. `username` and `password`
+  /// must be valid, NUL-terminated UTF-8 strings; `device_id` must be either
+  /// null or such a string.
+  FfiResult manymatrix_login_with_device_id(
+    ffi.Pointer<ManyMatrixClient> handle,
+    ffi.Pointer<ffi.Char> username,
+    ffi.Pointer<ffi.Char> password,
+    ffi.Pointer<ffi.Char> device_id,
+  ) {
+    return _manymatrix_login_with_device_id(
+      handle,
+      username,
+      password,
+      device_id,
+    );
+  }
+
+  late final _manymatrix_login_with_device_idPtr = _lookup<
+      ffi.NativeFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>>('manymatrix_login_with_device_id');
+  late final _manymatrix_login_with_device_id =
+      _manymatrix_login_with_device_idPtr.asFunction<
+          FfiResult Function(
+              ffi.Pointer<ManyMatrixClient>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>)>();
+
   /// Restore a previously saved session from JSON.
   ///
   /// # Safety

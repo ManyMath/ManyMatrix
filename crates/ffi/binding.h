@@ -211,6 +211,27 @@ struct FfiResult manymatrix_login(struct ManyMatrixClient *handle,
                                   const char *password);
 
 /**
+ * Login with username and password, reusing an existing Matrix device.
+ *
+ * Passing the device ID of a previous session for the same user keeps the
+ * crypto store bound to that device instead of registering a new one, which
+ * is what a re-authentication after token expiry needs. `device_id` may be
+ * null or empty to let the homeserver allocate a fresh device.
+ *
+ * Returns a JSON-serialized `StoredSession` string in `FfiResult.data`.
+ *
+ * # Safety
+ * `handle` must be a valid ManyMatrixClient pointer. `username` and `password`
+ * must be valid, NUL-terminated UTF-8 strings; `device_id` must be either
+ * null or such a string.
+ */
+
+struct FfiResult manymatrix_login_with_device_id(struct ManyMatrixClient *handle,
+                                                 const char *username,
+                                                 const char *password,
+                                                 const char *device_id);
+
+/**
  * Restore a previously saved session from JSON.
  *
  * # Safety

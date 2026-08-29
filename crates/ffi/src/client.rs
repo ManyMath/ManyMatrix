@@ -166,6 +166,39 @@ pub unsafe extern "C" fn manymatrix_login(
     }
 }
 
+/// Login with username and password, reusing an existing Matrix device.
+///
+/// Passing the device ID of a previous session for the same user keeps the
+/// crypto store bound to that device instead of registering a new one, which
+/// is what a re-authentication after token expiry needs. `device_id` may be
+/// null or empty to let the homeserver allocate a fresh device.
+///
+/// Returns a JSON-serialized `StoredSession` string in `FfiResult.data`.
+///
+/// # Safety
+/// `handle` must be a valid ManyMatrixClient pointer. `username` and `password`
+/// must be valid, NUL-terminated UTF-8 strings; `device_id` must be either
+/// null or such a string.
+#[no_mangle]
+pub unsafe extern "C" fn manymatrix_login_with_device_id(
+    handle: *mut ManyMatrixClient,
+    username: *const c_char,
+    password: *const c_char,
+    device_id: *const c_char,
+) -> FfiResult {
+    let client = client_from_handle(handle);
+    let username = str_from_ptr(username);
+    let password = str_from_ptr(password);
+    let device_id = optional_str_from_ptr(device_id).filter(|value| !value.is_empty());
+    match RUNTIME.block_on(client.login_with_device_id(username, password, device_id)) {
+        Ok(session) => match serde_json::to_string(&session) {
+            Ok(json) => FfiResult::success_string(&json),
+            Err(e) => FfiResult::error_from(&e),
+        },
+        Err(e) => FfiResult::error_from(&e),
+    }
+}
+
 /// Restore a previously saved session from JSON.
 ///
 /// # Safety

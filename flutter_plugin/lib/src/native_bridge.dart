@@ -355,16 +355,25 @@ class ManyMatrixBridge implements ffi.Finalizable {
       case 'login':
         final username = (args['username'] as String).toNativeUtf8();
         final password = (args['password'] as String).toNativeUtf8();
+        final deviceId = (args['device_id'] as String?)?.toNativeUtf8();
         try {
-          final result = bindings.manymatrix_login(
-            handle,
-            username.cast(),
-            password.cast(),
-          );
+          final result = deviceId == null
+              ? bindings.manymatrix_login(
+                  handle,
+                  username.cast(),
+                  password.cast(),
+                )
+              : bindings.manymatrix_login_with_device_id(
+                  handle,
+                  username.cast(),
+                  password.cast(),
+                  deviceId.cast(),
+                );
           return _extractStringResult(bindings, result);
         } finally {
           calloc.free(username);
           calloc.free(password);
+          if (deviceId != null) calloc.free(deviceId);
         }
       case 'restore':
         final sessionJson = (args['session_json'] as String).toNativeUtf8();
@@ -1011,16 +1020,19 @@ class ManyMatrixBridge implements ffi.Finalizable {
   }
 
   /// Login with username and password. Returns JSON session string.
+  ///
+  /// Pass [deviceId] to reuse the device of a previous session for the same
+  /// user (re-authentication after token expiry); the crypto store stays
+  /// bound to that device instead of a fresh one being registered.
   Future<String> login(
     String username,
     String password, {
     String? deviceId,
   }) async {
-    // Native reauthentication support will use the matching FFI entry point;
-    // existing native callers retain the current login behavior.
     final result = await _call('login', {
       'username': username,
       'password': password,
+      if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
     return result as String;
   }
