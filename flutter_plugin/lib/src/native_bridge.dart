@@ -787,11 +787,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
     final roomId = (args['room_id'] as String).toNativeUtf8();
     final filename = (args['filename'] as String).toNativeUtf8();
     final mimeType = (args['mime_type'] as String).toNativeUtf8();
-    final dataBytes = args['data'] as List<int>;
+    final dataBytes = args['data'] as Uint8List;
     final dataPtr = calloc<ffi.Uint8>(dataBytes.length);
-    for (var i = 0; i < dataBytes.length; i++) {
-      dataPtr[i] = dataBytes[i];
-    }
+    dataPtr.asTypedList(dataBytes.length).setAll(0, dataBytes);
     try {
       final result = bindings.manymatrix_upload_media(
         handle,
@@ -1508,7 +1506,9 @@ class ManyMatrixBridge implements ffi.Finalizable {
       'room_id': roomId,
       'filename': filename,
       'mime_type': mimeType,
-      'data': data.toList(),
+      // Typed data crosses the isolate boundary as-is; a plain List<int>
+      // would box every byte.
+      'data': data,
     });
     return result as String;
   }
