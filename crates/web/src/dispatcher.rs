@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -14,6 +14,10 @@ thread_local! {
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 static SYNC_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
+// Bumped by every `sync.start` and `auth.logout`. A loop that finds the
+// generation moved on belongs to a previous client (or a stopped run) and
+// exits without touching the shared flags or emitting a status.
+static SYNC_GENERATION: AtomicU64 = AtomicU64::new(0);
 // Event handlers attach to a specific client instance, so a new client
 // (login/restore) needs a fresh events.subscribe call.
 static EVENTS_SUBSCRIBED: AtomicBool = AtomicBool::new(false);
@@ -410,6 +414,10 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let client = get_client()?;
             client.logout().await.map_err(sdk_err)?;
             clear_client();
+            // The background loop holds its own client clone and would keep
+            // long-polling with the revoked token until the server 401s.
+            SYNC_GENERATION.fetch_add(1, Ordering::Relaxed);
+            SYNC_STOP_REQUESTED.store(true, Ordering::Relaxed);
             SYNC_RUNNING.store(false, Ordering::Relaxed);
             tracing::info!("auth.logout ok");
             Ok(serde_json::json!({}))
@@ -421,8 +429,14 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             let client = get_client()?;
             SYNC_RUNNING.store(true, Ordering::Relaxed);
             SYNC_STOP_REQUESTED.store(false, Ordering::Relaxed);
+            let generation = SYNC_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
             wasm_bindgen_futures::spawn_local(async move {
                 let status = loop {
+                    if SYNC_GENERATION.load(Ordering::Relaxed) != generation {
+                        // Superseded by a logout or a newer loop; the current
+                        // owner of the flags reports its own status.
+                        return;
+                    }
                     if SYNC_STOP_REQUESTED.load(Ordering::Relaxed) {
                         break sync_status_json("exited", true, None);
                     }
@@ -431,6 +445,9 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                         break failed_sync_status_json(&e);
                     }
                 };
+                if SYNC_GENERATION.load(Ordering::Relaxed) != generation {
+                    return;
+                }
                 SYNC_RUNNING.store(false, Ordering::Relaxed);
                 emit_event("sync_status", &status);
             });
