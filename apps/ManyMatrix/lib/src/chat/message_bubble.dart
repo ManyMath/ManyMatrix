@@ -15,9 +15,9 @@ import 'attachment_io.dart';
 /// One timeline entry: sender + time above a colored bubble, right-aligned
 /// for the logged-in user's own messages.
 ///
-/// Own messages get a delete (redact) affordance -- there is no power-level
-/// info at the bridge layer yet (see ROADMAP.md's ManyMatrix section), so
-/// redacting other users' messages isn't offered here.
+/// Own messages get a delete (redact) affordance. The bridge can read room
+/// power levels, but this bubble does not consult them yet, so redacting
+/// other users' messages isn't offered here.
 class MessageBubble extends HookConsumerWidget {
   const MessageBubble({
     required this.message,

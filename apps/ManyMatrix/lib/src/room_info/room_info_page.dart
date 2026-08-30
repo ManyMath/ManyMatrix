@@ -9,9 +9,9 @@ import '../matrix/providers.dart';
 /// Room-info / member-list screen reachable from the chat header.
 ///
 /// Shows room encryption status plus joined members with kick/ban actions
-/// behind confirmation dialogs. Unban and power-level/role management don't
-/// exist at the bridge layer yet (see ROADMAP.md's ManyMatrix section) so they
-/// are absent.
+/// behind confirmation dialogs. The bridge exposes power-level reads and the
+/// invite/custom-event level setters, but no unban or general role editing,
+/// so those actions are absent here.
 class RoomInfoPage extends HookConsumerWidget {
   const RoomInfoPage({required this.roomId, required this.roomName, super.key});
 
