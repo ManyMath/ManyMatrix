@@ -424,10 +424,8 @@ class _MemberTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = MTheme.of(context);
-    final initial = userId
-        .replaceFirst(RegExp(r'^@'), '')
-        .substring(0, 1)
-        .toUpperCase();
+    final localpart = userId.replaceFirst(RegExp(r'^@'), '');
+    final initial = localpart.isEmpty ? '?' : localpart[0].toUpperCase();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
