@@ -5,7 +5,7 @@ void main() {
   test('media RPCs allow long uploads and downloads to finish', () {
     expect(webRpcTimeout('media.upload'), const Duration(minutes: 5));
     expect(webRpcTimeout('media.download'), const Duration(minutes: 5));
-    expect(webRpcTimeout('media.download_source'), const Duration(minutes: 5));
+    expect(webRpcTimeout('media.thumbnail'), const Duration(minutes: 5));
   });
 
   test('non-media RPCs retain the normal deadline', () {
