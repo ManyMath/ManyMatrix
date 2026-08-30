@@ -6,7 +6,4 @@ Future<void> initializeExampleBridge() async {
 
 String exampleStorePath() => 'manymatrix-web-store';
 
-String? exampleRuntimeWarning() {
-  return 'This example supports web and extension builds, but its '
-      'runtime bridge is still unavailable in the browser.';
-}
+String? exampleRuntimeWarning() => null;
