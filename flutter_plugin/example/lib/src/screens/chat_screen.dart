@@ -87,9 +87,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final roomName = ref.watch(roomNameProvider(widget.roomId));
     final messagesAsync = ref.watch(messagesProvider(widget.roomId));
 
-    // Determine current user ID from sender of own messages (simple heuristic).
-    // A proper implementation would use a dedicated whoami provider.
-    String? currentUserId;
+    final currentUserId = ref.watch(currentUserIdProvider).value;
 
     return Scaffold(
       appBar: AppBar(
@@ -114,8 +112,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           // Message list
           Expanded(
             child: messagesAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, stack) => Center(
                 child: Text('Error loading messages:\n$error',
                     textAlign: TextAlign.center),
@@ -137,11 +134,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   itemCount: reversed.length,
                   itemBuilder: (context, index) {
                     final msg = reversed[index];
-                    // Determine if sent by current user.
-                    // Use the first message's sender that matches a pattern,
-                    // or fall back to checking the client.
-                    currentUserId ??= _inferCurrentUser(reversed);
-                    final isMe = msg.sender == currentUserId;
+                    final isMe =
+                        currentUserId != null && msg.sender == currentUserId;
                     return MessageBubble(
                       message: msg,
                       isMe: isMe,
@@ -205,16 +199,5 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ],
       ),
     );
-  }
-
-  /// Infer the current user's ID from message senders.
-  ///
-  /// This is a simple heuristic -- in a production app, the client
-  /// would expose a whoami() method.
-  String? _inferCurrentUser(List<dynamic> messages) {
-    // Without a whoami provider, we cannot reliably determine the
-    // current user. Return null so all messages appear as received.
-    // This will be resolved when a userId provider is added.
-    return null;
   }
 }

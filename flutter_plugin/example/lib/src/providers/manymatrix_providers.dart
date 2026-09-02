@@ -33,6 +33,13 @@ final authStateProvider = Provider<bool>((ref) {
   return ref.watch(matrixClientProvider) != null;
 });
 
+/// The logged-in user's Matrix ID, or null while logged out.
+final currentUserIdProvider = FutureProvider<String?>((ref) async {
+  final client = ref.watch(matrixClientProvider);
+  if (client == null) return null;
+  return client.whoami();
+});
+
 /// Performs login: creates a client, authenticates, and stores it in
 /// [matrixClientProvider]. Returns the session JSON for persistence.
 Future<String> performLogin(
