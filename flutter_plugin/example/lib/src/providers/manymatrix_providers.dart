@@ -50,7 +50,14 @@ Future<String> performLogin(
   required String password,
 }) async {
   final client = await ManyMatrixBridge.create(homeserverUrl, storePath);
-  final sessionJson = await client.login(username, password);
+  final String sessionJson;
+  try {
+    sessionJson = await client.login(username, password);
+  } catch (_) {
+    // Nothing owns the client yet; release its native handle / worker.
+    await client.close();
+    rethrow;
+  }
   ref.read(matrixClientProvider.notifier).setClient(client);
   return sessionJson;
 }
