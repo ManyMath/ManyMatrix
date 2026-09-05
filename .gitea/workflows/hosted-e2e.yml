@@ -66,6 +66,8 @@ jobs:
         run: wasm-pack build --target web --release crates/web
       - name: Assemble minimal extension
         run: bash scripts/assemble_web_e2e_extension.sh "$RUNNER_TEMP/min-extension"
+      - name: Install libclang (bindgen/zstd-sys build dependency via tuwunel-embed's RocksDB)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
       - name: Build embedded web_e2e_actor
         run: cargo build -p test-harness --bin web_e2e_actor
       - name: Install harness deps and Chrome
