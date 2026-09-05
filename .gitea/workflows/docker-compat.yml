@@ -6,7 +6,7 @@ name: Docker Compatibility Tier
 # permanently hosted homeservers and the web/extension E2E harness.
 on:
   push:
-    branches: [dev]
+    branches: [main, dev]
   workflow_dispatch:
 
 env:

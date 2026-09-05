@@ -1,18 +1,18 @@
 name: Core CI
 
 # Runs the fast, infra-free verification gates (no Docker, no hosted
-# homeservers) on every push and PR against dev: cargo check across the
+# homeservers) on every push and PR against main or dev: cargo check across the
 # native workspace, the wasm target check + build for manymatrix-web, the
 # default embedded-Tuwunel test suite, and Flutter analysis/tests for the
 # plugin and ManyMatrix app. Complements
 # docker-compat.yml (Docker-tier homeservers) and hosted-e2e.yml (permanently
 # hosted homeservers + web/extension E2E), which cover slower, infra-backed
-# tiers on push to dev only.
+# tiers on push to main and dev only.
 on:
   push:
-    branches: [dev]
+    branches: [main, dev]
   pull_request:
-    branches: [dev]
+    branches: [main, dev]
   workflow_dispatch:
 
 env:

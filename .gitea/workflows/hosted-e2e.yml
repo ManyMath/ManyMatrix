@@ -6,7 +6,7 @@ name: Hosted E2E
 # underlying secrets live and how to rotate them.
 on:
   push:
-    branches: [dev]
+    branches: [main, dev]
   workflow_dispatch:
 
 env:
