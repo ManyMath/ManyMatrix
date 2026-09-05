@@ -43,7 +43,6 @@ externalNativeBuild/
 **/x64/
 **/x86/
 **/out/
-**/build/
 
 # IDEs
 .idea/
@@ -66,12 +65,13 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-target/
-vendor/
+# vendor/ is deliberately tracked: it holds locally patched crates that
+# Cargo.toml's [patch] section points at.
 *.log
 coverage/
 .cache/
 tmp/
 
-# Local homeserver config for manual testing (see testing/tuwunel)
-tuwunel-example.toml
+# Local homeserver config for manual testing (see testing/tuwunel). Anchored
+# to the repository root so testing/tuwunel's own tracked example stays visible.
+/tuwunel-example.toml
