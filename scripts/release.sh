@@ -37,7 +37,7 @@ Commands:
   help                Show this help.
 
 Known blocker (see CHANGELOG.md "Unreleased"): this workspace depends on a
-`[patch.crates-io]` override for ruma-client-api (vendor/ruma-client-api-0.22.0)
+`[patch.crates-io]` override for ruma-client-api (vendor/ruma-client-api-0.22.1)
 to compile against matrix-sdk 0.16.0. Cargo patches are workspace-local and are
 NOT applied when verifying a packaged tarball or when a downstream consumer
 depends on the crate from crates.io, so `cargo publish` currently fails
