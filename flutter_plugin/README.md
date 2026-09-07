@@ -55,7 +55,7 @@ fetching Rust source at build time, so nothing about this plugin's architecture 
 (dual MIT/Apache-2.0, matching the Rust workspace) so the package is publish-ready metadata-wise. What remains
 before an actual `flutter pub publish` are human decisions: reserving/confirming the `manymatrix` name is free
 on pub.dev, deciding whether to sync this package's version scheme with the Rust workspace version instead of
-its current independent `1.0.0+1`, and owning the pub.dev publisher account that would perform the (irreversible)
+its current independent `1.0.0+2`, and owning the pub.dev publisher account that would perform the (irreversible)
 publish. Until those are made, use it as a `path:` dependency in your `pubspec.yaml`:
 
 ```yaml
