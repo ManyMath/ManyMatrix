@@ -7,6 +7,51 @@ is workspace-wide (all publishable crates share one version, see
 
 ## [Unreleased]
 
+- Fix: `logout()` left the client reporting a live session: matrix-sdk keeps
+  the revoked tokens in memory, so `logged_in()` stayed true and
+  `current_session_json()` returned a dead session that a caller persisting
+  on teardown would save and fail to restore with `M_UNKNOWN_TOKEN`. The
+  client now tracks revocation itself and logs (instead of discarding) a
+  failed store removal.
+- Fix: thread replies reported their reply target inconsistently. Live
+  `on_message` events never set `in_reply_to` for `m.thread` relations, while
+  paginated events reported the thread fallback pointer as a real reply.
+  Both paths now honour `is_falling_back`.
+- Fix: the native FFI bridge had no `login_with_device_id` export, so the Dart
+  bridge silently dropped `deviceId` and native re-authentication registered
+  a new device against the existing crypto store. Added
+  `manymatrix_login_with_device_id` and wired it into `login(deviceId:)`.
+- Fix: media downloads leaked the 16-byte `FfiBuffer` box on every call;
+  `ffi_free_buffer` now takes the pointer and frees both allocations (C
+  header and Dart bindings regenerated).
+- Fix: the Dart native bridge freed the Rust client on the main isolate while
+  the worker isolate could still be blocked in an FFI call on the same
+  handle. The free is now queued on the worker behind in-flight calls.
+- Fix: web `auth.logout` never stopped the background sync loop, which kept
+  long-polling with the revoked token and emitted a stray failure after
+  logout. The web dispatcher also now classifies errors (`SerdeError`,
+  `StorageError`) and emits `errorKind`/`errorDetails` on failed sync
+  status like the native bridge does.
+- Fix: `cancel_verification` could not cancel a request that had not reached
+  the SAS stage; the `thread_index` bookkeeping sync no longer flips the
+  user's presence to online; the sync message-logging handler is attached
+  once per client instead of once per sync restart; `StoredSession::save`
+  writes the token file with mode 0600; `ThreadSummary` and
+  `PaginatedThreadMessages` are re-exported from `manymatrix-core`.
+- Fix: `uploadMedia` on native sent the attachment through the isolate port
+  as a boxed `List<int>` and copied it byte by byte; it now passes the
+  `Uint8List` and bulk-copies.
+- Fix: `manymatrix-cli login -s matrix.org` failed because only full URLs
+  were accepted; a bare server name now gets an `https://` prefix.
+- Build: dropped the unused `reqwest` 0.11 and `anyhow` dependencies from
+  `manymatrix-core` (one fewer HTTP/TLS stack in the FFI cdylib) and cleared
+  all clippy warnings in the workspace crates.
+- CI: all workflows now trigger on `main` as well as `dev`; `hosted-e2e.yml`
+  installs `libclang-dev` before building the embedded `web_e2e_actor`.
+- Repo: `vendor/` is no longer listed in `.gitignore` (it is tracked on
+  purpose); the superseded `vendor/ruma-client-api-0.22.0` copy is removed;
+  README layout, test commands, and the plugin guide link were corrected.
+
 - Fix: `docker-compat.yml`'s registration-retry flake (Continuwuity
   `Connection refused` despite the container already listening) recurred on
   `manytier-ci` even after the prior 90s retry budget, this occurrence
