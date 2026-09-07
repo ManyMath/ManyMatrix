@@ -12,7 +12,7 @@ workspace:
   - flutter_plugin/example
 
 melos:
-  repository: https://github.com/manymatrix/manymatrix
+  repository: https://github.com/sneurlax/manymatrix
   packages:
     - flutter_plugin
     - flutter_plugin/example
@@ -36,7 +36,7 @@ melos:
       run: melos exec -c 1 --scope manymatrix_example -- dart run tool/build_extension.dart
       description: Build the Chrome extension package from the canonical example app.
     codegen:
-      run: melos exec -c 1 -- flutter pub run build_runner build --delete-conflicting-outputs
+      run: melos exec -c 1 -- dart run build_runner build --delete-conflicting-outputs
       description: Run build_runner in all packages.
     clean:
       run: melos exec -c 1 -- flutter clean
