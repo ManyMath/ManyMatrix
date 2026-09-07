@@ -15,16 +15,21 @@ crates/
   core/, matrix client library
   cli/, CLI binary
   ffi/, C API (cbindgen)
-flutter_plugin/, Dart/Flutter plugin and reference app
-testing/, E2E test harness (embedded, Docker, and Shadow tiers)
-docs/, research and architecture decisions
+  web/, wasm-bindgen dispatcher for browser builds
+flutter_plugin/, Dart/Flutter plugin and its example app
+apps/
+  ManyMatrix/, the ManyMatrix client app
+  ManyMatrix.com/, the project website
+testing/, E2E test harness (embedded, Docker, hosted, and Shadow tiers), web E2E, in-tree Tuwunel
+vendor/, locally patched crates referenced from Cargo.toml's [patch] section
+scripts/, compatibility, release, and web build wrappers
 ```
 
 ## Testing
 
 - `cargo test -p test-harness` runs the default embedded Tuwunel tier without Docker.
-- `cargo test -p test-harness --features docker-tests` re-enables the Docker Synapse and Docker Tuwunel tiers.
-- `cargo test -p test-harness --test shadow --features shadow-tests -- --nocapture` runs the Shadow latency scenario.
+- `cargo test -p test-harness --features docker-tests` re-enables the Docker tiers (Synapse, Tuwunel, Continuwuity, and Dendrite).
+- `cargo test -p test-harness --test shadow --no-default-features --features shadow-tests -- --nocapture` runs the Shadow latency scenario.
 
 Deterministic compatibility commands are also available through the local wrapper:
 
@@ -75,7 +80,7 @@ then update that workflow pin before running the Matrix Flutter or web E2E
 lanes. The jobs check out this repository as `ManyMatrix/` and ManyUI beside it
 as `ManyUI/`.
 
-See [docs/LOCAL_CONSUMPTION.md](docs/LOCAL_CONSUMPTION.md) for a guide on how to use the `manymatrix` plugin in your own local app.
+See [flutter_plugin/README.md](flutter_plugin/README.md) for how to use the `manymatrix` plugin as a `path:` dependency in your own app.
 
 ### Tools
 
