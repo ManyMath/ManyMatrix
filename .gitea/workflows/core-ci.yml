@@ -31,12 +31,13 @@ jobs:
       - name: Install libclang (bindgen/zstd-sys build dependency, e.g. via RocksDB)
         run: sudo apt-get update && sudo apt-get install -y libclang-dev
       - name: cargo check --workspace --exclude manymatrix-web
-        run: cargo check --workspace --exclude manymatrix-web
+        # --locked fails fast when Cargo.toml changed without the lockfile.
+        run: cargo check --locked --workspace --exclude manymatrix-web
       - name: cargo test --workspace --exclude manymatrix-web (default embedded tier)
         run: |
           ulimit -n 65536 || ulimit -n "$(ulimit -Hn)" || true
           ulimit -n
-          cargo test --workspace --exclude manymatrix-web
+          cargo test --locked --workspace --exclude manymatrix-web
       - name: scripts/verify_git_dependency.sh (PUB-01 consumption path)
         run: bash scripts/verify_git_dependency.sh
 
@@ -51,7 +52,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: cargo check -p manymatrix-web --target wasm32-unknown-unknown
-        run: cargo check -p manymatrix-web --target wasm32-unknown-unknown
+        run: cargo check --locked -p manymatrix-web --target wasm32-unknown-unknown
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: wasm-pack build --target web --release crates/web
