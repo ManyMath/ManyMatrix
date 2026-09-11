@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -10,6 +11,9 @@ use manymatrix_core::{CreateRoomOptions, ManyMatrixClient, RoomVisibility, Store
 thread_local! {
     static CLIENT: RefCell<Option<ManyMatrixClient>> = const { RefCell::new(None) };
     static EVENT_SINK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
+    // Custom event types with a handler on the current client. Like
+    // EVENTS_SUBSCRIBED, this resets whenever the client is replaced.
+    static CUSTOM_EVENT_TYPES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -25,6 +29,7 @@ static EVENTS_SUBSCRIBED: AtomicBool = AtomicBool::new(false);
 pub fn set_client(client: ManyMatrixClient) {
     CLIENT.with(|cell| *cell.borrow_mut() = Some(client));
     EVENTS_SUBSCRIBED.store(false, Ordering::Relaxed);
+    CUSTOM_EVENT_TYPES.with(|types| types.borrow_mut().clear());
 }
 
 pub fn set_event_sink(sink: js_sys::Function) {
@@ -99,6 +104,7 @@ pub fn get_client() -> Result<ManyMatrixClient, ErrEnvelope> {
 pub fn clear_client() {
     CLIENT.with(|cell| *cell.borrow_mut() = None);
     EVENTS_SUBSCRIBED.store(false, Ordering::Relaxed);
+    CUSTOM_EVENT_TYPES.with(|types| types.borrow_mut().clear());
 }
 
 #[derive(Deserialize)]
@@ -125,6 +131,18 @@ struct RestoreArgs {
 #[derive(Deserialize)]
 struct SyncOnceArgs {
     timeout_ms: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct SendCustomEventArgs {
+    room_id: String,
+    event_type: String,
+    content: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+struct SubscribeCustomEventArgs {
+    event_type: String,
 }
 
 #[derive(Deserialize)]
@@ -682,6 +700,15 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 .map_err(sdk_err)?;
             Ok(serde_json::json!({}))
         }
+        "messages.send_custom_event" => {
+            let args: SendCustomEventArgs = serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            let event_id = client
+                .send_custom_event(&args.room_id, &args.event_type, args.content)
+                .await
+                .map_err(sdk_err)?;
+            Ok(serde_json::json!({"event_id": event_id}))
+        }
         "messages.send_text" => {
             let args: SendTextArgs = serde_json::from_str(args_json).map_err(serde_err)?;
             let client = get_client()?;
@@ -949,6 +976,22 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             client.on_reaction(|reaction| emit_event("reaction", &reaction));
             client.on_receipt(|receipt| emit_event("receipt", &receipt));
             tracing::info!("events.subscribe ok");
+            Ok(serde_json::json!({}))
+        }
+        "events.subscribe_custom" => {
+            let args: SubscribeCustomEventArgs =
+                serde_json::from_str(args_json).map_err(serde_err)?;
+            let client = get_client()?;
+            // matrix-sdk handlers cannot be removed through the core API, so
+            // register each event type once per client and let the bridge fan
+            // the `custom_event` stream out to its own listeners.
+            let newly_added =
+                CUSTOM_EVENT_TYPES.with(|types| types.borrow_mut().insert(args.event_type.clone()));
+            if !newly_added {
+                return Ok(serde_json::json!({"already_subscribed": true}));
+            }
+            client.on_custom_event(&args.event_type, |event| emit_event("custom_event", &event));
+            tracing::info!("events.subscribe_custom ok for {}", args.event_type);
             Ok(serde_json::json!({}))
         }
         "sync.status" => {
