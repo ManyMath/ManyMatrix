@@ -448,6 +448,9 @@ pub struct ManyMatrixClient {
     client: Client,
     homeserver: String,
     store_path: PathBuf,
+    /// The `next_batch` of the last completed sync round, for reporting only.
+    /// The `since` token of each round comes from the SDK's state store, which
+    /// is updated atomically with the processed response.
     sync_token: Arc<Mutex<Option<String>>>,
     latest_session_json: Arc<StdMutex<Option<String>>>,
     session_update_callback: SessionUpdateCallback,
@@ -674,7 +677,7 @@ impl ManyMatrixClient {
         Ok(())
     }
 
-    /// Single sync round. Tracks the sync token for incremental syncs.
+    /// Single sync round, continuing from the last processed response.
     pub async fn sync_once(&self) -> Result<(), Error> {
         self.sync_once_with_timeout_inner(None).await
     }
@@ -685,12 +688,14 @@ impl ManyMatrixClient {
     }
 
     async fn sync_once_with_timeout_inner(&self, timeout: Option<Duration>) -> Result<(), Error> {
+        // The default token is `ReusePrevious`: the SDK's own token, saved to
+        // the store together with the state of the last processed response.
+        // Passing our in-memory copy instead replayed a whole batch (and fired
+        // its event handlers again) whenever a round was cancelled after the
+        // SDK had processed the response but before we recorded `next_batch`.
         let mut settings = SyncSettings::default();
         if let Some(timeout) = timeout {
             settings = settings.timeout(timeout);
-        }
-        if let Some(ref token) = *self.sync_token.lock().await {
-            settings = settings.token(token.clone());
         }
         let sync = self.client.sync_once(settings);
         let response = if let Some(timeout) = timeout {
