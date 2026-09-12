@@ -452,6 +452,10 @@ pub struct ManyMatrixClient {
     /// The `since` token of each round comes from the SDK's state store, which
     /// is updated atomically with the processed response.
     sync_token: Arc<Mutex<Option<String>>>,
+    /// Held for the whole of a sync round. Two concurrent rounds would
+    /// long-poll from the same `since` token, receive the same batch, and fire
+    /// every event handler twice.
+    sync_guard: Arc<Mutex<()>>,
     latest_session_json: Arc<StdMutex<Option<String>>>,
     session_update_callback: SessionUpdateCallback,
     /// Set by `logout()`: matrix-sdk keeps the (now revoked) tokens in
@@ -678,6 +682,10 @@ impl ManyMatrixClient {
     }
 
     /// Single sync round, continuing from the last processed response.
+    ///
+    /// Rounds on one client are serialized: a call made while another round
+    /// is in flight (for example the background sync loop's long-poll) waits
+    /// for it to finish, then runs its own round from the advanced token.
     pub async fn sync_once(&self) -> Result<(), Error> {
         self.sync_once_with_timeout_inner(None).await
     }
@@ -688,6 +696,7 @@ impl ManyMatrixClient {
     }
 
     async fn sync_once_with_timeout_inner(&self, timeout: Option<Duration>) -> Result<(), Error> {
+        let _round = self.sync_guard.lock().await;
         // The default token is `ReusePrevious`: the SDK's own token, saved to
         // the store together with the state of the last processed response.
         // Passing our in-memory copy instead replayed a whole batch (and fired
@@ -2253,6 +2262,7 @@ impl ManyMatrixClient {
             client,
             homeserver,
             sync_token: Arc::new(Mutex::new(None)),
+            sync_guard: Arc::new(Mutex::new(())),
             latest_session_json,
             session_update_callback,
             session_revoked: Arc::new(AtomicBool::new(false)),
@@ -3903,6 +3913,7 @@ impl ManyMatrixClient {
             client,
             homeserver,
             sync_token: Arc::new(Mutex::new(None)),
+            sync_guard: Arc::new(Mutex::new(())),
             latest_session_json,
             session_update_callback,
             session_revoked: Arc::new(AtomicBool::new(false)),
