@@ -189,7 +189,11 @@ fn custom_root_certificates_from_paths(
 
 async fn wait_for_background_sync_cancelled(cancelled: &AtomicBool) {
     while !cancelled.load(Ordering::SeqCst) {
+        // tokio's timer needs a tokio runtime, which the browser build lacks.
+        #[cfg(not(target_family = "wasm"))]
         tokio::time::sleep(BACKGROUND_SYNC_CANCEL_POLL_INTERVAL).await;
+        #[cfg(target_family = "wasm")]
+        gloo_timers::future::sleep(BACKGROUND_SYNC_CANCEL_POLL_INTERVAL).await;
     }
 }
 
@@ -667,15 +671,24 @@ impl ManyMatrixClient {
 
     /// Run the sync loop until `cancelled` becomes true.
     ///
-    /// Used by the FFI bridge so disposal can stop the background sync thread
-    /// before Dart callback trampolines are closed.
+    /// Cancellation interrupts the in-flight long-poll within
+    /// `BACKGROUND_SYNC_CANCEL_POLL_INTERVAL`, so the FFI bridge can stop the
+    /// background sync thread before Dart callback trampolines are closed and
+    /// the web bridge can stop promptly on logout. A round interrupted after
+    /// the SDK stored its response is not replayed, because each round starts
+    /// from the SDK's stored token; any handlers for that batch that had not
+    /// run yet are skipped.
     pub async fn sync_until_cancelled(&self, cancelled: Arc<AtomicBool>) -> Result<(), Error> {
+        use futures_util::future::{select, Either};
+
         self.attach_sync_logging();
         info!("starting low-latency sync...");
         while !cancelled.load(Ordering::SeqCst) {
-            tokio::select! {
-                result = self.sync_once_with_timeout(BACKGROUND_SYNC_TIMEOUT) => result?,
-                _ = wait_for_background_sync_cancelled(&cancelled) => break,
+            let round = std::pin::pin!(self.sync_once_with_timeout(BACKGROUND_SYNC_TIMEOUT));
+            let stop = std::pin::pin!(wait_for_background_sync_cancelled(&cancelled));
+            match select(round, stop).await {
+                Either::Left((result, _)) => result?,
+                Either::Right(((), _)) => break,
             }
         }
         Ok(())
