@@ -51,17 +51,19 @@ fn emit_event(kind: &str, payload: &impl serde::Serialize) {
 }
 
 fn emit_event_payload_json(kind: &str, payload_json: &str) {
-    EVENT_SINK.with(|cell| {
-        if let Some(sink) = cell.borrow().as_ref() {
-            if let Err(e) = sink.call2(
-                &wasm_bindgen::JsValue::NULL,
-                &wasm_bindgen::JsValue::from_str(kind),
-                &wasm_bindgen::JsValue::from_str(payload_json),
-            ) {
-                tracing::warn!("event sink call failed for {}: {:?}", kind, e);
-            }
-        }
-    });
+    // Clone the sink out instead of calling it under the borrow: a sink that
+    // re-registers itself would otherwise panic on `borrow_mut`, and on wasm a
+    // panic traps the whole module.
+    let Some(sink) = EVENT_SINK.with(|cell| cell.borrow().clone()) else {
+        return;
+    };
+    if let Err(e) = sink.call2(
+        &wasm_bindgen::JsValue::NULL,
+        &wasm_bindgen::JsValue::from_str(kind),
+        &wasm_bindgen::JsValue::from_str(payload_json),
+    ) {
+        tracing::warn!("event sink call failed for {}: {:?}", kind, e);
+    }
 }
 
 fn emit_session_update(session_json: String) {
