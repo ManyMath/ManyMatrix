@@ -466,10 +466,9 @@ pub struct ManyMatrixClient {
     /// memory after the logout request, so this is what makes
     /// `logged_in()` and `current_session_json()` stop advertising them.
     session_revoked: Arc<AtomicBool>,
-    /// Whether the message-logging event handler used by the sync loops has
-    /// been attached. matrix-sdk keeps handlers for the client's lifetime, so
-    /// attaching one per `sync_forever`/`sync_until_cancelled` call logged
-    /// every message once per restart.
+    /// Whether `sync_forever`'s message-logging event handler has been
+    /// attached. matrix-sdk keeps handlers for the client's lifetime, so
+    /// attaching one per call logged every message once per restart.
     sync_logging_attached: Arc<AtomicBool>,
     optimistic_last_messages: Arc<StdMutex<HashMap<String, LastMessageCandidate>>>,
     thread_unread_cache: Arc<Mutex<ThreadUnreadCache>>,
@@ -681,7 +680,6 @@ impl ManyMatrixClient {
     pub async fn sync_until_cancelled(&self, cancelled: Arc<AtomicBool>) -> Result<(), Error> {
         use futures_util::future::{select, Either};
 
-        self.attach_sync_logging();
         info!("starting low-latency sync...");
         while !cancelled.load(Ordering::SeqCst) {
             let round = std::pin::pin!(self.sync_once_with_timeout(BACKGROUND_SYNC_TIMEOUT));
