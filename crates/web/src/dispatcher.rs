@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -14,10 +15,12 @@ thread_local! {
     // Custom event types with a handler on the current client. Like
     // EVENTS_SUBSCRIBED, this resets whenever the client is replaced.
     static CUSTOM_EVENT_TYPES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    // Cancel flag of the loop started by the latest `sync.start`; taken (and
+    // set) by `sync.stop` and `auth.logout`.
+    static SYNC_CANCEL: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
 }
 
 static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
-static SYNC_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 // Bumped by every `sync.start` and `auth.logout`. A loop that finds the
 // generation moved on belongs to a previous client (or a stopped run) and
 // exits without touching the shared flags or emitting a status.
@@ -89,6 +92,16 @@ fn failed_sync_status_json(error: &manymatrix_core::Error) -> serde_json::Value 
         serde_json::Value::String(ErrKind::for_core_error(error).as_str().to_owned());
     status["errorDetails"] = error.details();
     status
+}
+
+/// Ask the running background loop, if any, to stop. It exits within the
+/// core's cancel poll interval instead of finishing its long-poll first.
+fn cancel_sync_loop() {
+    SYNC_CANCEL.with(|cell| {
+        if let Some(cancel) = cell.borrow_mut().take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    });
 }
 
 pub fn get_client() -> Result<ManyMatrixClient, ErrEnvelope> {
@@ -430,50 +443,57 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
         }
         "auth.logout" => {
             let client = get_client()?;
-            client.logout().await.map_err(sdk_err)?;
-            clear_client();
-            // The background loop holds its own client clone and would keep
-            // long-polling with the revoked token until the server 401s.
+            // Stop the background loop first: it holds its own client clone
+            // and would keep long-polling with the token being revoked.
             SYNC_GENERATION.fetch_add(1, Ordering::Relaxed);
-            SYNC_STOP_REQUESTED.store(true, Ordering::Relaxed);
+            cancel_sync_loop();
             SYNC_RUNNING.store(false, Ordering::Relaxed);
+            // The core wipes local session state even when the server-side
+            // revocation fails, so the client is unusable either way.
+            let result = client.logout().await;
+            clear_client();
+            result.map_err(sdk_err)?;
             tracing::info!("auth.logout ok");
             Ok(serde_json::json!({}))
         }
         "sync.start" => {
-            if SYNC_RUNNING.load(Ordering::Relaxed) {
+            let stopping = SYNC_CANCEL.with(|cell| {
+                cell.borrow()
+                    .as_ref()
+                    .is_none_or(|c| c.load(Ordering::Relaxed))
+            });
+            if SYNC_RUNNING.load(Ordering::Relaxed) && !stopping {
                 return Ok(serde_json::json!({"already_running": true}));
             }
             let client = get_client()?;
-            SYNC_RUNNING.store(true, Ordering::Relaxed);
-            SYNC_STOP_REQUESTED.store(false, Ordering::Relaxed);
+            // A loop that is still winding down after `sync.stop` sees the new
+            // generation and exits without reporting.
             let generation = SYNC_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+            let cancel = Arc::new(AtomicBool::new(false));
+            SYNC_CANCEL.with(|cell| *cell.borrow_mut() = Some(cancel.clone()));
+            SYNC_RUNNING.store(true, Ordering::Relaxed);
             wasm_bindgen_futures::spawn_local(async move {
-                let status = loop {
-                    if SYNC_GENERATION.load(Ordering::Relaxed) != generation {
-                        // Superseded by a logout or a newer loop; the current
-                        // owner of the flags reports its own status.
-                        return;
-                    }
-                    if SYNC_STOP_REQUESTED.load(Ordering::Relaxed) {
-                        break sync_status_json("exited", true, None);
-                    }
-                    if let Err(e) = client.sync_once_with_timeout(Duration::from_secs(30)).await {
+                let status = match client.sync_until_cancelled(cancel).await {
+                    Ok(()) => sync_status_json("exited", true, None),
+                    Err(e) => {
                         tracing::error!("sync loop exited: {}", e);
-                        break failed_sync_status_json(&e);
+                        failed_sync_status_json(&e)
                     }
                 };
+                // A logout or a newer `sync.start` owns the flags (and the
+                // status report) now.
                 if SYNC_GENERATION.load(Ordering::Relaxed) != generation {
                     return;
                 }
                 SYNC_RUNNING.store(false, Ordering::Relaxed);
+                SYNC_CANCEL.with(|cell| cell.borrow_mut().take());
                 emit_event("sync_status", &status);
             });
             Ok(serde_json::json!({}))
         }
         "sync.stop" => {
             let was_running = SYNC_RUNNING.load(Ordering::Relaxed);
-            SYNC_STOP_REQUESTED.store(true, Ordering::Relaxed);
+            cancel_sync_loop();
             Ok(serde_json::json!({"was_running": was_running}))
         }
         "sync.once" => {
