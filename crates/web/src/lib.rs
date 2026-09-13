@@ -1,12 +1,9 @@
-use std::panic::AssertUnwindSafe;
-
-use futures_util::FutureExt;
 use wasm_bindgen::prelude::*;
 
 mod dispatcher;
 mod envelope;
 
-use envelope::{Envelope, ErrEnvelope, ErrKind};
+use envelope::Envelope;
 
 #[wasm_bindgen(start)]
 pub fn init() {
@@ -31,37 +28,25 @@ pub fn set_event_sink(sink: js_sys::Function) {
     dispatcher::set_event_sink(sink);
 }
 
+/// Run one dispatcher method and return its `{ok}` / `{err}` envelope as JSON.
+///
+/// `wasm32-unknown-unknown` only supports `panic = "abort"`, so a panic in a
+/// dispatcher method cannot be caught here: the hook logs it and the module
+/// traps with `RuntimeError: unreachable`, leaving this call's promise
+/// unsettled. The hosting worker treats such a trap as fatal for the instance
+/// and answers the outstanding requests with `PanicError` itself.
 #[wasm_bindgen]
 pub async fn call(method: String, args_json: String) -> String {
-    let result = AssertUnwindSafe(dispatcher::dispatch(&method, &args_json))
-        .catch_unwind()
-        .await;
-
-    let envelope: Envelope<serde_json::Value> = match result {
-        Ok(Ok(value)) => Envelope::Ok { ok: value },
-        Ok(Err(err)) => Envelope::Err { err },
-        Err(panic_payload) => {
-            let message = if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                (*s).to_string()
-            } else if let Some(s) = panic_payload.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "unknown panic".to_string()
-            };
-            Envelope::Err {
-                err: ErrEnvelope {
-                    kind: ErrKind::PanicError,
-                    message,
-                    details: serde_json::json!({}),
-                },
-            }
-        }
-    };
+    let envelope: Envelope<serde_json::Value> =
+        match dispatcher::dispatch(&method, &args_json).await {
+            Ok(value) => Envelope::Ok { ok: value },
+            Err(err) => Envelope::Err { err },
+        };
 
     serde_json::to_string(&envelope).unwrap_or_else(|e| {
-        format!(
-            r#"{{"err":{{"kind":"SerdeError","message":"{}","details":{{}}}}}}"#,
-            e
-        )
+        serde_json::json!({
+            "err": {"kind": "SerdeError", "message": e.to_string(), "details": {}},
+        })
+        .to_string()
     })
 }

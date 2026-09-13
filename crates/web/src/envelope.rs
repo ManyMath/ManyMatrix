@@ -9,7 +9,8 @@ pub enum ErrKind {
     MatrixSdkError,
     SerdeError,
     StorageError,
-    PanicError,
+    // `PanicError` is also part of the wire vocabulary, but only the hosting
+    // worker produces it: a panic traps the module before Rust can reply.
 }
 
 impl ErrKind {
@@ -31,7 +32,6 @@ impl ErrKind {
             Self::MatrixSdkError => "MatrixSdkError",
             Self::SerdeError => "SerdeError",
             Self::StorageError => "StorageError",
-            Self::PanicError => "PanicError",
         }
     }
 }

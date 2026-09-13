@@ -2891,7 +2891,6 @@ version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
- "futures-util",
  "js-sys",
  "manymatrix-core",
  "serde",

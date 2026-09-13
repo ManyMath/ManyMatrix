@@ -380,6 +380,7 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
                 "echoed_at_wasm_ts_ms": js_sys::Date::now() as u64,
             }))
         }
+        // Exercises the hosting worker's fatal-trap handling end to end.
         "dispatcher.panic" => {
             panic!("intentional test panic");
         }
