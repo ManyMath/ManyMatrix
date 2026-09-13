@@ -1017,9 +1017,8 @@ pub async fn dispatch(method: &str, args_json: &str) -> Result<serde_json::Value
             Ok(serde_json::json!({}))
         }
         "sync.status" => {
-            let logged_in = CLIENT.with(|cell| cell.borrow().is_some());
-            if logged_in {
-                let client = get_client()?;
+            let client = CLIENT.with(|cell| cell.borrow().as_ref().cloned());
+            if let Some(client) = client.filter(ManyMatrixClient::logged_in) {
                 let token = client.sync_token_clone().await;
                 let syncing = SYNC_RUNNING.load(Ordering::Relaxed);
                 Ok(serde_json::json!({
