@@ -167,6 +167,8 @@ class ManyMatrixBindings {
   /// the caller must free it with [`crate::ffi_free_string`] once done reading it.
   /// See [`manymatrix_on_message`] for why a temporary pointer is not safe here.
   ///
+  /// A null handle, or an `event_type` that is null or not UTF-8, registers nothing.
+  ///
   /// # Safety
   /// `handle` must be a valid ManyMatrixClient pointer. `event_type` must be a valid C string.
   /// `callback` must remain valid for the lifetime of the client.

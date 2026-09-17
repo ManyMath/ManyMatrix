@@ -2,7 +2,7 @@ use std::ffi::c_char;
 
 use crate::client::{client_from_handle, ManyMatrixClient};
 use crate::types::FfiResult;
-use crate::{optional_str_from_ptr, str_from_ptr, RUNTIME};
+use crate::{ffi_try, optional_str_from_ptr, str_from_ptr, RUNTIME};
 
 /// Send a plain-text message to a room. Returns the event ID string.
 ///
@@ -14,9 +14,9 @@ pub unsafe extern "C" fn manymatrix_send_text(
     room_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let body = str_from_ptr(body);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let body = ffi_try!(str_from_ptr(body));
     match RUNTIME.block_on(client.send_text(room_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
         Err(e) => FfiResult::error_from(&e),
@@ -35,10 +35,10 @@ pub unsafe extern "C" fn manymatrix_send_custom_event(
     event_type: *const c_char,
     content_json: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let event_type = str_from_ptr(event_type);
-    let content_json = str_from_ptr(content_json);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let event_type = ffi_try!(str_from_ptr(event_type));
+    let content_json = ffi_try!(str_from_ptr(content_json));
     let content: serde_json::Value = match serde_json::from_str(content_json) {
         Ok(value) => value,
         Err(e) => return FfiResult::serde_error(&format!("invalid content_json: {e}")),
@@ -60,10 +60,10 @@ pub unsafe extern "C" fn manymatrix_send_html(
     body: *const c_char,
     html: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let body = str_from_ptr(body);
-    let html = str_from_ptr(html);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let body = ffi_try!(str_from_ptr(body));
+    let html = ffi_try!(str_from_ptr(html));
     match RUNTIME.block_on(client.send_html(room_id, body, html)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
         Err(e) => FfiResult::error_from(&e),
@@ -80,9 +80,9 @@ pub unsafe extern "C" fn manymatrix_send_notice(
     room_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let body = str_from_ptr(body);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let body = ffi_try!(str_from_ptr(body));
     match RUNTIME.block_on(client.send_notice(room_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
         Err(e) => FfiResult::error_from(&e),
@@ -99,9 +99,9 @@ pub unsafe extern "C" fn manymatrix_send_emote(
     room_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let body = str_from_ptr(body);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let body = ffi_try!(str_from_ptr(body));
     match RUNTIME.block_on(client.send_emote(room_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
         Err(e) => FfiResult::error_from(&e),
@@ -119,10 +119,10 @@ pub unsafe extern "C" fn manymatrix_edit_message(
     event_id: *const c_char,
     new_body: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let event_id = str_from_ptr(event_id);
-    let new_body = str_from_ptr(new_body);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let event_id = ffi_try!(str_from_ptr(event_id));
+    let new_body = ffi_try!(str_from_ptr(new_body));
     match RUNTIME.block_on(client.edit_message(room_id, event_id, new_body)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -140,10 +140,10 @@ pub unsafe extern "C" fn manymatrix_reply_to(
     event_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let event_id = str_from_ptr(event_id);
-    let body = str_from_ptr(body);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let event_id = ffi_try!(str_from_ptr(event_id));
+    let body = ffi_try!(str_from_ptr(body));
     match RUNTIME.block_on(client.reply_to(room_id, event_id, body)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
         Err(e) => FfiResult::error_from(&e),
@@ -161,10 +161,10 @@ pub unsafe extern "C" fn manymatrix_send_reaction(
     event_id: *const c_char,
     key: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let event_id = str_from_ptr(event_id);
-    let key = str_from_ptr(key);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let event_id = ffi_try!(str_from_ptr(event_id));
+    let key = ffi_try!(str_from_ptr(key));
     match RUNTIME.block_on(client.send_reaction(room_id, event_id, key)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
         Err(e) => FfiResult::error_from(&e),
@@ -182,10 +182,10 @@ pub unsafe extern "C" fn manymatrix_redact(
     event_id: *const c_char,
     reason: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let event_id = str_from_ptr(event_id);
-    let reason = optional_str_from_ptr(reason);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let event_id = ffi_try!(str_from_ptr(event_id));
+    let reason = ffi_try!(optional_str_from_ptr(reason));
     match RUNTIME.block_on(client.redact(room_id, event_id, reason)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -204,11 +204,11 @@ pub unsafe extern "C" fn manymatrix_send_thread_reply(
     in_reply_to_id: *const c_char,
     body: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let thread_root_id = str_from_ptr(thread_root_id);
-    let in_reply_to_id = str_from_ptr(in_reply_to_id);
-    let body = str_from_ptr(body);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let thread_root_id = ffi_try!(str_from_ptr(thread_root_id));
+    let in_reply_to_id = ffi_try!(str_from_ptr(in_reply_to_id));
+    let body = ffi_try!(str_from_ptr(body));
     match RUNTIME.block_on(client.send_thread_reply(room_id, thread_root_id, in_reply_to_id, body))
     {
         Ok(event_id) => FfiResult::success_string(&event_id),
@@ -226,9 +226,9 @@ pub unsafe extern "C" fn manymatrix_send_read_receipt(
     room_id: *const c_char,
     event_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let event_id = str_from_ptr(event_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let event_id = ffi_try!(str_from_ptr(event_id));
     match RUNTIME.block_on(client.send_read_receipt(room_id, event_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -247,8 +247,8 @@ pub unsafe extern "C" fn manymatrix_send_typing(
     room_id: *const c_char,
     typing: bool,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match RUNTIME.block_on(client.send_typing(room_id, typing)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -269,9 +269,9 @@ pub unsafe extern "C" fn manymatrix_get_messages(
     from_token: *const c_char,
     limit: u32,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let from_token = optional_str_from_ptr(from_token);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let from_token = ffi_try!(optional_str_from_ptr(from_token));
     match RUNTIME.block_on(client.get_messages(room_id, from_token, limit)) {
         Ok(paginated) => match serde_json::to_string(&paginated) {
             Ok(json) => FfiResult::success_string(&json),
@@ -290,7 +290,7 @@ pub unsafe extern "C" fn manymatrix_thread_index(
     handle: *mut ManyMatrixClient,
     limit_per_room: u32,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
+    let client = ffi_try!(client_from_handle(handle));
     match RUNTIME.block_on(client.thread_index(limit_per_room)) {
         Ok(threads) => match serde_json::to_string(&threads) {
             Ok(json) => FfiResult::success_string(&json),
@@ -313,10 +313,10 @@ pub unsafe extern "C" fn manymatrix_get_thread_messages(
     from_token: *const c_char,
     limit: u32,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let thread_root_event_id = str_from_ptr(thread_root_event_id);
-    let from_token = optional_str_from_ptr(from_token);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let thread_root_event_id = ffi_try!(str_from_ptr(thread_root_event_id));
+    let from_token = ffi_try!(optional_str_from_ptr(from_token));
     match RUNTIME.block_on(client.get_thread_messages(
         room_id,
         thread_root_event_id,
@@ -342,10 +342,10 @@ pub unsafe extern "C" fn manymatrix_send_thread_read_receipt(
     thread_root_event_id: *const c_char,
     event_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let thread_root_event_id = str_from_ptr(thread_root_event_id);
-    let event_id = str_from_ptr(event_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let thread_root_event_id = ffi_try!(str_from_ptr(thread_root_event_id));
+    let event_id = ffi_try!(str_from_ptr(event_id));
     match RUNTIME.block_on(client.send_thread_read_receipt(room_id, thread_root_event_id, event_id))
     {
         Ok(()) => FfiResult::success_void(),

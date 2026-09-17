@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::client::{client_from_handle, ManyMatrixClient};
 use crate::types::FfiResult;
-use crate::{optional_str_from_ptr, str_from_ptr, RUNTIME};
+use crate::{ffi_try, optional_str_from_ptr, str_from_ptr, RUNTIME};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,10 +35,10 @@ pub unsafe extern "C" fn manymatrix_create_room(
     name: *const c_char,
     topic: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
+    let client = ffi_try!(client_from_handle(handle));
     let options = CreateRoomOptions {
-        name: optional_str_from_ptr(name).map(|s| s.to_owned()),
-        topic: optional_str_from_ptr(topic).map(|s| s.to_owned()),
+        name: ffi_try!(optional_str_from_ptr(name)).map(|s| s.to_owned()),
+        topic: ffi_try!(optional_str_from_ptr(topic)).map(|s| s.to_owned()),
         invite: vec![],
         visibility: RoomVisibility::Private,
     };
@@ -59,8 +59,8 @@ pub unsafe extern "C" fn manymatrix_join_room(
     handle: *mut ManyMatrixClient,
     room_id_or_alias: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let id = str_from_ptr(room_id_or_alias);
+    let client = ffi_try!(client_from_handle(handle));
+    let id = ffi_try!(str_from_ptr(room_id_or_alias));
     match RUNTIME.block_on(client.join_room(id)) {
         Ok(room_id) => FfiResult::success_string(&room_id),
         Err(e) => FfiResult::error_from(&e),
@@ -77,9 +77,9 @@ pub unsafe extern "C" fn manymatrix_invite(
     room_id: *const c_char,
     user_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let user_id = str_from_ptr(user_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let user_id = ffi_try!(str_from_ptr(user_id));
     match RUNTIME.block_on(client.invite(room_id, user_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -100,10 +100,10 @@ pub unsafe extern "C" fn manymatrix_set_custom_event_power_levels(
     event_type: *const c_char,
     config_json: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let event_type = str_from_ptr(event_type);
-    let config_json = str_from_ptr(config_json);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let event_type = ffi_try!(str_from_ptr(event_type));
+    let config_json = ffi_try!(str_from_ptr(config_json));
     let config: CustomEventPowerLevelsConfig = match serde_json::from_str(config_json) {
         Ok(config) => config,
         Err(e) => return FfiResult::serde_error(&format!("invalid config_json: {e}")),
@@ -128,8 +128,8 @@ pub unsafe extern "C" fn manymatrix_room_power_levels(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match RUNTIME.block_on(client.room_power_levels(room_id)) {
         Ok(snapshot) => match serde_json::to_string(&snapshot) {
             Ok(json) => FfiResult::success_string(&json),
@@ -152,9 +152,9 @@ pub unsafe extern "C" fn manymatrix_set_room_invite_power_level(
     room_id: *const c_char,
     config_json: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let config_json = str_from_ptr(config_json);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let config_json = ffi_try!(str_from_ptr(config_json));
     let config: RoomInvitePowerLevelConfig = match serde_json::from_str(config_json) {
         Ok(config) => config,
         Err(e) => return FfiResult::serde_error(&format!("invalid config_json: {e}")),
@@ -178,8 +178,8 @@ pub unsafe extern "C" fn manymatrix_leave_room(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match RUNTIME.block_on(client.leave_room(room_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -197,10 +197,10 @@ pub unsafe extern "C" fn manymatrix_kick(
     user_id: *const c_char,
     reason: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let user_id = str_from_ptr(user_id);
-    let reason = optional_str_from_ptr(reason);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let reason = ffi_try!(optional_str_from_ptr(reason));
     match RUNTIME.block_on(client.kick(room_id, user_id, reason)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -218,10 +218,10 @@ pub unsafe extern "C" fn manymatrix_ban(
     user_id: *const c_char,
     reason: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let user_id = str_from_ptr(user_id);
-    let reason = optional_str_from_ptr(reason);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let reason = ffi_try!(optional_str_from_ptr(reason));
     match RUNTIME.block_on(client.ban(room_id, user_id, reason)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -237,8 +237,8 @@ pub unsafe extern "C" fn manymatrix_room_name(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match client.room_name(room_id) {
         Ok(Some(name)) => FfiResult::success_string(&name),
         Ok(None) => FfiResult::success_void(),
@@ -255,8 +255,8 @@ pub unsafe extern "C" fn manymatrix_room_topic(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match client.room_topic(room_id) {
         Ok(Some(topic)) => FfiResult::success_string(&topic),
         Ok(None) => FfiResult::success_void(),
@@ -273,8 +273,8 @@ pub unsafe extern "C" fn manymatrix_room_avatar_url(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match client.room_avatar_url(room_id) {
         Ok(Some(url)) => FfiResult::success_string(&url),
         Ok(None) => FfiResult::success_void(),
@@ -291,8 +291,8 @@ pub unsafe extern "C" fn manymatrix_room_members(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match RUNTIME.block_on(client.room_members(room_id)) {
         Ok(members) => match serde_json::to_string(&members) {
             Ok(json) => FfiResult::success_string(&json),
@@ -312,8 +312,8 @@ pub unsafe extern "C" fn manymatrix_room_details(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match client.room_details(room_id) {
         Ok(details) => match serde_json::to_string(&details) {
             Ok(json) => FfiResult::success_string(&json),

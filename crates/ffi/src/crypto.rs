@@ -2,7 +2,7 @@ use std::ffi::c_char;
 
 use crate::client::{client_from_handle, ManyMatrixClient};
 use crate::types::FfiResult;
-use crate::{str_from_ptr, RUNTIME};
+use crate::{ffi_try, str_from_ptr, RUNTIME};
 
 /// Enable end-to-end encryption on a room.
 ///
@@ -13,8 +13,8 @@ pub unsafe extern "C" fn manymatrix_enable_encryption(
     handle: *mut ManyMatrixClient,
     room_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
     match RUNTIME.block_on(client.enable_encryption(room_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -33,9 +33,9 @@ pub unsafe extern "C" fn manymatrix_start_verification(
     user_id: *const c_char,
     device_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let user_id = str_from_ptr(user_id);
-    let device_id = str_from_ptr(device_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let device_id = ffi_try!(str_from_ptr(device_id));
     match RUNTIME.block_on(client.start_verification(user_id, device_id)) {
         Ok(flow_id) => FfiResult::success_string(&flow_id),
         Err(e) => FfiResult::error_from(&e),
@@ -52,9 +52,9 @@ pub unsafe extern "C" fn manymatrix_accept_verification(
     user_id: *const c_char,
     flow_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let user_id = str_from_ptr(user_id);
-    let flow_id = str_from_ptr(flow_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let flow_id = ffi_try!(str_from_ptr(flow_id));
     match RUNTIME.block_on(client.accept_verification(user_id, flow_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -71,9 +71,9 @@ pub unsafe extern "C" fn manymatrix_start_sas(
     user_id: *const c_char,
     flow_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let user_id = str_from_ptr(user_id);
-    let flow_id = str_from_ptr(flow_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let flow_id = ffi_try!(str_from_ptr(flow_id));
     match RUNTIME.block_on(client.start_sas(user_id, flow_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -90,9 +90,9 @@ pub unsafe extern "C" fn manymatrix_accept_sas(
     user_id: *const c_char,
     flow_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let user_id = str_from_ptr(user_id);
-    let flow_id = str_from_ptr(flow_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let flow_id = ffi_try!(str_from_ptr(flow_id));
     match RUNTIME.block_on(client.accept_sas(user_id, flow_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -111,9 +111,9 @@ pub unsafe extern "C" fn manymatrix_get_sas_emojis(
     user_id: *const c_char,
     flow_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let user_id = str_from_ptr(user_id);
-    let flow_id = str_from_ptr(flow_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let flow_id = ffi_try!(str_from_ptr(flow_id));
     match RUNTIME.block_on(client.get_sas_emojis(user_id, flow_id)) {
         Ok(emojis) => match serde_json::to_string(&emojis) {
             Ok(json) => FfiResult::success_string(&json),
@@ -133,9 +133,9 @@ pub unsafe extern "C" fn manymatrix_confirm_sas(
     user_id: *const c_char,
     flow_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let user_id = str_from_ptr(user_id);
-    let flow_id = str_from_ptr(flow_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let flow_id = ffi_try!(str_from_ptr(flow_id));
     match RUNTIME.block_on(client.confirm_sas(user_id, flow_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -152,9 +152,9 @@ pub unsafe extern "C" fn manymatrix_cancel_verification(
     user_id: *const c_char,
     flow_id: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let user_id = str_from_ptr(user_id);
-    let flow_id = str_from_ptr(flow_id);
+    let client = ffi_try!(client_from_handle(handle));
+    let user_id = ffi_try!(str_from_ptr(user_id));
+    let flow_id = ffi_try!(str_from_ptr(flow_id));
     match RUNTIME.block_on(client.cancel_verification(user_id, flow_id)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -169,7 +169,7 @@ pub unsafe extern "C" fn manymatrix_cancel_verification(
 pub unsafe extern "C" fn manymatrix_bootstrap_cross_signing(
     handle: *mut ManyMatrixClient,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
+    let client = ffi_try!(client_from_handle(handle));
     match RUNTIME.block_on(client.bootstrap_cross_signing()) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -182,7 +182,7 @@ pub unsafe extern "C" fn manymatrix_bootstrap_cross_signing(
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_setup_key_backup(handle: *mut ManyMatrixClient) -> FfiResult {
-    let client = client_from_handle(handle);
+    let client = ffi_try!(client_from_handle(handle));
     match RUNTIME.block_on(client.setup_key_backup()) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -198,8 +198,8 @@ pub unsafe extern "C" fn manymatrix_restore_key_backup(
     handle: *mut ManyMatrixClient,
     recovery_key: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let recovery_key = str_from_ptr(recovery_key);
+    let client = ffi_try!(client_from_handle(handle));
+    let recovery_key = ffi_try!(str_from_ptr(recovery_key));
     match RUNTIME.block_on(client.restore_key_backup(recovery_key)) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
@@ -214,7 +214,7 @@ pub unsafe extern "C" fn manymatrix_restore_key_backup(
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_enable_recovery(handle: *mut ManyMatrixClient) -> FfiResult {
-    let client = client_from_handle(handle);
+    let client = ffi_try!(client_from_handle(handle));
     match RUNTIME.block_on(client.enable_recovery()) {
         Ok(recovery_key) => FfiResult::success_string(&recovery_key),
         Err(e) => FfiResult::error_from(&e),
@@ -230,7 +230,7 @@ pub unsafe extern "C" fn manymatrix_enable_recovery(handle: *mut ManyMatrixClien
 pub unsafe extern "C" fn manymatrix_wait_for_backup_upload(
     handle: *mut ManyMatrixClient,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
+    let client = ffi_try!(client_from_handle(handle));
     match RUNTIME.block_on(client.wait_for_backup_upload()) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),

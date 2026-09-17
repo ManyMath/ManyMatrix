@@ -2,7 +2,7 @@ use std::ffi::{c_char, c_void};
 
 use crate::client::{client_from_handle, ManyMatrixClient};
 use crate::types::{FfiBuffer, FfiResult};
-use crate::{str_from_ptr, RUNTIME};
+use crate::{ffi_try, str_from_ptr, RUNTIME};
 
 /// Upload a file as an attachment to a room.
 ///
@@ -20,10 +20,10 @@ pub unsafe extern "C" fn manymatrix_upload_media(
     data: *const u8,
     data_len: usize,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let room_id = str_from_ptr(room_id);
-    let filename = str_from_ptr(filename);
-    let mime_type = str_from_ptr(mime_type);
+    let client = ffi_try!(client_from_handle(handle));
+    let room_id = ffi_try!(str_from_ptr(room_id));
+    let filename = ffi_try!(str_from_ptr(filename));
+    let mime_type = ffi_try!(str_from_ptr(mime_type));
     let bytes = std::slice::from_raw_parts(data, data_len).to_vec();
     match RUNTIME.block_on(client.upload_media(room_id, filename, mime_type, bytes)) {
         Ok(event_id) => FfiResult::success_string(&event_id),
@@ -54,8 +54,8 @@ pub unsafe extern "C" fn manymatrix_download_media(
     handle: *mut ManyMatrixClient,
     mxc_uri: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let mxc_uri = str_from_ptr(mxc_uri);
+    let client = ffi_try!(client_from_handle(handle));
+    let mxc_uri = ffi_try!(str_from_ptr(mxc_uri));
     match RUNTIME.block_on(client.download_media(mxc_uri)) {
         Ok(data) => buffer_result(data),
         Err(e) => FfiResult::error_from(&e),
@@ -73,8 +73,8 @@ pub unsafe extern "C" fn manymatrix_download_media_source(
     handle: *mut ManyMatrixClient,
     media_source_json: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let media_source_json = str_from_ptr(media_source_json);
+    let client = ffi_try!(client_from_handle(handle));
+    let media_source_json = ffi_try!(str_from_ptr(media_source_json));
     let media_source: serde_json::Value = match serde_json::from_str(media_source_json) {
         Ok(value) => value,
         Err(error) => {
@@ -100,8 +100,8 @@ pub unsafe extern "C" fn manymatrix_get_thumbnail(
     width: u32,
     height: u32,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let mxc_uri = str_from_ptr(mxc_uri);
+    let client = ffi_try!(client_from_handle(handle));
+    let mxc_uri = ffi_try!(str_from_ptr(mxc_uri));
     match RUNTIME.block_on(client.get_thumbnail(mxc_uri, width, height)) {
         Ok(data) => buffer_result(data),
         Err(e) => FfiResult::error_from(&e),
@@ -123,13 +123,13 @@ pub unsafe extern "C" fn manymatrix_register_pusher(
     push_url: *const c_char,
     lang: *const c_char,
 ) -> FfiResult {
-    let client = client_from_handle(handle);
-    let app_id = str_from_ptr(app_id);
-    let push_key = str_from_ptr(push_key);
-    let app_display_name = str_from_ptr(app_display_name);
-    let device_display_name = str_from_ptr(device_display_name);
-    let push_url = str_from_ptr(push_url);
-    let lang = str_from_ptr(lang);
+    let client = ffi_try!(client_from_handle(handle));
+    let app_id = ffi_try!(str_from_ptr(app_id));
+    let push_key = ffi_try!(str_from_ptr(push_key));
+    let app_display_name = ffi_try!(str_from_ptr(app_display_name));
+    let device_display_name = ffi_try!(str_from_ptr(device_display_name));
+    let push_url = ffi_try!(str_from_ptr(push_url));
+    let lang = ffi_try!(str_from_ptr(lang));
     match RUNTIME.block_on(client.register_pusher(
         app_id,
         push_key,
