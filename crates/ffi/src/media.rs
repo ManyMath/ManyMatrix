@@ -78,7 +78,7 @@ pub unsafe extern "C" fn manymatrix_download_media_source(
     let media_source: serde_json::Value = match serde_json::from_str(media_source_json) {
         Ok(value) => value,
         Err(error) => {
-            return FfiResult::error(&format!("invalid media source JSON: {error}"));
+            return FfiResult::serde_error(&format!("invalid media source JSON: {error}"));
         }
     };
     match RUNTIME.block_on(client.download_media_source(&media_source)) {
