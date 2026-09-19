@@ -447,7 +447,8 @@ pub unsafe extern "C" fn manymatrix_sync_token(handle: *mut ManyMatrixClient) ->
 
 /// Get the current logged-in user's Matrix ID (e.g. "@alice:example.com").
 ///
-/// Returns the user ID string in `FfiResult.data`, or an error if not logged in.
+/// Returns the user ID string in `FfiResult.data`, or null data when no user
+/// is logged in (the web bridge answers `null` in the same situation).
 ///
 /// # Safety
 /// `handle` must be a valid ManyMatrixClient pointer.
@@ -456,7 +457,7 @@ pub unsafe extern "C" fn manymatrix_whoami(handle: *mut ManyMatrixClient) -> Ffi
     let client = ffi_try!(client_from_handle(handle));
     match client.current_user_id() {
         Some(id) => FfiResult::success_string(&id),
-        None => FfiResult::storage_error("not logged in"),
+        None => FfiResult::success_void(),
     }
 }
 
