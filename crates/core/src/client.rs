@@ -1363,11 +1363,11 @@ impl ManyMatrixClient {
     pub async fn join_room(&self, room_id_or_alias: &str) -> Result<String, Error> {
         let room = if room_id_or_alias.starts_with('!') {
             let room_id = <&RoomId>::try_from(room_id_or_alias)
-                .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
+                .map_err(|e| Error::IdParse(format!("invalid room ID: {e}")))?;
             self.client.join_room_by_id(room_id).await?
         } else {
             let alias = <&RoomOrAliasId>::try_from(room_id_or_alias)
-                .map_err(|e| Error::Other(format!("invalid room alias: {e}")))?;
+                .map_err(|e| Error::IdParse(format!("invalid room alias: {e}")))?;
             self.client.join_room_by_id_or_alias(alias, &[]).await?
         };
         Ok(room.room_id().to_string())
@@ -1376,9 +1376,9 @@ impl ManyMatrixClient {
     /// Invite a user to a room.
     pub async fn invite(&self, room_id: &str, user_id: &str) -> Result<(), Error> {
         let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
+            .map_err(|e| Error::IdParse(format!("invalid room ID: {e}")))?;
         let user_id = <&UserId>::try_from(user_id)
-            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
+            .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
         let room = self
             .client
             .get_room(room_id)
@@ -1390,7 +1390,7 @@ impl ManyMatrixClient {
     /// Leave a room.
     pub async fn leave_room(&self, room_id: &str) -> Result<(), Error> {
         let room_id = <&RoomId>::try_from(room_id)
-            .map_err(|e| Error::Other(format!("invalid room ID: {e}")))?;
+            .map_err(|e| Error::IdParse(format!("invalid room ID: {e}")))?;
         let room = self
             .client
             .get_room(room_id)
@@ -1550,7 +1550,7 @@ impl ManyMatrixClient {
         reason: Option<&str>,
     ) -> Result<(), Error> {
         let user_id = <&UserId>::try_from(user_id)
-            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
+            .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
         let room = self.get_room_parsed(room_id)?;
         room.kick_user(user_id, reason).await?;
         Ok(())
@@ -1564,7 +1564,7 @@ impl ManyMatrixClient {
         reason: Option<&str>,
     ) -> Result<(), Error> {
         let user_id = <&UserId>::try_from(user_id)
-            .map_err(|e| Error::Other(format!("invalid user ID: {e}")))?;
+            .map_err(|e| Error::IdParse(format!("invalid user ID: {e}")))?;
         let room = self.get_room_parsed(room_id)?;
         room.ban_user(user_id, reason).await?;
         Ok(())
@@ -2310,7 +2310,7 @@ fn create_room_request_from_options(
         .map(|id| {
             <&UserId>::try_from(id.as_str())
                 .map(|u| u.to_owned())
-                .map_err(|e| Error::Other(format!("invalid user ID '{}': {}", id, e)))
+                .map_err(|e| Error::IdParse(format!("invalid user ID '{}': {}", id, e)))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -3048,7 +3048,7 @@ fn apply_user_power_levels(
 ) -> Result<(), Error> {
     for (user_id, power_level) in user_power_levels {
         let user_id = <&UserId>::try_from(user_id.as_str())
-            .map_err(|err| Error::Other(format!("invalid user ID '{user_id}': {err}")))?;
+            .map_err(|err| Error::IdParse(format!("invalid user ID '{user_id}': {err}")))?;
         let power_level = power_level
             .try_into()
             .map_err(|err| Error::Other(format!("invalid user power level: {err}")))?;
