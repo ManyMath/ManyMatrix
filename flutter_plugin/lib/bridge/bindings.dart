@@ -572,7 +572,8 @@ class ManyMatrixBindings {
       _manymatrix_server_capabilitiesPtr
           .asFunction<FfiResult Function(ffi.Pointer<ManyMatrixClient>)>();
 
-  /// Logout: invalidate server token and delete local state.
+  /// Logout: stop the background sync thread, invalidate the server token, and
+  /// delete local state.
   ///
   /// # Safety
   /// `handle` must be a valid ManyMatrixClient pointer.

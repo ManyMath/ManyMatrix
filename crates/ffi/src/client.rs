@@ -397,14 +397,18 @@ pub unsafe extern "C" fn manymatrix_server_capabilities(
     }
 }
 
-/// Logout: invalidate server token and delete local state.
+/// Logout: stop the background sync thread, invalidate the server token, and
+/// delete local state.
 ///
 /// # Safety
 /// `handle` must be a valid ManyMatrixClient pointer.
 #[no_mangle]
 pub unsafe extern "C" fn manymatrix_logout(handle: *mut ManyMatrixClient) -> FfiResult {
-    let client = ffi_try!(client_from_handle(handle));
-    match RUNTIME.block_on(client.logout()) {
+    let ffi_client = ffi_try!(ffi_client_from_handle(handle));
+    // The sync thread holds its own client clone: left running it would keep
+    // long-polling with the revoked token and then report a failed exit.
+    ffi_client.stop_sync_thread();
+    match RUNTIME.block_on(ffi_client.client.logout()) {
         Ok(()) => FfiResult::success_void(),
         Err(e) => FfiResult::error_from(&e),
     }

@@ -332,7 +332,8 @@ struct FfiResult manymatrix_sync_forever_with_status(struct ManyMatrixClient *ha
  struct FfiResult manymatrix_server_capabilities(struct ManyMatrixClient *handle);
 
 /**
- * Logout: invalidate server token and delete local state.
+ * Logout: stop the background sync thread, invalidate the server token, and
+ * delete local state.
  *
  * # Safety
  * `handle` must be a valid ManyMatrixClient pointer.
