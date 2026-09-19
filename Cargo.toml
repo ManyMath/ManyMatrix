@@ -14,7 +14,7 @@ exclude = ["testing/tuwunel"]
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.80.0"
+rust-version = "1.89"
 version = "0.2.0"
 authors = ["sneurlax"]
 homepage = "https://github.com/sneurlax/manymatrix"

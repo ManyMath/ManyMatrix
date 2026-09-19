@@ -2,6 +2,7 @@
 name = "manymatrix-web"
 version = "0.2.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "wasm-bindgen glue crate for the ManyMatrix Flutter web/extension bridge (not a standalone library)"
 publish = false

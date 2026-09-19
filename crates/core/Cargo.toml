@@ -2,6 +2,7 @@
 name = "manymatrix-core"
 version = "0.2.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Rust core client library for Matrix, auth, sync, rooms, messaging, E2EE, media"
 homepage.workspace = true
