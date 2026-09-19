@@ -35,9 +35,11 @@ url = "2"
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 
 [profile.release]
-# panic must stay "unwind", not "abort": crates/web's call() dispatcher uses
-# catch_unwind() to turn a panic into an {err} envelope instead of trapping
-# the whole wasm module.
+# Keep "unwind" for the native builds: tokio contains a panic inside a
+# spawned task (matrix-sdk runs its backup, key-sharing and other background
+# work in tasks) to that task, whereas "abort" would take down the host app.
+# This has no effect on wasm32-unknown-unknown, which only supports "abort";
+# there a panic traps the module and the hosting worker reports it.
 panic = "unwind"
 lto = true
 codegen-units = 1
