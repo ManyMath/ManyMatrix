@@ -1627,7 +1627,9 @@ impl ManyMatrixClient {
         };
 
         Ok(ServerCapabilities::from_raw(
-            self.client.homeserver().to_string(),
+            // The canonical form used by `StoredSession`; `Client::homeserver()`
+            // renders the same URL with a trailing slash.
+            self.homeserver.clone(),
             versions,
             unstable_features,
             raw_versions,
