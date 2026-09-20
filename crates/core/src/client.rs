@@ -2817,15 +2817,6 @@ fn message_event_from_json(event: &serde_json::Value, room_id: &str) -> Option<M
     Some(message)
 }
 
-#[cfg(test)]
-fn thread_root_from_event_json(event: &serde_json::Value) -> Option<String> {
-    let relation = event.get("content")?.get("m.relates_to")?;
-    if relation.get("rel_type")?.as_str()? != "m.thread" {
-        return None;
-    }
-    relation.get("event_id")?.as_str().map(ToOwned::to_owned)
-}
-
 fn thread_unread_sync_request() -> ThreadUnreadSyncRequest {
     let mut definition = FilterDefinition::default();
     definition.presence.types = Some(Vec::new());
@@ -3709,29 +3700,6 @@ mod tests {
         assert_eq!(summary.root.body, "Message deleted");
         assert_eq!(summary.reply_count, 1);
         assert_eq!(summary.latest_reply.unwrap().event_id, "$reply");
-    }
-
-    #[test]
-    fn thread_root_detection_supports_clear_relation_metadata() {
-        let event = serde_json::json!({
-            "type": "m.room.encrypted",
-            "content": {
-                "algorithm": "m.megolm.v1.aes-sha2",
-                "ciphertext": "opaque",
-                "m.relates_to": {
-                    "rel_type": "m.thread",
-                    "event_id": "$root"
-                }
-            }
-        });
-        assert_eq!(
-            thread_root_from_event_json(&event).as_deref(),
-            Some("$root")
-        );
-        assert!(thread_root_from_event_json(&serde_json::json!({
-            "content": {"m.relates_to": {"rel_type": "m.annotation", "event_id": "$root"}}
-        }))
-        .is_none());
     }
 
     #[test]
