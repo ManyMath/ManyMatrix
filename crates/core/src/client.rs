@@ -992,7 +992,9 @@ impl ManyMatrixClient {
     /// Return the current `m.room.power_levels` state for a room in a consumer-friendly JSON
     /// snapshot, including the logged-in user's effective power level.
     ///
-    /// The raw Matrix state is preserved under `raw`, while common thresholds are normalized with
+    /// The state as parsed by Ruma and serialized again is under `raw` (fields equal to their
+    /// default may be omitted, so this is not byte-for-byte what the server sent), while common
+    /// thresholds are normalized with
     /// Matrix spec defaults so callers can preflight operations such as invites without re-encoding
     /// the power-level rules.
     pub async fn room_power_levels(&self, room_id: &str) -> Result<serde_json::Value, Error> {

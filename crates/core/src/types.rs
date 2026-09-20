@@ -207,7 +207,11 @@ pub struct CustomEvent {
 /// Result of paginating messages in a room.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedMessages {
-    /// Message-like events in chronological order, oldest to newest.
+    /// `m.room.message` events (and redaction tombstones for them) in
+    /// chronological order, oldest to newest. Other event types, including
+    /// custom events, stickers, and events that could not be decrypted, are
+    /// not included, so a page can be shorter than requested, or empty, while
+    /// `end_token` still points further back.
     pub messages: Vec<MessageEvent>,
     pub end_token: Option<String>,
 }
@@ -231,7 +235,9 @@ pub struct ThreadSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedThreadMessages {
     pub root: MessageEvent,
-    /// Thread relations in chronological order, oldest to newest.
+    /// `m.room.message` events related to the root, oldest to newest:
+    /// replies, and also `m.replace` edits (with `replaces_event_id` set) so
+    /// the caller can apply them. Reactions and other event types are dropped.
     pub messages: Vec<MessageEvent>,
     pub end_token: Option<String>,
 }
