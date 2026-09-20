@@ -13,18 +13,6 @@ fn init_tracing() {
         .try_init();
 }
 
-async fn finalize_server(server: TestHomeserver, run_result: Result<()>) -> Result<()> {
-    if let Err(stop_err) = server.stop().await {
-        if run_result.is_ok() {
-            return Err(stop_err);
-        }
-
-        eprintln!("failed to stop homeserver after test failure: {stop_err:#}");
-    }
-
-    run_result
-}
-
 /// Minimal valid 1x1 pixel PNG image (67 bytes).
 /// Synapse only generates thumbnails for image MIME types, not text/plain.
 #[allow(dead_code)]
@@ -115,7 +103,7 @@ async fn key_backup_enable_and_restore(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 test_harness::e2e_test!(key_backup_enable_and_restore);
@@ -194,7 +182,7 @@ async fn media_download_round_trip(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 test_harness::e2e_test!(media_download_round_trip);
@@ -265,7 +253,7 @@ async fn thumbnail_fetch_for_image(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 test_harness::e2e_test!(thumbnail_fetch_for_image);
@@ -370,7 +358,7 @@ async fn encrypted_media_upload(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 test_harness::e2e_test!(encrypted_media_upload);

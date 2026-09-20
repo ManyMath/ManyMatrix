@@ -19,18 +19,6 @@ fn init_tracing() {
         .try_init();
 }
 
-async fn finalize_server(server: TestHomeserver, run_result: Result<()>) -> Result<()> {
-    if let Err(stop_err) = server.stop().await {
-        if run_result.is_ok() {
-            return Err(stop_err);
-        }
-
-        eprintln!("failed to stop homeserver after test failure: {stop_err:#}");
-    }
-
-    run_result
-}
-
 #[cfg(feature = "docker-tests")]
 async fn sync_pair(
     alice: &ManyMatrixClient,
@@ -203,7 +191,7 @@ async fn sas_verification(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 #[cfg(feature = "docker-tests")]
@@ -242,7 +230,7 @@ async fn cross_signing_bootstrap(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 test_harness::e2e_test!(cross_signing_bootstrap);

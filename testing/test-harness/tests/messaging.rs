@@ -41,18 +41,6 @@ async fn sync_pair_retry(alice: &ManyMatrixClient, bob: &ManyMatrixClient) -> Re
     Ok(())
 }
 
-async fn finalize_server(server: TestHomeserver, run_result: Result<()>) -> Result<()> {
-    if let Err(stop_err) = server.stop().await {
-        if run_result.is_ok() {
-            return Err(stop_err);
-        }
-
-        eprintln!("failed to stop homeserver after test failure: {stop_err:#}");
-    }
-
-    run_result
-}
-
 /// TEST-03: Two clients exchange messages in an E2EE room.
 /// Alice creates an encrypted room, invites Bob, both sync for key exchange,
 /// Alice sends a message, Bob receives and decrypts it.
@@ -134,7 +122,7 @@ async fn encrypted_messaging(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 /// Two-client messaging test: Alice sends all message types, Bob verifies receipt.
@@ -209,7 +197,7 @@ async fn message_types(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 /// Two-client edit, reply, redact test (MSG-04, MSG-05, MSG-07).
@@ -291,7 +279,7 @@ async fn edit_reply_redact(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 /// current_user_id returns the logged-in user's Matrix ID.
@@ -330,7 +318,7 @@ async fn whoami(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 /// is_room_encrypted returns false for new room, true after enable_encryption.
@@ -377,7 +365,7 @@ async fn is_room_encrypted(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 /// Two-client media test: Alice uploads, Bob verifies via pagination.
@@ -442,7 +430,7 @@ async fn media_upload_download(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 /// MessageEvent.mxc_uri, filename, file_size populated for media uploads.
@@ -564,7 +552,7 @@ async fn mxc_uri_on_message_event(kind: ServerKind) -> Result<()> {
     }
     .await;
 
-    finalize_server(server, run_result).await
+    server.finish(run_result).await
 }
 
 test_harness::e2e_test!(encrypted_messaging);

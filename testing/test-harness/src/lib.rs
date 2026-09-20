@@ -769,6 +769,25 @@ impl TestHomeserver {
         }
     }
 
+    /// Stop the homeserver, then return the scenario's own result.
+    ///
+    /// Use this at the end of every scenario: `stop` is the only path that
+    /// removes the rooms and users a scenario created on the hosted
+    /// homeservers, and it must run whether or not the scenario failed. A
+    /// stop failure is reported only when the scenario itself passed, so it
+    /// never masks the real failure.
+    pub async fn finish(self, run_result: Result<()>) -> Result<()> {
+        if let Err(stop_err) = self.stop().await {
+            if run_result.is_ok() {
+                return Err(stop_err);
+            }
+
+            eprintln!("failed to stop homeserver after test failure: {stop_err:#}");
+        }
+
+        run_result
+    }
+
     /// Stop the homeserver.
     pub async fn stop(self) -> Result<()> {
         match self.backend {
