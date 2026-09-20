@@ -129,6 +129,23 @@ async fn main() -> Result<()> {
             } else {
                 format!("https://{server}")
             };
+            // The SDK store holds the crypto state of exactly one device, so a
+            // second login on top of it fails deep inside matrix-sdk.
+            if let Ok(existing) = StoredSession::load(&session_path()) {
+                anyhow::bail!(
+                    "already logged in as {}; run `manymatrix-cli logout` first",
+                    existing.session.meta.user_id
+                );
+            }
+            // Without a saved session, a leftover store (for example from a
+            // login that failed half way) belongs to no usable device.
+            match std::fs::remove_dir_all(store_path()) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error).context("could not clear the stale local store");
+                }
+            }
             let password = rpassword::prompt_password("Password: ")?;
             let client = ManyMatrixClient::new(&server, &store_path()).await?;
             let session = client.login(&user, &password).await?;
