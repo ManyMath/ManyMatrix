@@ -39,8 +39,6 @@ class _FfiResponse {
 /// Worker isolate for blocking FFI calls, NativeCallable.listener for
 /// callbacks from Rust threads, NativeFinalizer for memory management.
 class ManyMatrixBridge implements ffi.Finalizable {
-  // ignore: unused_field
-  static late String _libraryPath;
   static late SendPort _workerPort;
   static bool _initialized = false;
 
@@ -61,8 +59,6 @@ class ManyMatrixBridge implements ffi.Finalizable {
   /// Must be called once before any other operations.
   static Future<void> initialize(String libraryPath) async {
     if (_initialized) return;
-
-    _libraryPath = libraryPath;
 
     // Open library on main isolate for NativeFinalizer and dispose(). An
     // empty path means the symbols are force-linked into the executable
@@ -137,8 +133,6 @@ class ManyMatrixBridge implements ffi.Finalizable {
         return _execHandleOnly(bindings, method, args);
       case 'sync_once_with_timeout':
         return _execSyncOnceWithTimeout(bindings, args);
-      case 'sync_forever':
-        return _execHandleOnly(bindings, method, args);
       case 'stop_sync':
         return _execHandleOnly(bindings, method, args);
       case 'joined_rooms':
@@ -297,8 +291,6 @@ class ManyMatrixBridge implements ffi.Finalizable {
     switch (method) {
       case 'sync_once':
         result = bindings.manymatrix_sync_once(handle);
-      case 'sync_forever':
-        result = bindings.manymatrix_sync_forever(handle);
       case 'stop_sync':
         result = bindings.manymatrix_stop_sync(handle);
       case 'joined_rooms':
@@ -1097,15 +1089,13 @@ class ManyMatrixBridge implements ffi.Finalizable {
   }
 
   /// Start the continuous sync loop in a background thread.
+  ///
+  /// Status events go to the [onSyncStatus] handler, whenever it is
+  /// registered; events emitted while none is registered are dropped.
   Future<void> syncForever() async {
-    final syncStatusCallable = _syncStatusCallable;
-    if (syncStatusCallable == null) {
-      await _call('sync_forever', {});
-      return;
-    }
     final result = _mainBindings.manymatrix_sync_forever_with_status(
       _handle,
-      syncStatusCallable.nativeFunction,
+      _syncStatusEvents.nativeFunction,
     );
     _checkResult(_mainBindings, result, method: 'sync_forever');
   }
@@ -1587,145 +1577,103 @@ class ManyMatrixBridge implements ffi.Finalizable {
   // callback invocation. The callbacks fire on Rust's sync thread and post
   // to the main isolate's event loop.
 
-  /// Register a callback for incoming message events.
+  /// Register the callback for incoming message events, replacing any
+  /// earlier one.
   ///
   /// The callback receives a JSON-serialized MessageEvent string.
   void onMessage(void Function(String json) callback) {
-    final nativeCallable =
-        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
-      (ffi.Pointer<ffi.Char> ptr) {
-        // Rust hands over ownership of this heap-allocated string (see
-        // MessageCallback's doc comment) precisely because NativeCallable.listener
-        // posts across isolates and returns before this closure runs: a pointer
-        // valid only for the native call's duration would already be dangling here.
-        final json = ptr.cast<Utf8>().toDartString();
-        _mainBindings.ffi_free_string(ptr.cast());
-        callback(json);
-      },
+    _messageEvents.replace(
+      callback,
+      register: (fn) => _mainBindings.manymatrix_on_message(_handle, fn),
     );
-    _mainBindings.manymatrix_on_message(_handle, nativeCallable.nativeFunction);
-    // Keep reference to prevent GC
-    _messageCallable = nativeCallable;
   }
 
-  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
-      _messageCallable;
+  final _messageEvents = _NativeEventChannel();
 
-  /// Register a callback for incoming reaction events.
+  /// Register the callback for incoming reaction events, replacing any
+  /// earlier one.
   ///
   /// The callback receives a JSON-serialized ReactionEvent string.
   void onReaction(void Function(String json) callback) {
-    final nativeCallable =
-        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
-      (ffi.Pointer<ffi.Char> ptr) {
-        final json = ptr.cast<Utf8>().toDartString();
-        _mainBindings.ffi_free_string(ptr.cast());
-        callback(json);
-      },
+    _reactionEvents.replace(
+      callback,
+      register: (fn) => _mainBindings.manymatrix_on_reaction(_handle, fn),
     );
-    _mainBindings.manymatrix_on_reaction(
-        _handle, nativeCallable.nativeFunction);
-    _reactionCallable = nativeCallable;
   }
 
-  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
-      _reactionCallable;
+  final _reactionEvents = _NativeEventChannel();
 
-  /// Register a callback for incoming read receipt events.
+  /// Register the callback for incoming read receipt events, replacing any
+  /// earlier one.
   ///
   /// The callback receives a JSON-serialized ReceiptEvent string.
   void onReceipt(void Function(String json) callback) {
-    final nativeCallable =
-        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
-      (ffi.Pointer<ffi.Char> ptr) {
-        final json = ptr.cast<Utf8>().toDartString();
-        _mainBindings.ffi_free_string(ptr.cast());
-        callback(json);
-      },
+    _receiptEvents.replace(
+      callback,
+      register: (fn) => _mainBindings.manymatrix_on_receipt(_handle, fn),
     );
-    _mainBindings.manymatrix_on_receipt(_handle, nativeCallable.nativeFunction);
-    _receiptCallable = nativeCallable;
   }
 
-  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
-      _receiptCallable;
+  final _receiptEvents = _NativeEventChannel();
 
-  /// Register a callback for incoming custom (non-standard) message-like events whose
-  /// event type matches [eventType] exactly. Pairs with [sendCustomEvent].
+  /// Add a callback for incoming custom (non-standard) message-like events
+  /// whose event type matches [eventType] exactly. Pairs with
+  /// [sendCustomEvent].
   ///
-  /// The callback receives a JSON-serialized CustomEvent string (`event_id`, `room_id`,
-  /// `sender`, `event_type`, `content`, `timestamp`). Unlike [onMessage]/[onReaction]/
-  /// [onReceipt], multiple event types can each have their own registration: every call
-  /// to this method adds a new native handler rather than replacing a single one, so keep
-  /// the returned callables alive in [_customEventCallables] for the client's lifetime.
+  /// The callback receives a JSON-serialized CustomEvent string (`event_id`,
+  /// `room_id`, `sender`, `event_type`, `content`, `timestamp`). Unlike
+  /// [onMessage]/[onReaction]/[onReceipt], every call adds a listener; all
+  /// listeners for a type receive each event.
   void onCustomEvent(String eventType, void Function(String json) callback) {
-    final nativeCallable =
-        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
-      (ffi.Pointer<ffi.Char> ptr) {
-        final json = ptr.cast<Utf8>().toDartString();
-        _mainBindings.ffi_free_string(ptr.cast());
-        callback(json);
+    final channel =
+        _customEvents.putIfAbsent(eventType, () => _NativeEventChannel());
+    channel.add(
+      callback,
+      register: (fn) {
+        final eventTypePtr = eventType.toNativeUtf8();
+        try {
+          _mainBindings.manymatrix_on_custom_event(
+            _handle,
+            eventTypePtr.cast(),
+            fn,
+          );
+        } finally {
+          calloc.free(eventTypePtr);
+        }
       },
     );
-    final eventTypePtr = eventType.toNativeUtf8();
-    try {
-      _mainBindings.manymatrix_on_custom_event(
-        _handle,
-        eventTypePtr.cast(),
-        nativeCallable.nativeFunction,
-      );
-    } finally {
-      calloc.free(eventTypePtr);
-    }
-    _customEventCallables.add(nativeCallable);
   }
 
-  final List<ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>>
-      _customEventCallables = [];
+  final Map<String, _NativeEventChannel> _customEvents = {};
 
-  /// Register a callback for background sync-loop status events.
+  /// Register the callback for background sync-loop status events, replacing
+  /// any earlier one. It may be registered before or after [syncForever].
   ///
   /// The callback receives a JSON string such as
   /// `{"state":"running","ok":true}` when a native sync loop starts and
   /// `{"state":"exited","ok":false,"error":"..."}` when it exits after
   /// being started with [syncForever].
   void onSyncStatus(void Function(String json) callback) {
-    _syncStatusCallable?.close();
-    final nativeCallable =
-        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
-      (ffi.Pointer<ffi.Char> ptr) {
-        final json = ptr.cast<Utf8>().toDartString();
-        _mainBindings.ffi_free_string(ptr.cast());
-        callback(json);
-      },
-    );
-    _syncStatusCallable = nativeCallable;
+    // The trampoline is handed to Rust by [syncForever]; until then only the
+    // Dart handler needs recording.
+    _syncStatusEvents.replace(callback, register: (_) {});
   }
 
-  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
-      _syncStatusCallable;
+  final _syncStatusEvents = _NativeEventChannel();
 
-  /// Register a callback for refreshed session JSON updates.
+  /// Register the callback for refreshed session JSON updates, replacing any
+  /// earlier one.
   void onSessionUpdate(void Function(String sessionJson) callback) {
-    _sessionUpdateCallable?.close();
-    final nativeCallable =
-        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>.listener(
-      (ffi.Pointer<ffi.Char> ptr) {
-        final json = ptr.cast<Utf8>().toDartString();
-        _mainBindings.ffi_free_string(ptr.cast());
-        callback(json);
+    _sessionUpdateEvents.replace(
+      callback,
+      register: (fn) {
+        final result = _mainBindings.manymatrix_on_session_update(_handle, fn);
+        _checkResult(_mainBindings, result, method: 'on_session_update');
       },
     );
-    final result = _mainBindings.manymatrix_on_session_update(
-      _handle,
-      nativeCallable.nativeFunction,
-    );
-    _checkResult(_mainBindings, result, method: 'on_session_update');
-    _sessionUpdateCallable = nativeCallable;
   }
 
-  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<ffi.Char>)>?
-      _sessionUpdateCallable;
+  final _sessionUpdateEvents = _NativeEventChannel();
 
   /// Dispose the client, freeing native resources.
   ///
@@ -1746,13 +1694,81 @@ class ManyMatrixBridge implements ffi.Finalizable {
     // `manymatrix_free` also joins the sync thread, so no callback can fire
     // after it returns and the trampolines below are safe to close.
     await _call('free', {});
-    _messageCallable?.close();
-    _reactionCallable?.close();
-    _receiptCallable?.close();
-    _syncStatusCallable?.close();
-    _sessionUpdateCallable?.close();
-    for (final callable in _customEventCallables) {
-      callable.close();
+    _messageEvents.close();
+    _reactionEvents.close();
+    _receiptEvents.close();
+    _syncStatusEvents.close();
+    _sessionUpdateEvents.close();
+    for (final channel in _customEvents.values) {
+      channel.close();
     }
+  }
+}
+
+typedef _NativeStringCallback = ffi.Void Function(ffi.Pointer<ffi.Char>);
+
+/// One native callback trampoline whose Dart handlers can change.
+///
+/// Rust keeps every function pointer it is given for the client's lifetime:
+/// each `manymatrix_on_*` call adds a matrix-sdk handler, and the sync thread
+/// holds the status pointer. Calling a closed `NativeCallable` is undefined
+/// behaviour, so a trampoline may only be closed once the client is freed.
+/// Registering it once and swapping the Dart handlers behind it avoids both
+/// leaking a trampoline per registration and delivering every event to stale
+/// handlers as well as the current one.
+class _NativeEventChannel {
+  final List<void Function(String json)> _handlers = [];
+  ffi.NativeCallable<_NativeStringCallback>? _callable;
+
+  /// The trampoline, created on first use. Uses `NativeCallable.listener`,
+  /// which may be called from Rust's sync thread and posts to this isolate.
+  ffi.Pointer<ffi.NativeFunction<_NativeStringCallback>> get nativeFunction {
+    final callable = _callable ??=
+        ffi.NativeCallable<_NativeStringCallback>.listener(_dispatch);
+    return callable.nativeFunction;
+  }
+
+  void _dispatch(ffi.Pointer<ffi.Char> ptr) {
+    // Rust hands over ownership of this heap-allocated string (see
+    // MessageCallback's doc comment) precisely because NativeCallable.listener
+    // posts across isolates and returns before this closure runs: a pointer
+    // valid only for the native call's duration would already be dangling.
+    final json = ptr.cast<Utf8>().toDartString();
+    ManyMatrixBridge._mainBindings.ffi_free_string(ptr.cast());
+    for (final handler in List.of(_handlers)) {
+      handler(json);
+    }
+  }
+
+  /// Make [handler] the only handler, registering with Rust the first time.
+  void replace(
+    void Function(String json) handler, {
+    required void Function(
+            ffi.Pointer<ffi.NativeFunction<_NativeStringCallback>>)
+        register,
+  }) {
+    final firstRegistration = _callable == null;
+    _handlers
+      ..clear()
+      ..add(handler);
+    if (firstRegistration) register(nativeFunction);
+  }
+
+  /// Add [handler] alongside any others, registering with Rust the first time.
+  void add(
+    void Function(String json) handler, {
+    required void Function(
+            ffi.Pointer<ffi.NativeFunction<_NativeStringCallback>>)
+        register,
+  }) {
+    final firstRegistration = _callable == null;
+    _handlers.add(handler);
+    if (firstRegistration) register(nativeFunction);
+  }
+
+  void close() {
+    _handlers.clear();
+    _callable?.close();
+    _callable = null;
   }
 }
