@@ -13,6 +13,14 @@
 //! Commands: `join`, `send_text`, `send_media`, `react`, `receipt`,
 //! `create_invite`, `stop`.
 
+// Built with neither the embedded nor the hosted tier (for example the
+// Docker-only test run), the actor can only print its usage error, so the
+// rest of `main` is unreachable by design.
+#![cfg_attr(
+    not(any(feature = "embedded-tests", feature = "hosted-tests")),
+    allow(unused_imports, unused_variables, unreachable_code)
+)]
+
 use anyhow::{bail, Context, Result};
 use manymatrix_core::{CreateRoomOptions, ManyMatrixClient};
 use test_harness::{ServerKind, TestHomeserver};

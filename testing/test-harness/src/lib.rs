@@ -1042,7 +1042,7 @@ fn extract_continuwuity_bootstrap_token(logs: &str) -> Result<String> {
     Ok(after_color[..end].trim().to_owned())
 }
 
-#[cfg(any(feature = "embedded-tests", feature = "docker-tests"))]
+#[cfg(feature = "embedded-tests")]
 fn parse_port(base_url: &str) -> Result<u16> {
     let (_, port) = base_url
         .rsplit_once(':')
