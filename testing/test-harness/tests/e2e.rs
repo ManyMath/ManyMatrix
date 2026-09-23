@@ -202,8 +202,6 @@ async fn embedded_servers_bind_distinct_ports() -> Result<()> {
     Ok(())
 }
 
-// All remaining tests in this file are Docker-only Synapse coverage.
-
 /// Verify session persists: login, save session, create new client, restore, sync.
 async fn session_persist_across_restart(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
