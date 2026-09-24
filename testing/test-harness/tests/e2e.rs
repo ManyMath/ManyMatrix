@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -92,6 +94,75 @@ async fn alice_sends_bob_receives(kind: ServerKind) -> Result<()> {
 }
 
 test_harness::e2e_test!(alice_sends_bob_receives);
+
+/// Two sync rounds racing on one client must not deliver an event twice.
+///
+/// Without serialization both rounds long-poll from the same `since` token,
+/// the server answers both with the batch holding the message, and every
+/// event handler fires once per round.
+async fn concurrent_syncs_deliver_each_event_once(kind: ServerKind) -> Result<()> {
+    let server = TestHomeserver::start(kind).await?;
+    let run_result: Result<()> = async {
+        let alice_reg = server.register_user("race_alice", "password1").await?;
+        let bob_reg = server.register_user("race_bob", "password2").await?;
+
+        let alice_store = tempfile::tempdir()?;
+        let alice = ManyMatrixClient::new(server.base_url(), alice_store.path()).await?;
+        alice.login(&alice_reg.localpart, "password1").await?;
+        let bob_store = tempfile::tempdir()?;
+        let bob = ManyMatrixClient::new(server.base_url(), bob_store.path()).await?;
+        bob.login(&bob_reg.localpart, "password2").await?;
+
+        let mut req = CreateRoomRequest::new();
+        req.name = Some("sync-race".to_owned());
+        req.invite = vec![
+            <&matrix_sdk::ruma::UserId>::try_from(bob_reg.user_id.as_str())
+                .unwrap()
+                .to_owned(),
+        ];
+        let room_id = alice.inner().create_room(req).await?.room_id().to_owned();
+        bob.sync_once().await?;
+        bob.join_room(room_id.as_str()).await?;
+        alice.sync_once().await?;
+        bob.sync_once().await?;
+
+        let deliveries = Arc::new(AtomicUsize::new(0));
+        let counter = deliveries.clone();
+        bob.on_message(move |message| {
+            if message.body == "only once" {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        let round = Duration::from_secs(3);
+        let (first, second, sent) = tokio::join!(
+            bob.sync_once_with_timeout(round),
+            bob.sync_once_with_timeout(round),
+            async {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                alice.send_text(room_id.as_str(), "only once").await
+            },
+        );
+        first?;
+        second?;
+        sent?;
+        // Either racing round may have returned early with leftover events;
+        // keep syncing until the message has arrived at least once.
+        for _ in 0..5 {
+            if deliveries.load(Ordering::SeqCst) > 0 {
+                break;
+            }
+            bob.sync_once_with_timeout(Duration::from_secs(2)).await?;
+        }
+
+        assert_eq!(deliveries.load(Ordering::SeqCst), 1);
+        Ok(())
+    }
+    .await;
+    server.finish(run_result).await
+}
+
+test_harness::e2e_test!(concurrent_syncs_deliver_each_event_once);
 
 /// Simpler test: just login and sync once.
 async fn login_and_sync(kind: ServerKind) -> Result<()> {
