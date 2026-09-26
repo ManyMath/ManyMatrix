@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
@@ -406,9 +407,10 @@ class _ExtensionTransport implements _WebTransport {
 class _WorkerTransport implements _WebTransport {
   _WorkerTransport._(this._worker) {
     _messageListener = _handleMessage.toJS;
+    _messageErrorListener = _handleMessageError.toJS;
     _errorListener = _handleWorkerError.toJS;
     _worker.onmessage = _messageListener;
-    _worker.onmessageerror = _errorListener;
+    _worker.onmessageerror = _messageErrorListener;
     _worker.onerror = _errorListener;
   }
 
@@ -449,10 +451,13 @@ class _WorkerTransport implements _WebTransport {
   final Completer<void> _closed = Completer<void>();
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
   late final JSFunction _messageListener;
+  late final JSFunction _messageErrorListener;
   late final JSFunction _errorListener;
   _TransportEventHandler? _onEvent;
   int _nextRequestId = 1;
+  bool _started = false;
   bool _disposed = false;
+  ManyMatrixPanicException? _fatal;
   Future<void>? _closeFuture;
 
   @override
@@ -477,8 +482,13 @@ class _WorkerTransport implements _WebTransport {
   void _handleMessageData(Map<String, dynamic> message) {
     final type = message['type'];
     if (type == 'manymatrix-ready') {
+      _started = true;
       if (!_ready.isCompleted) _ready.complete();
       bridgeStatus.emit(BridgeStatus.connected);
+      return;
+    }
+    if (type == 'manymatrix-fatal') {
+      _markFatal(_fatalException(message['error']));
       return;
     }
     if (type == 'manymatrix-init-error') {
@@ -517,8 +527,37 @@ class _WorkerTransport implements _WebTransport {
     }
   }
 
+  // One message could not be deserialized. Its request id is unknown, so that
+  // request runs into its deadline; before the handshake it fails startup.
+  void _handleMessageError(web.Event event) {
+    final error = ManyMatrixSerdeException(
+      'Could not deserialize a ManyMatrix worker message',
+      details: const {'reason': 'worker_message_error'},
+    );
+    if (!_started) {
+      if (!_ready.isCompleted) _ready.completeError(error);
+      bridgeStatus.emit(BridgeStatus.failed);
+      return;
+    }
+    developer.log('$error', name: 'manymatrix.bridge');
+  }
+
   void _handleWorkerError(web.Event event) {
     event.preventDefault();
+    if (_started) {
+      // The module loaded, so this is a runtime fault the Worker did not
+      // report itself (it posts manymatrix-fatal for those it catches), not a
+      // deployment problem.
+      final cause = '${event['message'].dartify() ?? event.type}';
+      _markFatal(
+        ManyMatrixPanicException(
+          'The ManyMatrix web worker stopped after a Rust panic or trap: '
+          '$cause',
+          details: {'reason': 'runtime_fatal', 'cause': cause},
+        ),
+      );
+      return;
+    }
     final error = ManyMatrixStorageException(
       'The ManyMatrix web worker could not load. Verify that '
       'manymatrix_worker.js, pkg/manymatrix_web.js, and the WASM file are '
@@ -529,6 +568,51 @@ class _WorkerTransport implements _WebTransport {
     if (!_closed.isCompleted) _closed.complete();
     _failPending(error);
     bridgeStatus.emit(BridgeStatus.failed);
+  }
+
+  static ManyMatrixPanicException _fatalException(Object? value) {
+    try {
+      final error = _transportException(value);
+      return ManyMatrixPanicException(error.message, details: error.details);
+    } on ManyMatrixException {
+      return ManyMatrixPanicException(
+        'The ManyMatrix WASM runtime stopped after a Rust panic or trap.',
+        details: const {'reason': 'runtime_fatal'},
+      );
+    }
+  }
+
+  // A panic aborts the WASM instance (panic=abort), so nothing it held is
+  // usable: fail what is pending and refuse every later call. This transport
+  // has no replacement path; the owner must create a new bridge.
+  void _markFatal(ManyMatrixPanicException error) {
+    if (_disposed || _fatal != null) return;
+    _fatal = error;
+    if (!_ready.isCompleted) _ready.completeError(error);
+    _failPending(error);
+    // The Worker closes itself after reporting a fault; terminate it anyway
+    // in case it could not.
+    _worker.terminate();
+    if (!_closed.isCompleted) _closed.complete();
+    bridgeStatus.emit(BridgeStatus.failed);
+    _onEvent?.call(
+      'runtime_fatal',
+      jsonEncode({
+        'kind': error.kind,
+        'message': error.message,
+        'details': error.details,
+      }),
+    );
+  }
+
+  void _throwIfFatal(String method) {
+    final fatal = _fatal;
+    if (fatal == null) return;
+    throw ManyMatrixPanicException(
+      'The ManyMatrix web runtime stopped after a Rust panic or trap and '
+      'cannot run $method. Close this bridge and create a new one.',
+      details: {...fatal.details, 'reason': 'runtime_fatal', 'method': method},
+    );
   }
 
   void _failPending(Object error) {
@@ -546,6 +630,7 @@ class _WorkerTransport implements _WebTransport {
   ) async {
     if (_disposed) throw StateError('ManyMatrix bridge is disposed');
     await _ready.future;
+    _throwIfFatal(method);
     final requestId = _nextRequestId++;
     final completer = Completer<Map<String, dynamic>>();
     _pending[requestId] = completer;
@@ -1558,6 +1643,8 @@ class ManyMatrixBridge {
         _onReceiptCallback?.call(payload);
       case 'custom_event':
         _customEvents.dispatch(payload);
+      case 'runtime_fatal':
+        _handleRuntimeFatal(payload);
       case 'sync_status':
         _onSyncStatusCallback?.call(payload);
       case 'session_update':
@@ -1577,6 +1664,40 @@ class ManyMatrixBridge {
           }),
         );
     }
+  }
+
+  // The Worker's WASM instance aborted, taking its Rust client, sync loop,
+  // and event handlers with it. Extension mode re-claims a fresh Worker on
+  // the next call and restores the session; the module Worker transport
+  // fails every later call.
+  void _handleRuntimeFatal(String payload) {
+    _eventsSubscribed = false;
+    _customEvents.resetSubscriptions();
+    if (!_syncRunning) return;
+    // Report the dead loop like a failed sync exit instead of restarting it
+    // during recovery, where a panic inside sync would just repeat.
+    _syncRunning = false;
+    var error = const <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map) error = _stringMap(decoded);
+    } on FormatException {
+      // Report the generic status below.
+    }
+    final message = error['message'];
+    final details = error['details'];
+    _onSyncStatusCallback?.call(
+      jsonEncode({
+        'state': 'exited',
+        'ok': false,
+        'error': message is String
+            ? message
+            : 'The ManyMatrix web runtime stopped after a Rust panic or trap.',
+        'errorKind': 'PanicError',
+        'errorDetails':
+            details is Map ? details : const {'reason': 'runtime_fatal'},
+      }),
+    );
   }
 
   void _ensureEventChannel() {
