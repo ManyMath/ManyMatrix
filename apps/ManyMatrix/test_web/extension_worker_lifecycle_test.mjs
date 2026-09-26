@@ -311,3 +311,63 @@ test('dispose queued behind replacement closes the newly claimed Worker', async 
   assert.equal(created.length, 2);
   assert.equal(created[1].disposed, true);
 });
+
+test('evicting a faulted Worker makes the owner re-claim a fresh one', async () => {
+  const created = [];
+  const registry = new OwnedClientRegistry((_clientId, ownerId) => {
+    const client = {
+      ownerId,
+      disposed: false,
+      async dispose() {
+        this.disposed = true;
+      },
+    };
+    created.push(client);
+    return client;
+  });
+  const faulted = await registry.claim('account-store', 'page');
+
+  assert.equal(await registry.evict('account-store', faulted), true);
+
+  assert.equal(faulted.disposed, true);
+  await assert.rejects(
+    registry.current('account-store', 'page'),
+    (error) => error.details?.reason === 'stale_owner',
+  );
+  assert.throws(
+    () => registry.heartbeat('account-store', 'page'),
+    (error) => error.details?.reason === 'stale_owner',
+  );
+  await registry.claim('account-store', 'page', {recovering: true});
+  await assert.rejects(
+    registry.current('account-store', 'page'),
+    (error) => error.details?.reason === 'recovery_pending',
+  );
+  assert.equal(created.length, 2);
+});
+
+test('a late eviction leaves the replacement Worker alone', async () => {
+  let now = 0;
+  const registry = new OwnedClientRegistry(
+    (_clientId, ownerId) => ({
+      ownerId,
+      disposed: false,
+      async dispose() {
+        this.disposed = true;
+      },
+    }),
+    {leaseMs: 1, now: () => now},
+  );
+  const faulted = await registry.claim('account-store', 'old');
+  now = 2;
+  const replacement = await registry.claim('account-store', 'new');
+
+  assert.equal(await registry.evict('account-store', faulted), false);
+  assert.equal(await registry.evict('other-store', faulted), false);
+
+  assert.equal(replacement.disposed, false);
+  assert.equal(
+    await registry.current('account-store', 'new'),
+    replacement,
+  );
+});

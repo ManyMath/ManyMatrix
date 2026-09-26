@@ -214,6 +214,28 @@ export class OwnedClientRegistry {
     return this.#serialize(clientId, () => this.#dispose(clientId, ownerId));
   }
 
+  // Drops `client` if it is still the account's Worker, e.g. after its WASM
+  // runtime hit a fatal fault. The owner's next RPC then reports
+  // stale_owner, so the page re-claims a fresh Worker and restores its
+  // session through the usual replacement path.
+  evict(clientId, client) {
+    return this.#serialize(clientId, () => this.#evict(clientId, client));
+  }
+
+  async #evict(clientId, client) {
+    const entry = this.entries.get(clientId);
+    if (!entry || entry.closing) return false;
+    let current;
+    try {
+      current = await entry.ready;
+    } catch (_) {
+      return false;
+    }
+    if (current !== client) return false;
+    await this.#closeEntry(clientId, entry);
+    return true;
+  }
+
   async #dispose(clientId, ownerId) {
     const entry = this.entries.get(clientId);
     if (!entry || entry.ownerId !== ownerId) return false;
