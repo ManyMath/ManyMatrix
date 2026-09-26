@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
 import 'bridge_status.dart';
+import 'custom_event_listeners.dart';
 import 'models/models.dart';
 import 'store_cleanup.dart';
 import 'web_bridge_errors.dart';
@@ -770,6 +771,14 @@ class ManyMatrixBridge {
           } else {
             _eventsSubscribed = false;
           }
+          _customEvents.resetSubscriptions();
+          for (final eventType in _customEvents.eventTypes) {
+            await extensionTransport._callOnce('bridge.recovery_call', {
+              'method': 'events.subscribe_custom',
+              'args': {'event_type': eventType},
+            });
+            _customEvents.markSubscribed(eventType);
+          }
           if (_syncRunning) {
             await extensionTransport._callOnce('bridge.recovery_call', {
               'method': 'sync.start',
@@ -1227,6 +1236,27 @@ class ManyMatrixBridge {
     return result['event_id'] as String;
   }
 
+  /// Send a message-like event of an arbitrary [eventType] with arbitrary JSON
+  /// [content] to a room. Returns the event ID.
+  ///
+  /// Use it for an app-specific event type (e.g. `io.example.foo`) with its
+  /// own content schema. Pair with [onCustomEvent] to receive it.
+  Future<String> sendCustomEvent(
+    String roomId,
+    String eventType,
+    Map<String, dynamic> content,
+  ) async {
+    // Round-trip through JSON so unsupported values fail here exactly as they
+    // do on the native bridge, instead of being mangled by jsify.
+    final jsonContent = jsonDecode(jsonEncode(content)) as Map<String, dynamic>;
+    final result = await _call('messages.send_custom_event', {
+      'room_id': roomId,
+      'event_type': eventType,
+      'content': jsonContent,
+    });
+    return result['event_id'] as String;
+  }
+
   Future<String> sendHtml(String roomId, String body, String html) async {
     final result = await _call('messages.send_html', {
       'room_id': roomId,
@@ -1508,6 +1538,7 @@ class ManyMatrixBridge {
   void Function(String json)? _onReceiptCallback;
   void Function(String json)? _onSyncStatusCallback;
   void Function(String json)? _onSessionUpdateCallback;
+  final CustomEventListeners _customEvents = CustomEventListeners();
   bool _eventsSubscribed = false;
 
   bool get _hasEventCallbacks =>
@@ -1525,6 +1556,8 @@ class ManyMatrixBridge {
         _onReactionCallback?.call(payload);
       case 'receipt':
         _onReceiptCallback?.call(payload);
+      case 'custom_event':
+        _customEvents.dispatch(payload);
       case 'sync_status':
         _onSyncStatusCallback?.call(payload);
       case 'session_update':
@@ -1561,11 +1594,32 @@ class ManyMatrixBridge {
     );
   }
 
+  void _ensureCustomEventSubscription(String eventType) {
+    final token = _customEvents.beginSubscription(eventType);
+    if (token == null) return;
+    unawaited(
+      _call('events.subscribe_custom', {'event_type': eventType}).catchError((
+        Object e,
+      ) {
+        _customEvents.subscriptionFailed(eventType, token);
+        developer.log(
+          'events.subscribe_custom failed for $eventType: $e',
+          name: 'manymatrix.bridge',
+        );
+        return <String, dynamic>{};
+      }),
+    );
+  }
+
   // Handlers attach to the wasm-side client instance, which login/restore
   // replace, so an active subscription must be re-established.
   void _resubscribeEvents() {
     _eventsSubscribed = false;
     if (_hasEventCallbacks) _ensureEventChannel();
+    _customEvents.resetSubscriptions();
+    for (final eventType in _customEvents.eventTypes) {
+      _ensureCustomEventSubscription(eventType);
+    }
   }
 
   /// Register a callback for incoming message events.
@@ -1592,6 +1646,19 @@ class ManyMatrixBridge {
     _ensureEventChannel();
   }
 
+  /// Register a callback for incoming custom (non-standard) message-like
+  /// events whose event type matches [eventType] exactly. Pairs with
+  /// [sendCustomEvent].
+  ///
+  /// The callback receives a JSON-serialized CustomEvent string (`event_id`,
+  /// `room_id`, `sender`, `event_type`, `content`, `timestamp`). Like the
+  /// native bridge, every call adds a listener rather than replacing one, so
+  /// several callbacks (and several event types) can be registered.
+  void onCustomEvent(String eventType, void Function(String json) callback) {
+    _customEvents.addListener(eventType, callback);
+    _ensureCustomEventSubscription(eventType);
+  }
+
   void onSyncStatus(void Function(String json) callback) {
     _onSyncStatusCallback = callback;
     _ensureEventChannel();
@@ -1609,6 +1676,7 @@ class ManyMatrixBridge {
     _onReceiptCallback = null;
     _onSyncStatusCallback = null;
     _onSessionUpdateCallback = null;
+    _customEvents.clear();
     _eventsSubscribed = false;
   }
 
