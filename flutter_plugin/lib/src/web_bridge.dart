@@ -150,7 +150,11 @@ class _WebStoreLease {
   static Future<_WebStoreLease> acquire(String storeName) async {
     final release = Completer<void>();
     final granted = Completer<bool>();
+    var abandoned = false;
     final callback = ((JSAny? lock) {
+      // Nobody owns a grant that arrives after the timeout below, so hand
+      // the lock straight back instead of pinning it for the tab's lifetime.
+      if (abandoned) return null;
       if (!granted.isCompleted) granted.complete(lock != null);
       if (lock == null) return null;
       return release.future.then<JSAny?>((_) => null).toJS;
@@ -173,7 +177,33 @@ class _WebStoreLease {
         details: {'store': storeName, 'cause': '$error'},
       );
     }
-    final acquired = await granted.future.timeout(const Duration(seconds: 2));
+    // A request rejected before granting fails acquisition now. Listening
+    // here also keeps a rejection nobody awaits from going unhandled.
+    unawaited(
+      holding.then<void>(
+        (_) {},
+        onError: (Object error, StackTrace _) {
+          if (granted.isCompleted) return;
+          granted.completeError(
+            ManyMatrixStorageException(
+              'This browser cannot enforce exclusive Matrix account storage.',
+              details: {'store': storeName, 'cause': '$error'},
+            ),
+          );
+        },
+      ),
+    );
+    final bool acquired;
+    try {
+      acquired = await granted.future.timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      abandoned = true;
+      throw ManyMatrixStorageException(
+        'The browser did not grant exclusive access to the local Matrix '
+        'store in time. Retry in a moment.',
+        details: {'reason': 'store_lock_timeout', 'store': storeName},
+      );
+    }
     if (!acquired) {
       await holding;
       throw ManyMatrixStorageException(
