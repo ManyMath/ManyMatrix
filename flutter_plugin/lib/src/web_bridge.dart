@@ -841,7 +841,14 @@ class ManyMatrixBridge {
     Map<String, dynamic> args,
   ) async {
     final recovery = _transportRecovery;
-    if (recovery != null) await recovery;
+    if (recovery != null) {
+      try {
+        await recovery;
+      } on Object {
+        // The call that started the recovery reports its failure. This one
+        // runs against whatever state the replacement Worker ended up in.
+      }
+    }
     try {
       return await _transport.call(method, args);
     } on ManyMatrixException catch (error) {
@@ -854,68 +861,7 @@ class ManyMatrixBridge {
   Future<void> _restoreAfterTransportRecovery() {
     final active = _transportRecovery;
     if (active != null) return active;
-    final future = () async {
-      final sessionJson = _currentSessionJson;
-      final extensionTransport =
-          _transport is _ExtensionTransport ? _transport : null;
-      try {
-        if (extensionTransport == null) {
-          throw StateError('Worker recovery is only valid in extension mode.');
-        }
-        if (sessionJson != null) {
-          await extensionTransport._callOnce('bridge.recovery_call', {
-            'method': 'auth.restore',
-            'args': {
-              'homeserver_url': _homeserverUrl,
-              'session_json': sessionJson,
-              'store_name': _storeName,
-            },
-          });
-          if (_hasEventCallbacks) {
-            await extensionTransport._callOnce('bridge.recovery_call', {
-              'method': 'events.subscribe',
-              'args': <String, dynamic>{},
-            });
-            _eventsSubscribed = true;
-          } else {
-            _eventsSubscribed = false;
-          }
-          _customEvents.resetSubscriptions();
-          for (final eventType in _customEvents.eventTypes) {
-            await extensionTransport._callOnce('bridge.recovery_call', {
-              'method': 'events.subscribe_custom',
-              'args': {'event_type': eventType},
-            });
-            _customEvents.markSubscribed(eventType);
-          }
-          if (_syncRunning) {
-            await extensionTransport._callOnce('bridge.recovery_call', {
-              'method': 'sync.start',
-              'args': <String, dynamic>{},
-            });
-          }
-        }
-        // A replacement with no persisted session still starts gated. Always
-        // release recovery_pending after the optional restore sequence.
-        await extensionTransport._callOnce(
-          'bridge.recovery_complete',
-          const <String, dynamic>{},
-        );
-        extensionTransport._acknowledgeWorkerRecovery();
-      } on Object catch (error) {
-        final matrixError = error is ManyMatrixException ? error : null;
-        _onSyncStatusCallback?.call(
-          jsonEncode({
-            'state': 'transport_restore_failed',
-            'ok': false,
-            'error': '$error',
-            if (matrixError != null) 'errorKind': matrixError.kind,
-            if (matrixError != null) 'errorDetails': matrixError.details,
-          }),
-        );
-        rethrow;
-      }
-    }();
+    final future = _recoverReplacedWorker();
     _transportRecovery = future;
     unawaited(
       future.then<void>(
@@ -928,6 +874,90 @@ class ManyMatrixBridge {
       ),
     );
     return future;
+  }
+
+  // Rebuilds this bridge's state on a replacement extension Worker, which
+  // starts without a Rust client and gated behind recovery_pending.
+  Future<void> _recoverReplacedWorker() async {
+    final transport = _transport;
+    if (transport is! _ExtensionTransport) {
+      throw StateError('Worker recovery is only valid in extension mode.');
+    }
+    Future<void> recoveryCall(String method, Map<String, dynamic> args) =>
+        transport._callOnce('bridge.recovery_call', {
+          'method': method,
+          'args': args,
+        });
+
+    final sessionJson = _currentSessionJson;
+    final restartSync = _syncRunning;
+    // Nothing registered on the old Worker survives. Each flag is set again
+    // only once the replacement has confirmed it.
+    _eventsSubscribed = false;
+    _customEvents.resetSubscriptions();
+    _syncRunning = false;
+    Object? failure;
+    StackTrace? failureStack;
+    try {
+      if (sessionJson != null) {
+        await recoveryCall('auth.restore', {
+          'homeserver_url': _homeserverUrl,
+          'session_json': sessionJson,
+          'store_name': _storeName,
+        });
+        if (_hasEventCallbacks) {
+          await recoveryCall('events.subscribe', <String, dynamic>{});
+          _eventsSubscribed = true;
+        }
+        for (final eventType in _customEvents.eventTypes) {
+          await recoveryCall('events.subscribe_custom', {
+            'event_type': eventType,
+          });
+          _customEvents.markSubscribed(eventType);
+        }
+        if (restartSync) {
+          await recoveryCall('sync.start', <String, dynamic>{});
+          _syncRunning = true;
+        }
+      } else if (restartSync) {
+        throw ManyMatrixStorageException(
+          'The extension Worker was replaced without a session to restore, '
+          'so background sync was not restarted.',
+          details: const {'reason': 'no_session_to_restore'},
+        );
+      }
+    } on Object catch (error, stackTrace) {
+      failure = error;
+      failureStack = stackTrace;
+    }
+    // Lift the gate even when the restore failed: the Worker is then simply
+    // signed out, whereas leaving it gated made every later call re-run the
+    // failing restore.
+    try {
+      await transport._callOnce(
+        'bridge.recovery_complete',
+        const <String, dynamic>{},
+      );
+    } on Object catch (error) {
+      // Typically stale_owner: the next call re-claims and recovers again.
+      developer.log(
+        'bridge.recovery_complete failed: $error',
+        name: 'manymatrix.bridge',
+      );
+    }
+    transport._acknowledgeWorkerRecovery();
+    if (failure == null) return;
+    final matrixError = failure is ManyMatrixException ? failure : null;
+    _onSyncStatusCallback?.call(
+      jsonEncode({
+        'state': 'transport_restore_failed',
+        'ok': false,
+        'error': '$failure',
+        if (matrixError != null) 'errorKind': matrixError.kind,
+        if (matrixError != null) 'errorDetails': matrixError.details,
+      }),
+    );
+    Error.throwWithStackTrace(failure, failureStack!);
   }
 
   static final _sensitiveKeys =
