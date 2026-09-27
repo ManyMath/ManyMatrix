@@ -1,7 +1,34 @@
-export function rpcTimeoutMs(method) {
-  return typeof method === 'string' && method.startsWith('media.')
-    ? 5 * 60_000
-    : 30_000;
+const DEFAULT_RPC_TIMEOUT_MS = 30_000;
+const LONG_RPC_TIMEOUT_MS = 5 * 60_000;
+// matrix-sdk's default long-poll timeout, used when sync.once has none.
+const DEFAULT_SYNC_TIMEOUT_MS = 30_000;
+// Room on top of the long-poll for the request itself, plus a background
+// sync round that may still hold the client's sync guard (up to ~35 s).
+const SYNC_ONCE_ALLOWANCE_MS = 40_000;
+const LONG_RUNNING_METHODS = new Set([
+  'auth.restore',
+  'e2ee.bootstrap_cross_signing',
+  'e2ee.enable_recovery',
+  'e2ee.restore_key_backup',
+  'e2ee.wait_for_backup_upload',
+]);
+
+// Mirrors webRpcTimeout in the Dart web bridge.
+export function rpcTimeoutMs(method, args) {
+  if (method === 'bridge.recovery_call') {
+    return rpcTimeoutMs(args?.method, args?.args);
+  }
+  if (typeof method !== 'string') return DEFAULT_RPC_TIMEOUT_MS;
+  if (method.startsWith('media.') || LONG_RUNNING_METHODS.has(method)) {
+    return LONG_RPC_TIMEOUT_MS;
+  }
+  if (method === 'sync.once') {
+    const timeoutMs = args?.timeout_ms;
+    return (Number.isSafeInteger(timeoutMs) && timeoutMs >= 0
+      ? timeoutMs
+      : DEFAULT_SYNC_TIMEOUT_MS) + SYNC_ONCE_ALLOWANCE_MS;
+  }
+  return DEFAULT_RPC_TIMEOUT_MS;
 }
 
 export async function closeClientWorker(

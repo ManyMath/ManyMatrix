@@ -101,7 +101,7 @@ async function probeOffscreenReady() {
 
 function forwardToOffscreen(envelope) {
   return new Promise((resolve) => {
-    const timeoutMs = rpcTimeoutMs(envelope?.method);
+    const timeoutMs = rpcTimeoutMs(envelope?.method, envelope?.args);
     const timeout = setTimeout(() => {
       resolve({err: {kind: 'StorageError', message: 'offscreen no reply', details: {}}});
     }, timeoutMs);

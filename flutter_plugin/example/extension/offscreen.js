@@ -146,7 +146,7 @@ class ClientWorker {
     if (this.fatalError) return {err: this.fatalError};
     const id = this.nextRequestId++;
     return new Promise((resolve) => {
-      const timeoutMs = rpcTimeoutMs(method);
+      const timeoutMs = rpcTimeoutMs(method, args);
       const timer = setTimeout(() => {
         this.pending.delete(id);
         resolve({

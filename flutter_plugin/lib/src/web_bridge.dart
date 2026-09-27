@@ -352,7 +352,7 @@ class _ExtensionTransport implements _WebTransport {
       replyJs = await _chrome.runtime
           .sendMessage(envelope.jsify())
           .toDart
-          .timeout(webRpcTimeout(method));
+          .timeout(webRpcTimeout(method, args));
     } on TimeoutException {
       throw ManyMatrixStorageException(
         'no reply from the ManyMatrix extension runtime',
@@ -666,14 +666,14 @@ class _WorkerTransport implements _WebTransport {
         'args': args,
       }.jsify(),
     );
+    final timeout = webRpcTimeout(method, args);
     try {
-      final timeout = webRpcTimeout(method);
       return await completer.future.timeout(timeout);
     } on TimeoutException {
       _pending.remove(requestId);
       throw ManyMatrixStorageException(
         'The ManyMatrix web worker did not answer in '
-        '${webRpcTimeout(method).inSeconds} seconds.',
+        '${timeout.inSeconds} seconds.',
         details: {'method': method},
       );
     }

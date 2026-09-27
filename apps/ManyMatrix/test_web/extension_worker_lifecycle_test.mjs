@@ -61,6 +61,43 @@ test('media RPCs share a five-minute transport deadline', () => {
   assert.equal(rpcTimeoutMs('media.download'), 5 * 60_000);
   assert.equal(rpcTimeoutMs('media.download_source'), 5 * 60_000);
   assert.equal(rpcTimeoutMs('rooms.list'), 30_000);
+  assert.equal(rpcTimeoutMs(undefined), 30_000);
+});
+
+test('sync.once waits out its long-poll and a background round', () => {
+  assert.equal(rpcTimeoutMs('sync.once', {}), 70_000);
+  assert.equal(rpcTimeoutMs('sync.once'), 70_000);
+  assert.equal(rpcTimeoutMs('sync.once', {timeout_ms: 0}), 40_000);
+  assert.equal(rpcTimeoutMs('sync.once', {timeout_ms: 50_000}), 90_000);
+  assert.equal(rpcTimeoutMs('sync.once', {timeout_ms: -1}), 70_000);
+});
+
+test('restore and key backup RPCs get a multi-minute deadline', () => {
+  for (const method of [
+    'auth.restore',
+    'e2ee.bootstrap_cross_signing',
+    'e2ee.enable_recovery',
+    'e2ee.restore_key_backup',
+    'e2ee.wait_for_backup_upload',
+  ]) {
+    assert.equal(rpcTimeoutMs(method, {}), 5 * 60_000, method);
+  }
+  assert.equal(rpcTimeoutMs('e2ee.is_encrypted', {}), 30_000);
+});
+
+test('a recovery call takes the deadline of the call it wraps', () => {
+  assert.equal(
+    rpcTimeoutMs('bridge.recovery_call', {method: 'auth.restore', args: {}}),
+    5 * 60_000,
+  );
+  assert.equal(
+    rpcTimeoutMs('bridge.recovery_call', {
+      method: 'sync.once',
+      args: {timeout_ms: 1_000},
+    }),
+    41_000,
+  );
+  assert.equal(rpcTimeoutMs('bridge.recovery_call', {}), 30_000);
 });
 
 test('offscreen readiness cannot be lost when creation is immediately ready', async () => {
