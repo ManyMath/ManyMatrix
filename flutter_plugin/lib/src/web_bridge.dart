@@ -684,6 +684,9 @@ class _WorkerTransport implements _WebTransport {
   ) async {
     if (_disposed) throw StateError('ManyMatrix bridge is disposed');
     await _ready.future;
+    // close() may have run during that await. It already failed the pending
+    // requests, so a request registered now would sit out its full deadline.
+    if (_disposed) throw StateError('ManyMatrix bridge was disposed');
     _throwIfFatal(method);
     final requestId = _nextRequestId++;
     final completer = Completer<Map<String, dynamic>>();
