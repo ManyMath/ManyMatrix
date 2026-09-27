@@ -463,19 +463,31 @@ class _WorkerTransport implements _WebTransport {
   @override
   set onEvent(_TransportEventHandler? handler) => _onEvent = handler;
 
-  void _handleMessage(web.MessageEvent event) {
-    try {
-      _handleMessageData(_stringMap(event.data.dartify()));
-    } on Object catch (error) {
-      final failure = error is ManyMatrixException
+  static ManyMatrixException _decodeFailure(Object error) =>
+      error is ManyMatrixException
           ? error
           : ManyMatrixSerdeException(
               'Could not decode a ManyMatrix worker message',
               details: {'cause': '$error'},
             );
-      if (!_ready.isCompleted) _ready.completeError(failure);
-      _failPending(failure);
-      bridgeStatus.emit(BridgeStatus.failed);
+
+  void _handleMessage(web.MessageEvent event) {
+    try {
+      _handleMessageData(_stringMap(event.data.dartify()));
+    } on Object catch (error) {
+      // Replies with a readable id are failed individually in
+      // _handleMessageData, so this message names no request. Only an
+      // unreadable startup handshake is fatal to the transport.
+      final failure = _decodeFailure(error);
+      if (!_started && !_ready.isCompleted) {
+        _ready.completeError(failure);
+        bridgeStatus.emit(BridgeStatus.failed);
+        return;
+      }
+      developer.log(
+        'dropped an undecodable worker message: $failure',
+        name: 'manymatrix.bridge',
+      );
     }
   }
 
@@ -501,7 +513,14 @@ class _WorkerTransport implements _WebTransport {
     if (type == 'manymatrix-event') {
       final kind = message['kind'];
       final payload = message['payload'];
-      if (kind is String && payload is String) _onEvent?.call(kind, payload);
+      if (kind is String && payload is String) {
+        try {
+          _onEvent?.call(kind, payload);
+        } catch (error, stackTrace) {
+          // A throwing app callback is not a transport failure.
+          Zone.current.handleUncaughtError(error, stackTrace);
+        }
+      }
       return;
     }
     if (type == 'manymatrix-closed') {
@@ -513,17 +532,22 @@ class _WorkerTransport implements _WebTransport {
     if (requestId is! num) return;
     final completer = _pending.remove(requestId.toInt());
     if (completer == null) return;
-    if (type == 'manymatrix-result') {
-      completer.complete(_stringMap(message['ok']));
-    } else if (type == 'manymatrix-error') {
-      completer.completeError(_transportException(message['error']));
-    } else {
-      completer.completeError(
-        ManyMatrixSerdeException(
-          'unknown worker reply type',
-          details: {'type': '$type'},
-        ),
-      );
+    try {
+      if (type == 'manymatrix-result') {
+        completer.complete(_stringMap(message['ok']));
+      } else if (type == 'manymatrix-error') {
+        completer.completeError(_transportException(message['error']));
+      } else {
+        completer.completeError(
+          ManyMatrixSerdeException(
+            'unknown worker reply type',
+            details: {'type': '$type'},
+          ),
+        );
+      }
+    } on Object catch (error) {
+      // Only this reply is unreadable; other requests are unaffected.
+      completer.completeError(_decodeFailure(error));
     }
   }
 
