@@ -239,6 +239,7 @@ class _ExtensionTransport implements _WebTransport {
   _TransportEventHandler? _onEvent;
   JSFunction? _eventListener;
   Timer? _heartbeatTimer;
+  bool _heartbeatInFlight = false;
   bool _disposed = false;
   bool _workerReplacementPending = false;
 
@@ -259,11 +260,16 @@ class _ExtensionTransport implements _WebTransport {
   }
 
   Future<void> _heartbeat() async {
-    if (_disposed) return;
+    // An unresponsive extension would otherwise stack one heartbeat per tick
+    // until each hit its deadline.
+    if (_disposed || _heartbeatInFlight) return;
+    _heartbeatInFlight = true;
     try {
       await _callOnce('bridge.heartbeat', const <String, dynamic>{});
     } on Object {
       // The next user operation reports ownership/context loss explicitly.
+    } finally {
+      _heartbeatInFlight = false;
     }
   }
 
