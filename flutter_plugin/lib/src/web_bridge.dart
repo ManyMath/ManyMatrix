@@ -296,14 +296,13 @@ class _ExtensionTransport implements _WebTransport {
   Future<Map<String, dynamic>> call(
     String method,
     Map<String, dynamic> args,
-  ) async {
-    if (_disposed) {
-      throw StateError('ManyMatrix bridge is disposed');
-    }
-    return _callSerialized(method, args);
-  }
+  ) =>
+      _callWithRecovery(method, args);
 
-  Future<Map<String, dynamic>> _callSerialized(
+  // Sends one RPC. If the account Worker was replaced or the extension
+  // context reloaded, re-claims ownership and throws worker_replaced so the
+  // bridge restores its session before retrying.
+  Future<Map<String, dynamic>> _callWithRecovery(
     String method,
     Map<String, dynamic> args,
   ) async {
