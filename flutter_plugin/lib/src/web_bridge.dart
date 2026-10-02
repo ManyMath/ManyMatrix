@@ -1278,6 +1278,14 @@ class ManyMatrixBridge {
     return result['capabilities_json'] as String;
   }
 
+  /// Stop sync, then logout and invalidate the server token.
+  ///
+  /// Unlike the native bridge, which stays usable after logout, the web
+  /// bridge closes itself when [clearPersistedSession] is true (the
+  /// default): the Worker is shut down and the stored session is removed,
+  /// even if the logout request failed. Create a new bridge to sign in
+  /// again. With [clearPersistedSession] false the bridge stays open and the
+  /// stored session is kept.
   Future<void> logout({bool clearPersistedSession = true}) async {
     _closing = true;
     _revokingSession = true;
