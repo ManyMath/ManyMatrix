@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:manymatrix/manymatrix.dart';
 
 import '../providers/manymatrix_providers.dart';
 import '../widgets/message_bubble.dart';
@@ -39,17 +40,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
+  /// Typing notices are best effort: a transport failure is logged rather
+  /// than left as an unhandled async error.
+  void _sendTyping(ManyMatrixBridge client, bool typing) {
+    unawaited(
+      client.sendTyping(widget.roomId, typing).catchError((Object error) {
+        debugPrint('sendTyping($typing) failed: $error');
+      }),
+    );
+  }
+
   void _onTextChanged(String text) {
     final client = ref.read(matrixClientProvider);
     if (client == null) return;
 
     // Send typing indicator.
-    client.sendTyping(widget.roomId, true);
+    _sendTyping(client, true);
 
     // Reset the idle timer.
     _typingTimer?.cancel();
     _typingTimer = Timer(const Duration(seconds: 3), () {
-      client.sendTyping(widget.roomId, false);
+      _sendTyping(client, false);
     });
   }
 
@@ -68,7 +79,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // Stop typing indicator after send.
       _typingTimer?.cancel();
       final client = ref.read(matrixClientProvider);
-      client?.sendTyping(widget.roomId, false);
+      if (client != null) _sendTyping(client, false);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
