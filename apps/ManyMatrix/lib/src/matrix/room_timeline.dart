@@ -703,7 +703,15 @@ MessageEvent _messageWithReplacement(
     timestamp: original.timestamp,
     inReplyTo: original.inReplyTo,
     threadRoot: original.threadRoot,
+    replacesEventId: original.replacesEventId,
+    redactsEventId: original.redactsEventId,
     editedAt: replacement.timestamp,
+    // m.new_content is the complete new content, so an attachment caption
+    // edit carries the media source; dropping it loses the download action.
+    mxcUri: replacement.mxcUri,
+    mediaSource: replacement.mediaSource,
+    filename: replacement.filename,
+    fileSize: replacement.fileSize,
   );
 }
 

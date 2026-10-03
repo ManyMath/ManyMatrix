@@ -721,6 +721,56 @@ void main() {
     expect(service.readReceipts.map((r) => r.eventId), <String>['event-1']);
   });
 
+  test('a caption edit keeps the attachment downloadable', () async {
+    MessageEvent image(String eventId, String body, int timestamp) =>
+        MessageEvent(
+          eventId: eventId,
+          roomId: _roomId,
+          sender: '@alice:example.org',
+          body: body,
+          msgtype: 'm.image',
+          timestamp: timestamp,
+          replacesEventId: eventId == 'media-1' ? null : 'media-1',
+          mxcUri: 'mxc://example.org/cat',
+          mediaSource: const <String, dynamic>{'url': 'mxc://example.org/cat'},
+          filename: 'cat.png',
+          fileSize: 42,
+        );
+    final service = _FakeMatrixService(
+      initialMessages: <MessageEvent>[
+        image('media-1', 'cat.png', 1),
+        image('edit-1', 'A cat', 2),
+      ],
+    );
+    final container = _container(service);
+    addTearDown(container.dispose);
+    final provider = roomTimelineProvider(_roomId);
+    final subscription = container.listen(provider, (_, __) {});
+    addTearDown(subscription.close);
+
+    void expectAttachment(MessageEvent message, String body) {
+      expect(message.eventId, 'media-1');
+      expect(message.body, body);
+      expect(message.msgtype, 'm.image');
+      expect(message.mxcUri, 'mxc://example.org/cat');
+      expect(message.mediaSource, <String, dynamic>{
+        'url': 'mxc://example.org/cat',
+      });
+      expect(message.filename, 'cat.png');
+      expect(message.fileSize, 42);
+    }
+
+    final initial = await container.read(provider.future);
+    expectAttachment(initial.newestFirst.single, 'A cat');
+
+    service.emit(image('edit-2', 'A sleepy cat', 3));
+    await Future<void>.delayed(Duration.zero);
+
+    final message = container.read(provider).value!.newestFirst.single;
+    expectAttachment(message, 'A sleepy cat');
+    expect(message.editedAt, 3);
+  });
+
   test('thread edits and deletes never advance the main receipt', () async {
     final service = _FakeMatrixService(
       initialMessages: <MessageEvent>[
