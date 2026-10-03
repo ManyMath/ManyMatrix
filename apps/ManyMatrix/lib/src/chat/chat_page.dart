@@ -94,6 +94,15 @@ class ChatView extends HookConsumerWidget {
     final threadIndexState = ref.watch(threadIndexProvider);
     final threadIndexStale = ref.watch(threadIndexStaleProvider);
     final threadIndex = threadIndexState.valueOrNull;
+    // Built once per index change; the timeline looks threads up per message.
+    final roomThreadsByRoot = useMemoized(() {
+      final byRoot = <String, ThreadSummary>{};
+      for (final thread in threadIndex ?? const <ThreadSummary>[]) {
+        if (thread.roomId != roomId) continue;
+        byRoot.putIfAbsent(thread.root.eventId, () => thread);
+      }
+      return byRoot;
+    }, [threadIndex, roomId]);
     final selectedThreadKey = selectedThread.value?.roomId == roomId
         ? selectedThread.value
         : null;
@@ -360,6 +369,12 @@ class ChatView extends HookConsumerWidget {
                     ),
                   );
                 }
+                final loadedReplyCounts = <String, int>{};
+                for (final message in data.newestFirst) {
+                  final root = message.threadRoot;
+                  if (root == null) continue;
+                  loadedReplyCounts[root] = (loadedReplyCounts[root] ?? 0) + 1;
+                }
                 return LayoutBuilder(
                   builder: (context, constraints) {
                     final laneWidth = constraints.maxWidth < _timelineMaxWidth
@@ -417,15 +432,10 @@ class ChatView extends HookConsumerWidget {
                             final isMine =
                                 currentUserId != null &&
                                 message.sender == currentUserId;
-                            final indexedThread = threadIndex
-                                ?.where(
-                                  (thread) =>
-                                      thread.roomId == roomId &&
-                                      thread.root.eventId == message.eventId,
-                                )
-                                .firstOrNull;
-                            final loadedThreadReplyCount = data
-                                .threadReplyCount(message.eventId);
+                            final indexedThread =
+                                roomThreadsByRoot[message.eventId];
+                            final loadedThreadReplyCount =
+                                loadedReplyCounts[message.eventId] ?? 0;
                             final threadReplyCount = indexedThread == null
                                 ? loadedThreadReplyCount
                                 : indexedThread.replyCount >
