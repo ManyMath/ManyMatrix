@@ -1223,9 +1223,7 @@ class ThreadTimelineController
     } on Object {
       if (generation != _generation || request != _readRequest) return;
       _pendingReadEventId = null;
-      if (generation != _generation ||
-          request != _readRequest ||
-          !identical(ref.read(matrixServiceProvider), service) ||
+      if (!identical(ref.read(matrixServiceProvider), service) ||
           _readRetryEventId != eventId ||
           _readAttempt >= _maxReadReceiptAttempts) {
         return;
