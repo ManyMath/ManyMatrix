@@ -1029,7 +1029,10 @@ class ThreadTimelineController
         requestToken = nextToken;
       }
     } on Object catch (error) {
-      if (generation != _generation) return;
+      if (generation != _generation ||
+          !identical(ref.read(matrixServiceProvider), service)) {
+        return;
+      }
       state = AsyncData(
         (state.valueOrNull ?? timeline).copyWith(
           loadingOlder: false,
@@ -1200,7 +1203,11 @@ class ThreadTimelineController
   }) async {
     try {
       await service.sendThreadReadReceipt(arg.roomId, arg.rootEventId, eventId);
-      if (generation != _generation || request != _readRequest) return;
+      if (generation != _generation ||
+          request != _readRequest ||
+          !identical(ref.read(matrixServiceProvider), service)) {
+        return;
+      }
       _pendingReadEventId = null;
       _committedReadEventId = eventId;
       _clearReadRetry();

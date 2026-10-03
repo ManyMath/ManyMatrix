@@ -1418,6 +1418,54 @@ void main() {
       expect(timeline.newestFirst.single.editedAt, 200);
     },
   );
+
+  test('a stale service pagination error is not shown', () async {
+    final olderPage = Completer<PaginatedThreadMessages>();
+    final first = _ThreadService(
+      initialPage: Future.value(
+        PaginatedThreadMessages(
+          root: _root(),
+          messages: const <MessageEvent>[],
+          endToken: 'p2',
+        ),
+      ),
+      olderPage: olderPage,
+    );
+    final second = _ThreadService(
+      initialPage: Future.value(
+        PaginatedThreadMessages(root: _root(), messages: const []),
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: <Override>[
+        _selectedThreadServiceProvider.overrideWith((ref) => first),
+        matrixServiceProvider.overrideWith(
+          (ref) => ref.watch(_selectedThreadServiceProvider)!,
+        ),
+        authControllerProvider.overrideWith(_AuthenticatedController.new),
+      ],
+    );
+    addTearDown(container.dispose);
+    final provider = threadTimelineProvider(_key);
+    final olderErrors = <Object>[];
+    final subscription = container.listen(provider, (_, next) {
+      final error = next.valueOrNull?.olderError;
+      if (error != null) olderErrors.add(error);
+    });
+    addTearDown(subscription.close);
+    await container.read(provider.future);
+
+    final staleLoad = container.read(provider.notifier).loadOlder();
+    await pumpEventQueue();
+    container.read(_selectedThreadServiceProvider.notifier).state = second;
+    olderPage.completeError(StateError('first account is offline'));
+    await staleLoad;
+    await container.read(provider.future);
+    await pumpEventQueue();
+
+    expect(olderErrors, isEmpty);
+    expect(container.read(provider).value!.olderError, isNull);
+  });
 }
 
 ProviderContainer _container(_ThreadService service) => ProviderContainer(
@@ -1434,6 +1482,7 @@ class _ThreadService implements MatrixService, ThreadMatrixService {
     this.receiptOutcomes = const <Object?>[],
     this.indexResponses = const <Future<List<ThreadSummary>>>[],
     this.olderPages = const <PaginatedThreadMessages>[],
+    this.olderPage,
   }) {
     _messages = StreamController<MessageEvent>.broadcast(
       onListen: () => hasMessageListener = true,
@@ -1447,6 +1496,7 @@ class _ThreadService implements MatrixService, ThreadMatrixService {
   final List<Object?> receiptOutcomes;
   final List<Future<List<ThreadSummary>>> indexResponses;
   final List<PaginatedThreadMessages> olderPages;
+  final Completer<PaginatedThreadMessages>? olderPage;
   late final StreamController<MessageEvent> _messages;
   late final StreamController<ReceiptEvent> _receipts;
   final List<String> receipts = <String>[];
@@ -1481,6 +1531,8 @@ class _ThreadService implements MatrixService, ThreadMatrixService {
   }) {
     requestedTokens.add(fromToken);
     if (fromToken == null) return initialPage;
+    final pending = olderPage;
+    if (pending != null) return pending.future;
     return Future.value(olderPages[_olderPage++]);
   }
 
