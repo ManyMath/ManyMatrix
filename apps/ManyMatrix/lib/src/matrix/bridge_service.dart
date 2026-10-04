@@ -470,7 +470,7 @@ class BridgeMatrixService
     await _ensureInitialized();
     return ManyMatrixBridge.create(
       canonicalHomeserver,
-      defaultStorePath(_accountId),
+      await defaultStorePath(_accountId),
     );
   }
 
@@ -803,9 +803,9 @@ class BridgeMatrixService
     final homeserverUrl = _lastHomeserverUrl;
     if (homeserverUrl != null) {
       await attempt(
-        () => ManyMatrixBridge.clearStoredAccount(
+        () async => ManyMatrixBridge.clearStoredAccount(
           homeserverUrl,
-          defaultStorePath(_accountId),
+          await defaultStorePath(_accountId),
         ),
       );
     }
@@ -825,9 +825,9 @@ class BridgeMatrixService
       final liveClient = _client;
       await clearPersistedSessionRevocationAware(
         clearLiveSession: liveClient?.clearPersistedSession,
-        clearStoredSession: () => ManyMatrixBridge.clearStoredSession(
+        clearStoredSession: () async => ManyMatrixBridge.clearStoredSession(
           homeserverUrl,
-          defaultStorePath(_accountId),
+          await defaultStorePath(_accountId),
         ),
       );
     }
@@ -849,7 +849,7 @@ class BridgeMatrixService
   }) async {
     await ManyMatrixBridge.clearStoredAccount(
       homeserverUrl,
-      defaultStorePath(accountId),
+      await defaultStorePath(accountId),
     );
     final prefs = await SharedPreferences.getInstance();
     final homeserverKey = 'manymatrix.$accountId.homeserver';

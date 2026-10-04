@@ -23,4 +23,7 @@ const String? matrixRuntimeUnsupportedReason = null;
 String defaultLibraryPath() => '';
 
 /// Stable, account-specific IndexedDB namespace passed to the Worker.
-String defaultStorePath(String accountId) => 'manymatrix-web-store-$accountId';
+///
+/// Async to match the native variant, which resolves a platform directory.
+Future<String> defaultStorePath(String accountId) async =>
+    'manymatrix-web-store-$accountId';

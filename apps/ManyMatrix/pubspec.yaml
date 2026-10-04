@@ -24,6 +24,8 @@ dependencies:
     path: ../../../ManyUI/manyui_hooks
   manyui_riverpod:
     path: ../../../ManyUI/manyui_riverpod
+  path: ^1.9.0
+  path_provider: ^2.1.6
   # TODO(manymatrix): move session persistence to secure storage
   # (e.g. flutter_secure_storage) -- shared_preferences is plaintext.
   shared_preferences: ^2.4.0

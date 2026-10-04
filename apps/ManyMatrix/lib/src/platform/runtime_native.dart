@@ -1,5 +1,11 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import 'store_location.dart';
+
 /// Whether the manymatrix runtime works on this platform.
 const bool matrixRuntimeSupported = true;
 
@@ -35,19 +41,29 @@ String defaultLibraryPath() {
   );
 }
 
-/// Directory handed to the Rust SDK for its persistent store.
+final _storeLocator = AccountStoreLocator(
+  root: () async => Directory(
+    p.join(
+      (await getApplicationSupportDirectory()).path,
+      accountStoresDirectoryName,
+    ),
+  ),
+  legacyRoot: Directory(
+    p.join(Directory.systemTemp.path, accountStoresDirectoryName),
+  ),
+  onMigrationError: (error, stackTrace) => debugPrint(
+    'ManyMatrix could not move a Matrix store out of the temp directory: '
+    '$error',
+  ),
+);
+
+/// Directory handed to the Rust SDK for [accountId]'s persistent store.
 ///
-/// Scoped per [accountId] so that multiple accounts never share a store
-/// (sharing one path across accounts would corrupt each other's state).
-///
-/// TODO(manymatrix): use a real per-app support directory (path_provider's
-/// getApplicationSupportDirectory) instead of the system temp dir.
-String defaultStorePath(String accountId) {
-  final safeId = accountId.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
-  final dir = Directory(
-    '${Directory.systemTemp.path}${Platform.pathSeparator}'
-    'manymatrix_app_store${Platform.pathSeparator}$safeId',
-  );
-  dir.createSync(recursive: true);
-  return dir.path;
-}
+/// Lives under the application support directory, not a temp or cache
+/// directory the OS may clear: the store holds the E2EE device keys and
+/// sessions the saved login depends on. Scoped per [accountId] so that
+/// multiple accounts never share a store (sharing one path across accounts
+/// would corrupt each other's state). Stores left in the system temp
+/// directory by earlier builds are moved here on first use.
+Future<String> defaultStorePath(String accountId) =>
+    _storeLocator.pathFor(accountId);

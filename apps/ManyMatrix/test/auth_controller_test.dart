@@ -603,6 +603,7 @@ void main() {
     );
     SharedPreferences.setMockInitialValues(_savedAccountPrefs(account));
     final services = <String, _RecordingMatrixService>{};
+    final cleaned = <String>[];
     final container = ProviderContainer(
       overrides: <Override>[
         matrixServiceProvider.overrideWith((ref) {
@@ -613,6 +614,9 @@ void main() {
                 ? _RecordingMatrixService(restoreUserId: '@alice:example.org')
                 : _RecordingMatrixService(loginError: Exception('M_FORBIDDEN')),
           );
+        }),
+        accountLocalDataCleanerProvider.overrideWithValue((value) async {
+          cleaned.add(value.id);
         }),
       ],
     );
@@ -647,6 +651,8 @@ void main() {
       services.values.where((service) => service.loginCalls == 1),
       hasLength(1),
     );
+    expect(cleaned, hasLength(1));
+    expect(cleaned.single, isNot(account.id));
   });
 
   test(
