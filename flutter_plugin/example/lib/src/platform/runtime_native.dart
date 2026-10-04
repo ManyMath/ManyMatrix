@@ -17,6 +17,12 @@ Future<void> initializeExampleBridge() async {
   await ManyMatrixBridge.initialize(libraryPath);
 }
 
-String exampleStorePath() => Directory.systemTemp.path;
+/// A fresh store directory for each login.
+///
+/// Logout deletes the store directory recursively, so it must never be the
+/// shared temp directory itself. The example never restores a saved session,
+/// so every login is a new device and needs an empty store anyway.
+String exampleStorePath() =>
+    Directory.systemTemp.createTempSync('manymatrix_example_store_').path;
 
 String? exampleRuntimeWarning() => null;
