@@ -75,12 +75,17 @@ Future<void> performRestore(
 }
 
 /// Logs out and clears the client.
+///
+/// The bridge tears down local state even when the server request fails
+/// (native deletes the store, web closes the worker), so the client is
+/// cleared either way and the server error is rethrown for the caller.
 Future<void> performLogout(WidgetRef ref) async {
   final client = ref.read(matrixClientProvider);
-  if (client != null) {
-    await client.logout();
+  try {
+    await client?.logout();
+  } finally {
+    ref.read(matrixClientProvider.notifier).setClient(null);
   }
-  ref.read(matrixClientProvider.notifier).setClient(null);
 }
 
 /// Fetches the list of joined rooms. Re-fetch by invalidating this provider.

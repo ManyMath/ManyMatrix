@@ -30,8 +30,17 @@ class _RoomListScreenState extends ConsumerState<RoomListScreen> {
   }
 
   Future<void> _logout() async {
-    await performLogout(ref);
-    // authStateProvider flips to false; GoRouter redirects to /login.
+    // The app-level messenger outlives this route, which is replaced by
+    // /login as soon as the client is cleared.
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await performLogout(ref);
+      // authStateProvider flips to false; GoRouter redirects to /login.
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Signed out locally; server logout failed: $e')),
+      );
+    }
   }
 
   @override
