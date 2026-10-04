@@ -4,9 +4,15 @@
 # injected e2e.html driver page never loads the Flutter UI, so this is
 # equivalent for CI (and much cheaper than a full flutter build web).
 set -euo pipefail
-cd "$(dirname "$0")/.."
 
 out="${1:?usage: assemble_web_e2e_extension.sh <outdir>}"
+# Resolve a relative output directory against the caller's directory before
+# moving to the repository root.
+case "$out" in
+  /*) ;;
+  *) out="$PWD/$out" ;;
+esac
+cd "$(dirname "$0")/.."
 
 [[ -f crates/web/pkg/manymatrix_web_bg.wasm ]] || {
   echo "error: crates/web/pkg missing, run: wasm-pack build --target web --release crates/web" >&2
