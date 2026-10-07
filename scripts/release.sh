@@ -124,5 +124,5 @@ case "${1:-help}" in
   version) cmd_version "${2:-}" ;;
   tag) cmd_tag ;;
   help|-h|--help) usage ;;
-  *) usage; exit 1 ;;
+  *) usage >&2; exit 1 ;;
 esac
