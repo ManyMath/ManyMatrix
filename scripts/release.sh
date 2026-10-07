@@ -80,10 +80,13 @@ cmd_version() {
   local current_version
   current_version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
 
+  # Escape the dots: unescaped, "0.2.0" would also match e.g. "0x2y0".
+  local current_re="${current_version//./\\.}"
+
   echo "==> bumping Rust workspace version: $current_version -> $new_version"
   for f in "${CARGO_TOMLS[@]}"; do
-    sed -i -E "s/^version = \"${current_version}\"/version = \"${new_version}\"/" "$f"
-    sed -i -E "s/(path = \"[^\"]+\", version = )\"${current_version}\"/\1\"${new_version}\"/" "$f"
+    sed -i -E "s/^version = \"${current_re}\"/version = \"${new_version}\"/" "$f"
+    sed -i -E "s/(path = \"[^\"]+\", version = )\"${current_re}\"/\1\"${new_version}\"/" "$f"
   done
 
   echo "==> updating Cargo.lock"
