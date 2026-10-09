@@ -32,7 +32,15 @@ class Actor {
     });
     this.ready.catch(() => {});
     createInterface({input: this.child.stdout}).on('line', (line) => {
-      const message = JSON.parse(line);
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch {
+        // Anything that is not a protocol line (a stray log, say) must not
+        // crash the harness with an unhandled exception.
+        console.error(`[actor stdout] ${line}`);
+        return;
+      }
       if (message.ready) {
         this.resolveReady(message);
         return;
