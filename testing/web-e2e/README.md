@@ -31,7 +31,7 @@ EXTENSION_DIR=/tmp/manymatrix-extension node testing/web-e2e/run.mjs embedded
 
 End-to-end test of the Chrome extension web bridge, including the event push
 channel (offscreen -> `chrome.runtime` broadcast), against the permanently
-hosted homeservers (roadmap v1.3, Phase 25).
+hosted homeservers.
 
 ## What it does
 

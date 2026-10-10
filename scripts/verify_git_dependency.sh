@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Verifies that manymatrix-core can be consumed as a `git` Cargo dependency
-# without the workspace-local ruma-client-api vendor patch (PUB-01). See
-# ROADMAP.md's "Package Publishing & Release Automation" section: an actual
-# `cargo publish` to crates.io is blocked upstream, but downstream consumers
-# can already depend on this repo directly via `git`.
+# without the workspace-local ruma-client-api vendor patch (PUB-01). See the
+# README's "Consuming manymatrix-core" section: an actual `cargo publish` to
+# crates.io is blocked upstream, but downstream consumers can already depend
+# on this repo directly via `git`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
