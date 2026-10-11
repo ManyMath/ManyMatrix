@@ -532,21 +532,15 @@ async fn mxc_uri_on_message_event(kind: ServerKind) -> Result<()> {
         // Note: tuwunel embedded requires authenticated media downloads; the matrix-sdk
         // client uses the authenticated endpoint but tuwunel may reject it depending on
         // server configuration. Skip the download assertion on TuwunelEmbedded.
-        if kind.slug() != "tuwunel-embedded" {
-            let downloaded = bob.download_media(mxc).await?;
-            assert_eq!(
-                downloaded, test_data,
-                "downloaded content should match uploaded content"
-            );
-            eprintln!(
-                "download_media round-trip verified: {} bytes",
-                downloaded.len()
-            );
-        } else {
-            eprintln!(
-                "download_media round-trip skipped on TuwunelEmbedded (authenticated media endpoint)"
-            );
-        }
+        let downloaded = bob.download_media(mxc).await?;
+        assert_eq!(
+            downloaded, test_data,
+            "downloaded content should match uploaded content"
+        );
+        eprintln!(
+            "download_media round-trip verified: {} bytes",
+            downloaded.len()
+        );
 
         Ok(())
     }
