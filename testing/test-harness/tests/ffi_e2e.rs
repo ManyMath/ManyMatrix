@@ -140,8 +140,8 @@ async fn ffi_login_sync_send_logout(kind: ServerKind) -> Result<()> {
 async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
     let server = TestHomeserver::start(kind).await?;
     let run_result: Result<()> = async {
-        let alice_reg = server.register_user("alice_ffi2", "pass1").await?;
-        let bob_reg = server.register_user("bob_ffi2", "pass2").await?;
+        let alice_reg = server.register_user("alice_ffi2", "password1").await?;
+        let bob_reg = server.register_user("bob_ffi2", "password2").await?;
         let base_url = server.base_url().to_owned();
 
         let alice_store = tempfile::tempdir()?;
@@ -160,7 +160,7 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
             let r = manymatrix_ffi::manymatrix_login(
                 alice,
                 cstr(&alice_reg.localpart).as_ptr(),
-                cstr("pass1").as_ptr(),
+                cstr("password1").as_ptr(),
             );
             assert!(r.ok);
 
@@ -172,7 +172,7 @@ async fn ffi_two_user_messaging(kind: ServerKind) -> Result<()> {
             let r = manymatrix_ffi::manymatrix_login(
                 bob,
                 cstr(&bob_reg.localpart).as_ptr(),
-                cstr("pass2").as_ptr(),
+                cstr("password2").as_ptr(),
             );
             assert!(r.ok);
 
